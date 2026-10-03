@@ -588,6 +588,92 @@ pub fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
+/// Reads a subtitle file (.srt / .vtt) for the video player. Most are UTF-8; an older Thai one is TIS-620 / Windows-874
+/// (and a Western one Latin-1), so anything that is not valid UTF-8 is decoded that way instead of failing.
+#[tauri::command]
+pub fn read_subtitle(path: String) -> Result<String, String> {
+    let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.len() > 5 * 1024 * 1024 {
+        return Err("This subtitle file is larger than 5 MB.".into());
+    }
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(&bytes);
+    Ok(match std::str::from_utf8(bytes) {
+        Ok(text) => text.to_string(),
+        Err(_) => bytes
+            .iter()
+            .map(|&b| match b {
+                0xA1..=0xFB => char::from_u32(0x0E01 + (b as u32 - 0xA1)).unwrap_or('?'),
+                _ => b as char,
+            })
+            .collect(),
+    })
+}
+
+/// Saves a picture or clip made by the video player (the data arrives as base64) into a "boonsh captures" folder next
+/// to the video, never overwriting. Returns the full path of the new file.
+#[tauri::command]
+pub fn save_capture(video_path: String, name: String, data: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let dir = Path::new(&video_path)
+        .parent()
+        .ok_or("The video has no folder.")?
+        .join("boonsh captures");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // keep only a plain file name
+    let name: String = name
+        .chars()
+        .map(|c| if r#"\/:*?"<>|"#.contains(c) { '_' } else { c })
+        .collect();
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) => (s.to_string(), format!(".{}", e)),
+        None => (name.clone(), String::new()),
+    };
+    let mut target = dir.join(&name);
+    let mut n = 2;
+    while target.exists() {
+        target = dir.join(format!("{} ({}){}", stem, n, ext));
+        n += 1;
+    }
+    fs::write(&target, bytes).map_err(|e| e.to_string())?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// Shows the Windows "Open" dialog and returns the chosen file, or None when it was cancelled.
+/// `filter` is in the dialog's own form, for example "Video|*.mp4;*.mkv|All files|*.*".
+#[tauri::command]
+pub async fn pick_file(title: String, filter: String) -> Result<Option<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            use std::os::windows::process::CommandExt;
+            use std::process::Command;
+            let script = format!(
+                "[Console]::OutputEncoding=[Text.Encoding]::UTF8;Add-Type -AssemblyName System.Windows.Forms;                 $d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='{}';$d.Filter='{}';                 $o=New-Object System.Windows.Forms.Form -Property @{{TopMost=$true}};                 if($d.ShowDialog($o) -eq 'OK'){{[Console]::Out.Write($d.FileName)}}",
+                title.replace('\'', "''"),
+                filter.replace('\'', "''")
+            );
+            let out = Command::new("powershell")
+                .args(["-STA", "-NoProfile", "-NonInteractive", "-Command", &script])
+                .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+                .output()
+                .map_err(|e| format!("Could not open the file dialog: {}", e))?;
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            Ok(if path.is_empty() { None } else { Some(path) })
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (title, filter);
+        Ok(None)
+    }
+}
+
 #[tauri::command]
 pub fn read_image_base64(path: String) -> Result<String, String> {
     let path_buf = PathBuf::from(&path);

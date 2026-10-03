@@ -6,6 +6,12 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.9.0 (2026-10-03)
+
+### Added
+- **Video player in the preview drawer.** Select a video (mp4, m4v, mov, webm and more) and the drawer plays it: a timing bar with the times above the buttons Play/Pause, Back 10 s, Stop, Forward 10 s, Capture (PNG), Record (WebM clip), A-B repeat, Subtitles; on the right Volume (remembered), Open medium (play another video file). Extras: playback speed, keys Space / J / L / M / C / F, full screen like the image viewer (button, double-click or F), a message with an "Open in the default player" button when the built-in player cannot decode a file. Captures and clips go to a `boonsh captures` folder next to the video. A `.srt` / `.vtt` with the video's name is picked up by itself (Thai TIS-620 files are read correctly).
+- New backend commands `read_subtitle`, `save_capture` and `pick_file` (Windows file dialog); the asset protocol is on so videos stream from disk with seeking. One more library (`http-range`, MIT) in `THIRD_PARTY_LICENSES.txt`.
+
 ## 0.8.2 (2026-10-03)
 
 ### Changed

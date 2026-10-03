@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.8.2**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.0**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -805,6 +805,27 @@ Open it with the **Eye icon** or **Ctrl+P**. It appears below the file panel and
 | Lock zoom | `L` | Keep your zoom and position when you move to another image. |
 | Pan | Drag with the mouse | Move the image around. |
 
+- **Videos** (mp4, m4v, mov, webm, ogv; mkv, avi, wmv, mpg, mpeg, 3gp and ts are tried) open in a video player. Selecting a video shows its first picture and **does not start playing** by itself. A **timing bar** with the elapsed and total time sits above the buttons; click or drag it to jump.
+
+| Button (left to right) | Key | Action |
+| --- | --- | --- |
+| Play / Pause | Space | Start or pause. Click the picture does the same. |
+| Back 10 | J | Step back 10 seconds. |
+| Stop | | Pause and go back to 0:00. |
+| Forward 10 | L | Step forward 10 seconds. |
+| Capture (camera) | C | Save the current picture as a PNG. |
+| Record (circle) | | Start / stop recording what is playing as a WebM clip, with sound. A red **REC 0:07** shows while recording. If an A-B part is set, recording starts at A and stops by itself at B. |
+| A-B | | First click sets **A** (the button shows `A 0:05`), the second sets **B** and that part **repeats**, the third clears both. The timing bar shades the A-B part. |
+| Subtitles | | A menu: **Off**, the subtitle files found, **Load a subtitle file...** |
+| Speed (`1x`) | | Each click steps 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x. |
+| Volume (right side) | M (mute) | Mute button and a volume slider. The level is remembered for next time. |
+| Open medium (folder icon, far right) | | Opens a file dialog and plays **another video** in the player. |
+
+- **Captures and clips** are saved in a folder named **boonsh captures** next to the video, named like `movie_00-01-23.png` and `movie_00-00-05_to_00-00-08.webm`. Nothing is overwritten (a number is added). A message at the bottom of the picture shows the full path; click it to open the folder. Clips are recorded in real time and are WebM, not the original format.
+- **Subtitles:** a `.srt` or `.vtt` file in the same folder whose name starts with the video's name (`movie.srt`, `movie.en.srt`) is found and shown automatically. UTF-8 files are read as they are; other files are read as Thai (TIS-620). The text appears in the picture's own subtitle style.
+- **Full screen:** the maximize button in the header, a double-click on the picture, or **F**; Esc leaves it. The controls stay at the bottom.
+- **If a video will not play** (the built-in player does not decode every format; MKV, AVI, WMV and some HEVC files often fail), the panel says so and offers **Open in the default player**.
+- The video keys only work when you are not typing in a text box (Space is not taken from the terminal or the search box).
 - The image keys only work when you are **not typing in a text box**, so typing in the search box, path bar, rename or Settings dialogs, or the Go-to box never moves or zooms the image.
 - **Full screen:** the maximize button in the preview header; **Esc** exits. The **X** (or Ctrl+P) closes the drawer.
 

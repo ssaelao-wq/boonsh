@@ -16,6 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import { FileItem } from '../types';
+import { VideoPlayer } from './VideoPlayer';
+import { isVideoExt } from '../video';
 
 interface PreviewPanelProps {
   selectedItem: FileItem | null;
@@ -62,11 +64,14 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
     !selectedItem.is_dir &&
     imageExtensions.includes(selectedItem.ext.toLowerCase());
 
+  const isVideo = !!selectedItem && !selectedItem.is_dir && isVideoExt(selectedItem.ext);
+
   // Load preview data whenever selected item changes
   useEffect(() => {
-    if (!selectedItem || selectedItem.is_dir) {
+    if (!selectedItem || selectedItem.is_dir || isVideo) {
       setImageSrc(null);
       setTextContent(null);
+      setLoading(false);
       return;
     }
 
@@ -307,7 +312,14 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
 
       {/* Preview Content Body */}
       <div className="preview-body">
-        {loading ? (
+        {isVideo ? (
+          <VideoPlayer
+            key={selectedItem.path}
+            item={selectedItem}
+            siblings={allItems}
+            onToggleFullScreen={() => setIsFullScreen((v) => !v)}
+          />
+        ) : loading ? (
           <div style={{ color: 'var(--text-muted)' }}>Loading preview...</div>
         ) : isImage && imageSrc ? (
           <div

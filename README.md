@@ -8,6 +8,7 @@ Browse your folders on the left, type commands on the right, and the two stay in
 - **Sort and group your way:** sort by several columns at once, and group the list by month, year, file type, size and more, with one line per group such as `2026 September > Images`.
 - **A search box that understands folders:** find files by name, size, type, date, or by the folders they sit in (`path:invoices +2026`), and search only the places you choose (`input:.\clients, d:\work`).
 - **Your own shortcuts for the terminal:** pick files in the panel, and fill them into commands with `{SELEC}` and `{DEST}`.
+- **Preview drawer:** view images, and play videos with a timing bar, 10-second steps, picture capture, WebM recording, A-B repeat, subtitles and full screen.
 - **More:** bulk rename with undo, ZIP and extract, Quick Access and Frequently Accessed folders, a preview drawer, dark and light themes.
 
 boonsh is free software under the [MIT License](LICENSE).
