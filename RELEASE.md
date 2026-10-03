@@ -4,7 +4,8 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+- **A proper `README.md`** for the project's GitHub page: what boonsh is, screenshots, which installer to download, step-by-step installation of the setup .exe and of the .msi (with silent-install commands), updating, uninstalling, first steps, troubleshooting, building from source and the license. Documentation only; the app itself is unchanged.
 
 ## 0.8.1 (2026-10-03)
 
