@@ -4,7 +4,12 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.8.2 (2026-10-03)
+
 ### Changed
+- **Group lines now end with a `>` too:** `2026 July > CSV >`. The `>` after a name collapses that group (after `CSV`: only CSV, giving `2026 July > CSV v`; after `2026 July`: all of July, giving `2026 July v`). Before, the last name had no `>`.
 - **A proper `README.md`** for the project's GitHub page: what boonsh is, screenshots, which installer to download, step-by-step installation of the setup .exe and of the .msi (with silent-install commands), updating, uninstalling, first steps, troubleshooting, building from source and the license. Documentation only; the app itself is unchanged.
 
 ## 0.8.1 (2026-10-03)

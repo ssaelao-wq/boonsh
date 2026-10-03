@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.8.1**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.8.2**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -189,9 +189,11 @@ Small numbers `1`, `2` beside the ticked parts show the order. Untick a part to 
 - A layer where every file falls in one single group (all files from the same month) shows no header at all, so you never see a pointless header.
 
 **Working with the groups**
-- **Collapse a group with the `>`.** On a line like `2026 July  >  CSV`, click the **`>`** to collapse the group on its left (all of July). Everything under it, every type, is replaced by one line with a **down arrow**: `2026 July  v`. Click the line or the down arrow to open it again.
-- **Click the line itself** (anywhere except a `>`) to collapse just that group: `2026 July  >  CSV` becomes `2026 July  >  CSV  v`, with its files hidden. Click it again to open it.
-- With only **one layer**, a line is just the name (`Images`); click it to collapse it to `Images  v`.
+- **Every name on a line has a `>` after it**, for example `2026 July  >  CSV  >`, `2026 July  >  DOCX  >`, `2026 July  >  MD  >`. Click the `>` after a name to collapse that group.
+- Click the **`>` after `CSV`**: only the CSV files hide, and the line becomes `2026 July  >  CSV  v` (the DOCX and MD lines stay open).
+- Click the **`>` after `2026 July`**: everything under July, every type, hides, and one line is left: `2026 July  v`.
+- Click a line with a **down arrow** (or the arrow) to open it again. Clicking elsewhere on a line also collapses / opens the group that the whole line stands for.
+- With only **one layer**, a line is `Images  >`; click it to collapse it to `Images  v`.
 - The line stays visible at the top while you scroll through a long group (it covers the rows that slide under it).
 - Collapsed groups are forgotten when you change the grouping or restart.
 - **Right-click a line**: *Select ...* once for every level of the line (for `2026 July > CSV`: *Select 2026 July* and *Select 2026 July > CSV*, each with the number of files), ready for Bulk Rename, Delete, Compress ...; *Collapse / Open this group*; *Collapse all groups* (leaves one line per outermost group); *Expand all groups*; *Ungroup all*.

@@ -641,7 +641,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                           {row.labels.map((label, k) => (
                             <React.Fragment key={k}>
                               <span className="group-label">{label}</span>
-                              {k < row.labels.length - 1 && (
+                              {!(row.collapsed && k === row.labels.length - 1) && (
                                 <span
                                   className="group-sep"
                                   title={`Collapse ${row.labels[k]}`}
