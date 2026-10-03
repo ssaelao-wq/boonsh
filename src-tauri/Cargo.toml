@@ -1,0 +1,53 @@
+[package]
+name = "boonsh"
+version = "0.7.0"
+description = "boonsh - Standalone Hybrid PowerShell & File Manager"
+authors = ["somboon"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "boonsh_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+portable-pty = "0.8"
+tokio = { version = "1", features = ["full"] }
+walkdir = "2"
+trash = "5"
+dirs = "5"
+base64 = "0.22"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+regex-lite = "0.1.9"
+
+# File properties (Dimensions, Length, Album ...) from the Windows property system, as in Explorer. The same
+# windows 0.61 is already pulled in by Tauri, so this only switches on a few more of its modules.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_PropertiesSystem",
+] }
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
