@@ -1,7 +1,14 @@
 {
   "name": "tauri-app",
   "private": true,
-  "version": "0.8.0",
+  "license": "MIT",
+  "author": "Somboon L.",
+  "homepage": "https://github.com/ssaelao-wq/boonsh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ssaelao-wq/boonsh.git"
+  },
+  "version": "0.8.1",
   "type": "module",
   "scripts": {
     "dev": "vite",

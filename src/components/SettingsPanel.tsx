@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark } from 'lucide-react';
+import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark, Info } from 'lucide-react';
 import { CommandGroup, CommandItem, GroupIcon, newCommandId } from '../commands';
 import { GlobalVarDef, VarTakes, newVarId, validateVarName, MAX_NAME_LENGTH } from '../globalVars';
 import { PathVars } from '../pathVars';
+import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
+import licenseText from '../../LICENSE?raw';
+import { APP_NAME, COPYRIGHT, REPO_URL, COMPONENTS } from '../about';
 import { QuickAccessItem } from '../types';
 import { QA_MAX, isShown, settingsRows } from '../quickAccess';
 import { FrequentSettings, MIN_COUNT, MAX_COUNT, DEFAULT_SETTINGS as DEFAULT_FREQUENT } from '../frequent';
@@ -31,7 +35,7 @@ interface SettingsPanelProps {
   onQaReset: () => void;
 }
 
-type Section = 'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess';
+type Section = 'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess' | 'about';
 
 interface VarDraft {
   name: string;
@@ -74,6 +78,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onQaReset,
 }) => {
   const [qaMessage, setQaMessage] = useState<string>('');
+  const [version, setVersion] = useState<string>('');
+  const [aboutMessage, setAboutMessage] = useState<string>('');
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => {});
+  }, []);
+  const openLink = (command: string, args?: Record<string, unknown>) => {
+    setAboutMessage('');
+    invoke(command, args).catch((err) => setAboutMessage(String(err)));
+  };
   const [section, setSection] = useState<Section>(initialSection);
   const [varEditing, setVarEditing] = useState<VarEditState | null>(null);
   const [varError, setVarError] = useState<string>('');
@@ -425,7 +438,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Settings size={14} />
             <span>Settings</span>
-            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : 'Commands'}</span>
+            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : section === 'about' ? 'About' : 'Commands'}</span>
           </div>
           <button onClick={onClose} title="Close (Esc)" style={{ padding: 2 }}>
             <X size={14} />
@@ -437,6 +450,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <>
               These commands appear in the terminal's <b>Commands 💡</b> menu. Pick a group, then add, edit or delete its
               commands. Use {'{SELEC}'}, {'{DEST}'} or your own variables in a command. Changes are saved automatically.
+            </>
+          ) : section === 'about' ? (
+            <>
+              About boonsh: its version, its license and the open-source libraries it is built with.
             </>
           ) : section === 'quickaccess' ? (
             <>
@@ -519,9 +536,71 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
               <span className="settings-count">{freqSettings.enabled ? 'On' : 'Off'}</span>
             </div>
+            <div
+              className={`terminal-cmd-cat-item ${section === 'about' ? 'active' : ''}`}
+              onClick={() => {
+                setAboutMessage('');
+                selectSection('about');
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Info size={13} style={{ color: 'var(--text-muted)' }} />
+                <span>About</span>
+              </div>
+            </div>
           </div>
 
-          {section === 'quickaccess' ? (
+          {section === 'about' ? (
+            <div className="settings-commands">
+              <div className="settings-commands-toolbar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Info size={13} style={{ color: 'var(--text-muted)' }} />
+                  <span>About {APP_NAME}</span>
+                </div>
+              </div>
+
+              <div className="settings-commands-list settings-about">
+                <div className="about-title">
+                  {APP_NAME} <span className="about-version">{version ? `version ${version}` : ''}</span>
+                </div>
+                <div className="about-line">A file manager with a built-in PowerShell terminal, for Windows.</div>
+                <div className="about-line">{COPYRIGHT}</div>
+                <div className="about-line">
+                  <b>Free software.</b> Anyone may use, copy, change and share boonsh, for free, under the MIT License
+                  below.
+                </div>
+
+                <div className="about-buttons">
+                  <button onClick={() => openLink('open_in_default_app', { path: REPO_URL })} title={REPO_URL}>
+                    Project page on GitHub
+                  </button>
+                  <button onClick={() => openLink('open_license_notices')} title="THIRD_PARTY_LICENSES.txt, next to the app">
+                    Open the licenses of the libraries inside boonsh
+                  </button>
+                </div>
+                {aboutMessage && <div className="settings-error">{aboutMessage}</div>}
+
+                <div className="about-heading">MIT License</div>
+                <pre className="about-license">{licenseText}</pre>
+
+                <div className="about-heading">Open-source components</div>
+                <table className="about-table">
+                  <tbody>
+                    {COMPONENTS.map((c) => (
+                      <tr key={c.name}>
+                        <td>{c.name}</td>
+                        <td>{c.license}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="about-line about-small">
+                  These and the other libraries boonsh includes keep their own licenses. The full texts, with their
+                  copyright notices, are in the file opened by the button above.
+                </div>
+              </div>
+            </div>
+          ) : section === 'quickaccess' ? (
             <div className="settings-commands">
               <div className="settings-commands-toolbar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -844,10 +923,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="settings-footer">
-          <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
+          {section === 'about' ? <span /> : <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
             <RotateCcw size={13} />
             <span>{section === 'vars' ? 'Reset variables' : section === 'columns' ? 'Reset columns' : section === 'frequent' ? 'Reset settings' : section === 'quickaccess' ? 'Reset Quick Access' : 'Reset commands'}</span>
-          </button>
+          </button>}
           <button onClick={onClose} className="active">
             Done
           </button>

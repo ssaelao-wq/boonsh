@@ -25,6 +25,7 @@ pub fn run() {
             create_new_folder,
             create_shortcut,
             open_in_default_app,
+            open_license_notices,
             rename_item,
             bulk_rename_preview,
             bulk_rename_validate,

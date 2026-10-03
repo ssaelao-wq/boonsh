@@ -1,8 +1,10 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.8.0**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.8.1**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
+
+**License.** boonsh is **free software under the MIT License**: anyone may use, copy, change and share it, for free, as long as the copyright line and the license text stay with it. There is no warranty. The text is in the file `LICENSE` ("Copyright (c) 2026 Somboon L."), it is shown by the Windows installer, and it is in the app under Settings, **About** (section 10). The licenses of the libraries boonsh is built with are in `THIRD_PARTY_LICENSES.txt`, which the installer puts next to the app. Downloads (the installers) are on the project's GitHub **Releases** page: https://github.com/ssaelao-wq/boonsh/releases.
 
 ## Contents
 
@@ -850,7 +852,7 @@ How values are written:
 
 ## 10. Settings: customize terminal commands
 
-Click the **gear icon** (next to the Eye icon). The left bar has five sections, **Commands**, **Global Var**, **Files Column**, **Quick Access** and **Frequently Accessed**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
+Click the **gear icon** (next to the Eye icon). The left bar has six sections, **Commands**, **Global Var**, **Files Column**, **Quick Access**, **Frequently Accessed** and **About**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
 
 ### Global Var
 Manage the variables that commands can use as `{NAME}`.
@@ -879,6 +881,15 @@ Choose what the Quick Access row (above the folder tree, section 3) shows. Each 
 - Everything unticked is allowed: the bar is then empty, and stays empty the next time boonsh starts.
 - Right-clicking a folder to add it, and right-clicking a button to remove it, work as before.
 - **Reset Quick Access** (bottom left) brings back Home, Desktop, Downloads, Documents and the C: drive; folders you added are removed.
+
+### About
+Information about boonsh itself. Nothing here can be changed.
+- The **name and version** (the version of the installed app), a one-line description and the copyright line.
+- A note that boonsh is **free software** that anyone may use, copy, change and share under the **MIT License**, and the **full license text** in a box you can scroll and select.
+- **Project page on GitHub** opens the project's page in your browser.
+- **Open the licenses of the libraries inside boonsh** opens `THIRD_PARTY_LICENSES.txt` in your text editor: the license texts and copyright notices of the open-source libraries boonsh uses (Tauri, React, xterm.js, the Rust crates and so on). The installer puts this file next to the app.
+- A short list of the main open-source components and the license of each.
+- The *Reset* button at the bottom is not shown on this page.
 
 ### Frequently Accessed
 Settings for the panel above the Folder Tree (section 3). Changes apply at once and are saved.

@@ -285,6 +285,21 @@ pub fn create_shortcut(parent_dir: String, name: String, target_path: String) ->
     Ok(shortcut_path.to_string_lossy().to_string())
 }
 
+/// Opens THIRD_PARTY_LICENSES.txt, the licenses of the libraries inside boonsh. The installer puts it next to the app
+/// (it is a bundled resource, see tauri.conf.json); `scripts/gen-third-party.py` writes it.
+#[tauri::command]
+pub fn open_license_notices(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let path = app
+        .path()
+        .resolve("THIRD_PARTY_LICENSES.txt", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| e.to_string())?;
+    if !path.exists() {
+        return Err(format!("The license notices file was not found: {}", path.display()));
+    }
+    open_in_default_app(path.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub fn open_in_default_app(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]

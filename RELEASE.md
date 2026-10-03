@@ -6,6 +6,14 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.8.1 (2026-10-03)
+
+### Added
+- **boonsh is now free software under the MIT License** ("Copyright (c) 2026 Somboon L."). The license text is in the new `LICENSE` file, and the Windows installers (MSI and setup .exe) now show it.
+- **Settings, About.** A new group at the bottom of the Settings dialog shows the name and version, the copyright line, the full MIT license text, the main open-source components with their licenses, a button to open the project page on GitHub, and a button that opens the licenses of all the libraries inside boonsh.
+- **`THIRD_PARTY_LICENSES.txt`** is installed next to the app. It holds the license texts and copyright notices of the 276 libraries boonsh includes (268 Rust crates and 8 JavaScript packages), grouped by identical text. `scripts/gen-third-party.py` writes it.
+- The installers are published on the project's GitHub Releases page.
+
 ## 0.8.0 (2026-10-03)
 
 ### Added
