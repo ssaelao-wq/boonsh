@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History } from 'lucide-react';
+import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark } from 'lucide-react';
 import { CommandGroup, CommandItem, GroupIcon, newCommandId } from '../commands';
 import { GlobalVarDef, VarTakes, newVarId, validateVarName, MAX_NAME_LENGTH } from '../globalVars';
 import { PathVars } from '../pathVars';
+import { QuickAccessItem } from '../types';
+import { QA_MAX, isShown, settingsRows } from '../quickAccess';
 import { FrequentSettings, MIN_COUNT, MAX_COUNT, DEFAULT_SETTINGS as DEFAULT_FREQUENT } from '../frequent';
 import { COLUMN_BY_ID, ColumnId, ColumnPrefs, DateColumn, DateMode, isDateColumn } from '../columns';
 
@@ -23,9 +25,13 @@ interface SettingsPanelProps {
   freqTracked: number;
   onFreqSettingsChange: (s: FrequentSettings) => void;
   onFreqClear: () => void;
+  qaShown: QuickAccessItem[];
+  qaCandidates: QuickAccessItem[];
+  onQaToggle: (item: QuickAccessItem, on: boolean) => void;
+  onQaReset: () => void;
 }
 
-type Section = 'commands' | 'vars' | 'columns' | 'frequent';
+type Section = 'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess';
 
 interface VarDraft {
   name: string;
@@ -62,7 +68,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   freqTracked,
   onFreqSettingsChange,
   onFreqClear,
+  qaShown,
+  qaCandidates,
+  onQaToggle,
+  onQaReset,
 }) => {
+  const [qaMessage, setQaMessage] = useState<string>('');
   const [section, setSection] = useState<Section>(initialSection);
   const [varEditing, setVarEditing] = useState<VarEditState | null>(null);
   const [varError, setVarError] = useState<string>('');
@@ -200,6 +211,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     onColPrefsChange({ ...colPrefs, [kind]: { ...colPrefs[kind], [col]: mode } });
 
   const handleReset = () => {
+    if (section === 'quickaccess') {
+      if (!confirm('Reset Quick Access to Home, Desktop, Downloads, Documents and the C: drive? Folders you added are removed.')) return;
+      setQaMessage('');
+      onQaReset();
+      return;
+    }
     if (section === 'frequent') {
       if (!confirm('Reset the Frequently Accessed settings (on, 3 folders)? The visit counts are kept.')) return;
       onFreqSettingsChange(DEFAULT_FREQUENT);
@@ -408,7 +425,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Settings size={14} />
             <span>Settings</span>
-            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : 'Commands'}</span>
+            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : 'Commands'}</span>
           </div>
           <button onClick={onClose} title="Close (Esc)" style={{ padding: 2 }}>
             <X size={14} />
@@ -420,6 +437,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <>
               These commands appear in the terminal's <b>Commands 💡</b> menu. Pick a group, then add, edit or delete its
               commands. Use {'{SELEC}'}, {'{DEST}'} or your own variables in a command. Changes are saved automatically.
+            </>
+          ) : section === 'quickaccess' ? (
+            <>
+              <b>Quick Access</b> is the row of folder buttons above the folder tree. Tick the ones you want to see, up
+              to {QA_MAX}. You can still right-click a folder, <b>Add to Quick Access</b>, or right-click a button to
+              remove it. Changes are saved automatically.
             </>
           ) : section === 'frequent' ? (
             <>
@@ -474,6 +497,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <span className="settings-count">{colPrefs.visible.length}</span>
             </div>
             <div
+              className={`terminal-cmd-cat-item ${section === 'quickaccess' ? 'active' : ''}`}
+              onClick={() => {
+                setQaMessage('');
+                selectSection('quickaccess');
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Bookmark size={13} style={{ color: 'var(--text-muted)' }} />
+                <span>Quick Access</span>
+              </div>
+              <span className="settings-count">{qaShown.length}</span>
+            </div>
+            <div
               className={`terminal-cmd-cat-item ${section === 'frequent' ? 'active' : ''}`}
               onClick={() => selectSection('frequent')}
             >
@@ -485,7 +521,55 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           </div>
 
-          {section === 'frequent' ? (
+          {section === 'quickaccess' ? (
+            <div className="settings-commands">
+              <div className="settings-commands-toolbar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Bookmark size={13} style={{ color: 'var(--text-muted)' }} />
+                  <span>Quick Access</span>
+                </div>
+                <span className="settings-col-note">
+                  {qaShown.length} of {QA_MAX} shown
+                </span>
+              </div>
+
+              <div className="settings-commands-list">
+                {settingsRows(qaCandidates, qaShown).map((item) => {
+                  const on = isShown(qaShown, item);
+                  return (
+                    <div key={item.path} className="settings-cmd-row settings-col-row">
+                      <label className="settings-col-check">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(e) => {
+                            if (e.target.checked && qaShown.length >= QA_MAX) {
+                              setQaMessage(`Quick Access holds at most ${QA_MAX} items. Untick one first.`);
+                              return;
+                            }
+                            setQaMessage('');
+                            onQaToggle(item, e.target.checked);
+                          }}
+                        />
+                        <span className="terminal-cmd-name">{item.label}</span>
+                        <span className="settings-col-note" title={item.path}>
+                          {item.path}
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })}
+
+                {qaMessage && <div className="settings-error">{qaMessage}</div>}
+
+                <div className="settings-empty">
+                  Home, Desktop, Downloads, Documents and the C: drive are ticked at first. The other drives are listed
+                  too. Folders you add with a right-click, <b>Add to Quick Access</b>, appear at the end of the list; if
+                  you untick one it is removed from Quick Access (add it again by right-click).
+                </div>
+              </div>
+            </div>
+          ) : section === 'frequent' ? (
             <div className="settings-commands">
               <div className="settings-commands-toolbar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -760,9 +844,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="settings-footer">
-          <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : 'Restore the built-in command list'}>
+          <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
             <RotateCcw size={13} />
-            <span>{section === 'vars' ? 'Reset variables' : section === 'columns' ? 'Reset columns' : section === 'frequent' ? 'Reset settings' : 'Reset commands'}</span>
+            <span>{section === 'vars' ? 'Reset variables' : section === 'columns' ? 'Reset columns' : section === 'frequent' ? 'Reset settings' : section === 'quickaccess' ? 'Reset Quick Access' : 'Reset commands'}</span>
           </button>
           <button onClick={onClose} className="active">
             Done

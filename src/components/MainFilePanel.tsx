@@ -25,8 +25,11 @@ import {
   PackageOpen,
   Terminal,
   Check,
+  Layers,
+  ChevronDown,
 } from 'lucide-react';
 import { FileItem, ViewMode, SortOrder, ItemDetails } from '../types';
+import { BUCKETS, BUCKET_LABEL, BUCKET_EXAMPLE, GroupSpec, Bucket, Row, formatBytes, itemsInGroup, toggleBucket } from '../grouping';
 import {
   COLUMNS,
   ColumnId,
@@ -69,6 +72,15 @@ interface MainFilePanelProps {
   sortLevels: SortLevel[];
   details: Record<string, ItemDetails>;
   appByExt: Record<string, string>;
+  rows: Row[]; // what the Details view draws: group headers and files
+  groups: GroupSpec[];
+  onGroupColumn: (column: ColumnId, buckets: Bucket[]) => void;
+  onUngroupColumn: (column: ColumnId) => void;
+  onUngroupAll: () => void;
+  onToggleGroup: (id: string) => void;
+  onSelectGroup: (items: FileItem[]) => void;
+  onCollapseAll: () => void;
+  onExpandAll: () => void;
   onSortClick: (column: ColumnId, additive: boolean) => void;
   onSortSet: (column: ColumnId, order: SortOrder, mode: 'only' | 'then') => void;
   onSortRemove: (column: ColumnId) => void;
@@ -159,6 +171,15 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   sortLevels,
   details,
   appByExt,
+  rows,
+  groups,
+  onGroupColumn,
+  onUngroupColumn,
+  onUngroupAll,
+  onToggleGroup,
+  onSelectGroup,
+  onCollapseAll,
+  onExpandAll,
   onSortClick,
   onSortSet,
   onSortRemove,
@@ -452,6 +473,18 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   // Right-click on a column header: sort choices, date comparison, hide / choose columns
   const [headerMenu, setHeaderMenu] = useState<{ x: number; y: number; col: ColumnId } | null>(null);
   const headerPos = useMenuPosition(headerMenu);
+  const [showGroupSub, setShowGroupSub] = useState<boolean>(false); // the "Group by" list in the header menu
+  useEffect(() => setShowGroupSub(false), [headerMenu]);
+  const groupSubRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = groupSubRef.current;
+    if (!showGroupSub || !el) return;
+    el.style.top = '-4px';
+    const over = el.getBoundingClientRect().bottom - (window.innerHeight - 4);
+    if (over > 0) el.style.top = `${-4 - over}px`;
+  }, [showGroupSub]);
+  const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; index: number } | null>(null);
+  const groupPos = useMenuPosition(groupMenu);
   const columns = visibleColumns(colPrefs);
   const SORT_TIP =
     'Click: sort by this column (click again to reverse)\nShift+Click: add as the next sort level (1, 2, 3 ...)\nRight-click: more sort options';
@@ -566,6 +599,11 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     title={SORT_TIP}
                   >
                     {col.label} {renderSortIndicator(col.id)}
+                    {groups.some((g) => g.column === col.id) && (
+                      <span className="group-ind" title="Grouped by this column">
+                        <Layers size={11} />
+                      </span>
+                    )}
                     <div
                       className="column-resizer"
                       onMouseDown={(e) => handleResizeStart(e, col.id)}
@@ -577,7 +615,53 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {rows.map((row, rowIndex) => {
+                if (row.kind === 'group') {
+                  return (
+                    <tr
+                      key={`g:${row.id}`}
+                      className="group-row"
+                      onClick={() => onToggleGroup(row.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setContextMenu(null);
+                        setGroupMenu({ x: e.clientX, y: e.clientY, index: rowIndex });
+                      }}
+                    >
+                      <td
+                        colSpan={columns.length}
+                        className="group-cell"
+                        style={{ top: 28 }}
+                        title={`${row.count} item${row.count === 1 ? '' : 's'}${row.bytes > 0 ? ` · ${formatBytes(row.bytes)}` : ''}\n${
+                          row.collapsed ? 'Click to open' : 'Click to collapse'
+                        }`}
+                      >
+                        <span className="group-content">
+                          {row.labels.map((label, k) => (
+                            <React.Fragment key={k}>
+                              <span className="group-label">{label}</span>
+                              {k < row.labels.length - 1 && (
+                                <span
+                                  className="group-sep"
+                                  title={`Collapse ${row.labels[k]}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onToggleGroup(row.ids[k]);
+                                  }}
+                                >
+                                  <ChevronRight size={12} />
+                                </span>
+                              )}
+                            </React.Fragment>
+                          ))}
+                          {row.collapsed && <ChevronDown size={13} className="group-down" />}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }
+                const item = row.item;
                 const isSelected = selectedPaths.has(item.path);
                 return (
                   <tr
@@ -616,6 +700,65 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Group header right-click menu */}
+      {groupMenu && (
+        <>
+          <div
+            className="context-menu-overlay"
+            onClick={() => setGroupMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setGroupMenu(null);
+            }}
+          />
+          <div className="context-menu" ref={groupPos.ref} style={groupPos.style}>
+            {(() => {
+              const run = (action: () => void) => () => {
+                setGroupMenu(null);
+                action();
+              };
+              const head = rows[groupMenu.index];
+              const levels = head && head.kind === 'group' ? head.labels : [];
+              return (
+                <>
+                  {levels.map((_, level) => {
+                    const files = itemsInGroup(rows, groupMenu.index, level);
+                    const path = levels.slice(0, level + 1).join(' > ');
+                    return (
+                      <div
+                        key={level}
+                        className={`context-menu-item ${files.length ? '' : 'disabled'}`}
+                        onClick={files.length ? run(() => onSelectGroup(files)) : undefined}
+                      >
+                        <span>
+                          Select {path} ({files.length})
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {head && head.kind === 'group' && (
+                    <div className="context-menu-item" onClick={run(() => onToggleGroup(head.id))}>
+                      <span>{head.collapsed ? 'Open this group' : 'Collapse this group'}</span>
+                    </div>
+                  )}
+                  <div className="context-menu-divider" />
+                  <div className="context-menu-item" onClick={run(onCollapseAll)}>
+                    <span>Collapse all groups</span>
+                  </div>
+                  <div className="context-menu-item" onClick={run(onExpandAll)}>
+                    <span>Expand all groups</span>
+                  </div>
+                  <div className="context-menu-divider" />
+                  <div className="context-menu-item" onClick={run(onUngroupAll)}>
+                    <span>Ungroup all</span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </>
       )}
 
       {/* Column header right-click menu */}
@@ -680,6 +823,68 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     <span>Sort by date only (ignore the time)</span>
                   </div>
                 </>
+              )}
+              <div className="context-menu-divider" />
+              <div
+                className="context-menu-item"
+                style={{ justifyContent: 'space-between' }}
+                onMouseEnter={() => setShowGroupSub(true)}
+                onClick={() => setShowGroupSub(!showGroupSub)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {mark(groups.some((g) => g.column === col))}
+                  <span>Group by</span>
+                </div>
+                <ChevronRight size={13} style={{ color: 'var(--text-dim)' }} />
+                {showGroupSub && (
+                  <div ref={groupSubRef} className={headerPos.submenuClass} onClick={(e) => e.stopPropagation()}>
+                    {(() => {
+                      const chosen = groups.find((g) => g.column === col)?.buckets ?? [];
+                      const dates = isDateColumn(col);
+                      return (
+                        <>
+                          {dates && (
+                            <div className="context-menu-hint">
+                              Tick one or more. They are joined in the order you tick them.
+                            </div>
+                          )}
+                          {BUCKETS[col].map((b) => {
+                            const idx = chosen.indexOf(b);
+                            return (
+                              <React.Fragment key={b}>
+                                {dates && b === 'relative' && <div className="context-menu-divider" />}
+                                <div
+                                  className="context-menu-item"
+                                  title={BUCKET_EXAMPLE[b] ? `Example: ${BUCKET_EXAMPLE[b]}` : undefined}
+                                  onClick={() => onGroupColumn(col, toggleBucket(col, chosen, b))}
+                                >
+                                  {mark(idx >= 0)}
+                                  <span style={{ flex: 1, whiteSpace: 'nowrap' }}>{BUCKET_LABEL[b]}</span>
+                                  {dates && idx >= 0 && chosen.length > 1 && <span className="group-order">{idx + 1}</span>}
+                                </div>
+                              </React.Fragment>
+                            );
+                          })}
+                          {chosen.length > 0 && (
+                            <>
+                              <div className="context-menu-divider" />
+                              <div className="context-menu-item" onClick={runHeader(() => onUngroupColumn(col))}>
+                                {mark(false)}
+                                <span>No grouping by {label}</span>
+                              </div>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+              {groups.length > 0 && (
+                <div className="context-menu-item" onClick={runHeader(onUngroupAll)}>
+                  {mark(false)}
+                  <span>Ungroup all</span>
+                </div>
               )}
               <div className="context-menu-divider" />
               {col !== 'name' && (

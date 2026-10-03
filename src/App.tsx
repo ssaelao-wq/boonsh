@@ -10,6 +10,15 @@ import { TerminalPanel } from './components/TerminalPanel';
 import { StatusBar } from './components/StatusBar';
 import { SettingsPanel } from './components/SettingsPanel';
 import { FrequentPanel } from './components/FrequentPanel';
+import {
+  GroupSpec,
+  Bucket,
+  layoutItems,
+  loadGroups,
+  saveGroups,
+  topGroupIds,
+} from './grouping';
+import { QA_MAX, QA_KEY, defaultQuickAccess, isShown, parseSaved, samePath } from './quickAccess';
 import { BulkRenameDialog } from './components/BulkRenameDialog';
 import {
   PathVars,
@@ -61,7 +70,6 @@ import {
   sortClick,
   sortSet,
   sortRemove,
-  compareItems,
   detailKey,
   hasMediaProps,
   needsDetails,
@@ -196,17 +204,38 @@ export function App() {
     setFreqSettings(next);
     saveFrequentSettings(next);
   };
-  const [settingsStart, setSettingsStart] = useState<'commands' | 'vars' | 'columns' | 'frequent'>('commands');
+  const [settingsStart, setSettingsStart] = useState<'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess'>('commands');
   const updateSort = (next: SortLevel[]) => {
     setSortLevels(next);
     saveSort(next);
   };
+  // Group view: header rows over the files. Separate from the sort, saved, and kept for every folder and search
+  // result until the user cancels it. The layers follow the sort numbers of the grouped columns.
+  const [groups, setGroups] = useState<GroupSpec[]>(loadGroups);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set()); // ids of folded groups (this session)
+  const updateGroups = (next: GroupSpec[]) => {
+    setGroups(next);
+    saveGroups(next);
+    setCollapsed(new Set());
+  };
+  const groupColumn = (col: ColumnId, buckets: Bucket[]) => {
+    const rest = groups.filter((g) => g.column !== col);
+    if (buckets.length === 0) {
+      updateGroups(rest); // nothing ticked any more: stop grouping this column
+      return;
+    }
+    updateGroups([...rest, { column: col, buckets }]);
+    // the sort numbers decide the layer order, so a grouped column gets a number (the next one) if it has none
+    if (!sortLevels.some((l) => l.column === col)) updateSort([...sortLevels, { column: col, order: 'asc' }]);
+  };
   const updatePrefs = (next: ColumnPrefs) => {
     setColPrefs(next);
     savePrefs(next);
-    // a hidden column should not keep sorting invisibly
+    // a hidden column should not keep sorting or grouping invisibly
     const kept = sortLevels.filter((l) => next.visible.includes(l.column));
     if (kept.length !== sortLevels.length) updateSort(kept.length ? kept : DEFAULT_SORT);
+    const keptGroups = groups.filter((g) => next.visible.includes(g.column));
+    if (keptGroups.length !== groups.length) updateGroups(keptGroups);
   };
   const setDateMode = (col: DateColumn, kind: 'dateSort' | 'dateShow', mode: DateMode) =>
     updatePrefs({ ...colPrefs, [kind]: { ...colPrefs[kind], [col]: mode } });
@@ -214,7 +243,7 @@ export function App() {
     if (col === 'name') return;
     updatePrefs({ ...colPrefs, visible: colPrefs.visible.filter((c) => c !== col) });
   };
-  const openSettings = (section: 'commands' | 'vars' | 'columns' | 'frequent' = 'commands') => {
+  const openSettings = (section: 'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess' = 'commands') => {
     setSettingsStart(section);
     setShowSettings(true);
   };
@@ -297,60 +326,54 @@ export function App() {
     } catch {}
   }, []);
 
-  // Load Quick Access on startup (from localStorage or backend, max 6 items)
-  useEffect(() => {
-    const saved = localStorage.getItem('boonsh_quick_access');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setQuickAccess(parsed.slice(0, 6));
-          return;
-        }
-      } catch {
-        // Fallback to backend default if JSON invalid
-      }
-    }
+  // Quick Access: what the bar shows is saved (max QA_MAX items). Nothing saved yet = Home, Desktop, Downloads,
+  // Documents and the C: drive. A saved empty list is a real choice (everything unchecked in Settings).
+  const [qaCandidates, setQaCandidates] = useState<QuickAccessItem[]>([]); // the built-in choices: folders + drives
+  const loadQaCandidates = () =>
     invoke<QuickAccessItem[]>('get_quick_access')
       .then((qa) => {
-        const initial = qa.slice(0, 6);
-        setQuickAccess(initial);
-        localStorage.setItem('boonsh_quick_access', JSON.stringify(initial));
+        setQaCandidates(qa);
+        return qa;
       })
-      .catch((err) => console.error('Quick access error:', err));
+      .catch((err) => {
+        console.error('Quick access error:', err);
+        return [] as QuickAccessItem[];
+      });
+  useEffect(() => {
+    const saved = parseSaved(localStorage.getItem(QA_KEY));
+    if (saved) setQuickAccess(saved);
+    loadQaCandidates().then((qa) => {
+      if (saved) return;
+      const initial = defaultQuickAccess(qa);
+      setQuickAccess(initial);
+      localStorage.setItem(QA_KEY, JSON.stringify(initial));
+    });
   }, []);
+  // drives can come and go: look again whenever Settings opens
+  useEffect(() => {
+    if (showSettings) loadQaCandidates();
+  }, [showSettings]);
+
+  const saveQuickAccess = (list: QuickAccessItem[]) => {
+    setQuickAccess(list);
+    localStorage.setItem(QA_KEY, JSON.stringify(list));
+  };
 
   // Quick Access Add / Remove Handlers
   const handleAddQuickAccess = (item: { label: string; path: string; icon_type?: string }) => {
-    if (quickAccess.length >= 6) {
-      alert('Quick Access is limited to a maximum of 6 items.');
+    if (quickAccess.length >= QA_MAX) {
+      alert(`Quick Access is limited to a maximum of ${QA_MAX} items. Remove one in Settings, Quick Access, or by right-click.`);
       return;
     }
-    const cleanPath = item.path.toLowerCase().replace(/\\+$/, '');
-    const exists = quickAccess.some(
-      (q) => q.path.toLowerCase().replace(/\\+$/, '') === cleanPath
-    );
-    if (exists) {
+    if (isShown(quickAccess, { label: item.label, path: item.path, icon_type: '' })) {
       alert('This item is already in Quick Access.');
       return;
     }
-    const newItem: QuickAccessItem = {
-      label: item.label,
-      path: item.path,
-      icon_type: item.icon_type || 'folder',
-    };
-    const updated = [...quickAccess, newItem].slice(0, 6);
-    setQuickAccess(updated);
-    localStorage.setItem('boonsh_quick_access', JSON.stringify(updated));
+    saveQuickAccess([...quickAccess, { label: item.label, path: item.path, icon_type: item.icon_type || 'folder' }]);
   };
 
   const handleRemoveQuickAccess = (path: string) => {
-    const cleanPath = path.toLowerCase().replace(/\\+$/, '');
-    const updated = quickAccess.filter(
-      (q) => q.path.toLowerCase().replace(/\\+$/, '') !== cleanPath
-    );
-    setQuickAccess(updated);
-    localStorage.setItem('boonsh_quick_access', JSON.stringify(updated));
+    saveQuickAccess(quickAccess.filter((q) => !samePath(q.path, path)));
   };
 
   const normalizePath = (p: string) => p.toLowerCase().replace(/\\+$/, '');
@@ -491,10 +514,18 @@ export function App() {
   }, [searchQuery, includeSubfolders, searchRefreshTick, searchInputKey]);
 
   // Sort Items logic (see columns.ts): folders first (optional), each sort level in turn, then the name
-  const sortedItems = useMemo(
-    () => [...rawItems].sort((a, b) => compareItems(a, b, sortLevels, colPrefs, details)),
-    [rawItems, sortLevels, colPrefs, details]
+  const layout = useMemo(
+    () => layoutItems(rawItems, groups, sortLevels, colPrefs, details, collapsed),
+    [rawItems, groups, sortLevels, colPrefs, details, collapsed]
   );
+  // the items in view order, without those folded away inside a collapsed group (selection works on these)
+  const sortedItems = layout.flat;
+  const toggleGroup = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   const showType = colPrefs.visible.includes('ext');
   useEffect(() => {
@@ -519,7 +550,10 @@ export function App() {
   const detailsSeqRef = useRef(0);
   const detailsRef = useRef(details);
   detailsRef.current = details;
-  const wantDetails = needsDetails(colPrefs, sortLevels);
+  const wantDetails = needsDetails(colPrefs, [
+    ...sortLevels,
+    ...groups.map((g) => ({ column: g.column, order: 'asc' as const })),
+  ]);
   useEffect(() => {
     if (!wantDetails) return;
     const todo = rawItems.filter((i) => hasMediaProps(i) && !detailsRef.current[detailKey(i)]);
@@ -864,6 +898,10 @@ export function App() {
           onChange={handleCommandGroupsChange}
           onReset={() => setCommandGroups(resetCommandGroups())}
           initialSection={settingsStart}
+          qaShown={quickAccess}
+          qaCandidates={qaCandidates}
+          onQaToggle={(item, on) => (on ? handleAddQuickAccess(item) : handleRemoveQuickAccess(item.path))}
+          onQaReset={() => saveQuickAccess(defaultQuickAccess(qaCandidates))}
           freqSettings={freqSettings}
           freqTracked={Object.keys(freqStats).length}
           onFreqSettingsChange={updateFreqSettings}
@@ -981,6 +1019,19 @@ export function App() {
                 sortLevels={sortLevels}
                 details={details}
                 appByExt={appByExt}
+                rows={layout.rows}
+                groups={groups}
+                onGroupColumn={groupColumn}
+                onUngroupColumn={(col) => updateGroups(groups.filter((g) => g.column !== col))}
+                onUngroupAll={() => updateGroups([])}
+                onToggleGroup={toggleGroup}
+                onSelectGroup={(groupItems) => {
+                  setSelectedItem(groupItems[0] ?? null);
+                  setSelectedPaths(new Set(groupItems.map((i) => i.path)));
+                  selectionAnchorRef.current = groupItems[0]?.path ?? null;
+                }}
+                onCollapseAll={() => setCollapsed(new Set(topGroupIds(layout.rows)))}
+                onExpandAll={() => setCollapsed(new Set())}
                 onSortClick={(col, additive) => updateSort(sortClick(sortLevels, col, additive))}
                 onSortSet={(col, order, mode) => updateSort(sortSet(sortLevels, col, order, mode))}
                 onSortRemove={(col) => updateSort(sortRemove(sortLevels, col))}

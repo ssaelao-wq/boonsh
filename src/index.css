@@ -630,6 +630,10 @@ textarea.search-floating:focus {
   z-index: 5;
 }
 
+.file-table th {
+  white-space: nowrap;
+}
+
 .file-table th:hover {
   color: var(--text-main);
   background: var(--bg-hover);
@@ -1953,4 +1957,70 @@ textarea.search-floating:focus {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Group view: header rows in the Details table. Plain on purpose: the same font and colours as the file list;
+   the arrow and the indent show the grouping. The cell is sticky, so it needs the panel's own background to
+   cover the rows scrolling under it. */
+.group-row {
+  cursor: pointer;
+}
+.file-table td.group-cell {
+  position: sticky;
+  overflow: visible !important; /* a clipping cell would stop the label from sticking */
+  z-index: 4;
+  background: var(--bg-panel);
+}
+.file-table .group-row:hover td.group-cell {
+  background: var(--bg-hover);
+}
+.group-content {
+  position: sticky; /* the label stays in view while the table is scrolled sideways */
+  display: inline-block;
+  white-space: nowrap;
+}
+.group-cell svg {
+  vertical-align: -2px;
+  color: var(--text-muted);
+}
+.group-sep {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px;
+  padding: 1px 2px;
+  border-radius: 3px;
+  vertical-align: -2px;
+  color: var(--text-muted);
+}
+.group-sep svg {
+  margin: 0;
+}
+.group-sep:hover {
+  background: var(--bg-selected);
+  color: var(--text-main);
+}
+.group-down {
+  margin-left: 6px;
+}
+.group-order {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-main);
+  background: var(--bg-selected);
+  border-radius: 8px;
+  padding: 0 5px;
+  margin-left: 10px;
+}
+.context-menu-hint {
+  padding: 4px 10px 6px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  max-width: 230px;
+  white-space: normal;
+}
+.group-ind {
+  display: inline-flex;
+  margin-left: 4px;
+  vertical-align: middle;
+  color: var(--accent);
 }

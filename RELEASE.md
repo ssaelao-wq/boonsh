@@ -6,6 +6,19 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.8.0 (2026-10-03)
+
+### Added
+- **Group view.** Right-click a column header, *Group by*, to put the files under headers, for example by month, then file type, then the file names. *Group by* opens a list to tick. For the date columns tick one or more of Year, Month, Week and Day and they are joined in the order ticked: Year then Month gives `2026 May`, Month then Year gives `May 2026`, Month alone gives `May` (the same month of every year); or tick Relative date (Today, Yesterday, Earlier this week ...). Other columns: Type by file category or each extension, Type by file category or each extension, Size by range, Name by first letter, Location by folder, Dimensions by megapixels, Length by duration, Album, Artist, Actor and Genre by value, Rating by stars. Grouping is separate from sorting: it stays on for every folder and search result until you cancel it (*Stop grouping by ...* or *Ungroup all*) and is remembered between runs. The layers follow the sort numbers on the column headers (a grouped column that is not sorted yet is added to the sort as the next number); each layer follows its column's sort direction, and inside the innermost group the other sort levels order the files. Each lowest-level group is **one line** that names the path through the layers, for example `2026 July > CSV` (no item counts or sizes; hover for them). Click the `>` to collapse the group on its left into a single line with a down arrow (`2026 July v`), click the line to collapse just that group, click the down arrow or the line to open it again. The line stays visible while scrolling. Group headers are plain, in the same font and colours as the file list; the arrow (down = open, right = collapsed) and the indent of each layer show the grouping. Right-click a line for *Select* (every level of the line), *Collapse all* and *Expand all*. Files in a collapsed group are not selected by Ctrl+A or Shift+click. A layer with only one group shows no header. Files with no value go to a *(none)* group at the end.
+- **Settings, Quick Access.** A new group in the Settings dialog lists Drive (C:), Home, Desktop, Downloads, Documents and your other drives with a check box each. Tick or untick to show or hide an item in the Quick Access row. Folders added by right-click are listed at the end. A counter shows how many of the 6 allowed items are used, and a seventh is refused with a message. *Reset Quick Access* restores the defaults. Right-click *Add to Quick Access* and right-click *Remove* work as before.
+
+### Changed
+- **The default Quick Access row is now Home, Desktop, Downloads, Documents and the C: drive** (before: the first six of the folders and drives, which also put Drive D: in). Lists you already have are kept as they are.
+
+### Fixed
+- **Column headers no longer wrap onto a second line** (the sort arrow, number or group icon used to drop below the name in narrow columns); the Date Modified and Date Created columns are a little wider (165 px) to fit them.
+- **A Quick Access row that was emptied came back with the defaults** the next time boonsh started. An empty row is now remembered.
+
 ## 0.7.0 (2026-10-03)
 
 ### Added

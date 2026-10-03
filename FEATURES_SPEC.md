@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.7.0**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.8.0**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -80,10 +80,11 @@ A short list of the folders you open most, so you can jump back to them in one c
 - It is remembered between runs (up to 300 folders; the least used are forgotten first). Turn the panel on or off, and set the number, in Settings, **Frequently Accessed** (section 10).
 
 ### Quick Access (chips above the folders)
-- One click opens the folder. The defaults are the first six of Home, Desktop, Downloads, Documents and your drives.
+- One click opens the folder. At first it shows **Home, Desktop, Downloads, Documents and the C: drive**.
+- **Choose what is shown:** Settings (gear), **Quick Access**: tick the items you want, untick the ones you don't (section 10).
 - **Add:** right-click a folder (in the file panel or the tree) and choose *Add to Quick Access*. Right-click empty space in the file panel to add the **current** folder. 
-- **Remove:** right-click a chip and choose *Remove from Quick Access*.
-- Limits: **6 items** at most, and the same folder can't be added twice. Your list is remembered.
+- **Remove:** right-click a chip and choose *Remove from Quick Access* (or untick it in Settings).
+- Limits: **6 items** at most, and the same folder can't be added twice. Your list is remembered, also when it is empty.
 
 ### Two-way sync with the terminal
 - Open a folder in the file panel and the terminal runs `cd` to it.
@@ -132,6 +133,77 @@ A short list of the folders you open most, so you can jump back to them in one c
 - Choose it in the header right-click menu, or in Settings, Files Column, **Sort by**. The same Settings row has **Show**, to display the date only (`YYYY-MM-DD`) instead of date and time.
 
 **Empty values always sort last,** in both directions (for example files with no Length or no Artist).
+
+### Group view (headers over the files)
+Group the file list under headers, for example **by month, then by file type, then the file names**. Each group gets **one line** that names the path through the layers:
+
+```
+2026 August  >  Images
+      k.png
+2026 August  >  Documents
+      m.pdf
+2026 September  >  Images
+      a.png
+      b.png
+2026 September  >  Videos
+      v.mp4
+```
+
+There is no item count or size on the line (hover a line to see them in a tooltip), so the list stays clean.
+
+**Grouping is separate from sorting.** Sorting orders the files; grouping adds the headers. Once you turn grouping on it **stays on for every folder and every search result** until you cancel it, and it is remembered when you restart boonsh.
+
+**Turn it on:** right-click a column header and choose **Group by**. A list opens beside it with the ways that column can be grouped; tick what you want (the menu stays open so you can tick more than one, and click outside it when you are done). Each column offers its own list:
+
+| Column | Group by |
+| --- | --- |
+| Date Modified, Date Created | The date parts **Year, Month, Week, Day** (tick one or several, see below), or **Relative date** (Today, Yesterday, Earlier this week, Last week, Earlier this month, Last month, Earlier this year, A long time ago) |
+| Type | **File category** (Folders, Images, Videos, Audio, Documents, Archives, Code, Other) or each extension |
+| Size | Size range (Empty, Tiny under 10 KB, Small to 1 MB, Medium to 100 MB, Large to 1 GB, Huge) |
+| Name | First letter (A to Z, `0-9`, `#`) |
+| Location | The folder the item is in (handy for search results) |
+| Dimensions | Megapixels (Under 1 MP, 1 to 4, 4 to 12, 12 to 24, 24 and more) |
+| Length | Duration (under 1 minute, 1 to 5, 5 to 30, 30 to 60, over 1 hour) |
+| Album, Artist, Actor, Genre | Each value |
+| Rating | Stars |
+
+**Combining date parts.** For the date columns you can tick several parts, and they are joined **in the order you tick them**; the groups are also ordered in that order. Say the files are from May 2023, June 2025, May 2026 and July 2026:
+
+| You tick | The groups are | Reads as |
+| --- | --- | --- |
+| Year, then Month | `2023 May`, `2025 June`, `2026 May`, `2026 July` | year first (the usual time line) |
+| Month, then Year | `May 2023`, `May 2026`, `June 2025`, `July 2026` | all the Mays together, then the Junes |
+| Month only | `May`, `June`, `July` | the same month of every year in one group |
+| Year only | `2023`, `2025`, `2026` | |
+| Year, Month, Day | `2026 May 12` | |
+| Week | `Week 20` | the ISO week number (weeks start on Monday); with Year the year is the one the week belongs to |
+
+Small numbers `1`, `2` beside the ticked parts show the order. Untick a part to take it out; unticking the last one stops grouping that column. **Relative date** stands alone: ticking it replaces the parts, and ticking a part replaces it. The other columns allow one choice at a time (for Type: File category or each extension; ticking the other one replaces it).
+
+**The order of the layers follows the sort numbers.** The sort numbers `1, 2, 3` on the column headers (section 4, Smart sort) decide which grouped column is the first layer, which the second, and so on. If you group a column that is not part of the sort yet, it is added to the sort as the next number, so it always has a place. A grouped column shows a small layers icon in its header.
+- Each layer lists its groups in that column's **sort direction**: with Date Modified ascending, August comes before September; Shift+click the header to make it descending and September comes first.
+- Inside the innermost group the files follow the **other sort levels** (usually the name). A column that is used as a layer is not used again to order the files inside its groups, so "month, then type, then name" gives the files by name inside each type group.
+- Files with no value for the grouped column (for example no Length) go into a **(none)** group at the end, in either direction.
+- A layer where every file falls in one single group (all files from the same month) shows no header at all, so you never see a pointless header.
+
+**Working with the groups**
+- **Collapse a group with the `>`.** On a line like `2026 July  >  CSV`, click the **`>`** to collapse the group on its left (all of July). Everything under it, every type, is replaced by one line with a **down arrow**: `2026 July  v`. Click the line or the down arrow to open it again.
+- **Click the line itself** (anywhere except a `>`) to collapse just that group: `2026 July  >  CSV` becomes `2026 July  >  CSV  v`, with its files hidden. Click it again to open it.
+- With only **one layer**, a line is just the name (`Images`); click it to collapse it to `Images  v`.
+- The line stays visible at the top while you scroll through a long group (it covers the rows that slide under it).
+- Collapsed groups are forgotten when you change the grouping or restart.
+- **Right-click a line**: *Select ...* once for every level of the line (for `2026 July > CSV`: *Select 2026 July* and *Select 2026 July > CSV*, each with the number of files), ready for Bulk Rename, Delete, Compress ...; *Collapse / Open this group*; *Collapse all groups* (leaves one line per outermost group); *Expand all groups*; *Ungroup all*.
+- Files in a **collapsed** group are not selected by Ctrl+A or Shift+click ranges, so you never act on files you cannot see.
+
+**Cancel it:** right-click a column header, **Group by**, untick everything or choose **No grouping by *column*** (removes just that layer), or choose **Ungroup all**. The sort stays as it is.
+
+**What the headers look like.** A group header is deliberately plain: the same font, size and colour as the file list, with no coloured band, so the list stays easy to read. The grouping shows through the small **`>`** between the layers and the **down arrow** at the end of a collapsed line. Hovering a line highlights it like a file row, and hovering a `>` highlights just the `>`.
+
+**Good to know**
+- The headers appear in the **Details view**. The Tiles and Thumbnails views show the same files in the grouped order, without header rows.
+- Hiding a grouped column (Hide this column, or Settings, Files Column) also removes that grouping.
+- Relative dates are worked out from the date on your computer when the list is drawn; the groups follow the clock.
+- Grouping by Dimensions, Length, Album, Artist, Actor, Genre or Rating uses the file properties (see "More columns"); files whose properties are not read yet appear in **(none)** until they are.
 
 ### The Type column and the default app
 The Type column shows the file's extension **and the app that opens it by default**:
@@ -363,7 +435,9 @@ A preset is a saved list of rules, in their order with all their settings, plus 
 | Delete | Shows the number of items when more than one is selected. |
 | Refresh | Reloads the folder. |
 
-**On a column header in the file panel:** Sort ascending / descending, Then sort by (add a level), Remove from the sort, date and time or date only (date columns), Hide this column, Choose columns (see section 4).
+**On a column header in the file panel:** Sort ascending / descending, Then sort by (add a level), Remove from the sort, date and time or date only (date columns), **Group by** (a list to tick: the ways that column can be grouped), Ungroup all, Hide this column, Choose columns (see section 4).
+
+**On a group line** (when grouping is on): Select (one entry for each level of the line), Collapse / Open this group, Collapse all groups, Expand all groups, Ungroup all.
 
 **On empty space in the file panel:** New, Add Current Folder to Quick Access, Paste, Assign to Global Var (stores the current folder), Refresh.
 
@@ -776,7 +850,7 @@ How values are written:
 
 ## 10. Settings: customize terminal commands
 
-Click the **gear icon** (next to the Eye icon). The left bar has four sections, **Commands**, **Global Var**, **Files Column** and **Frequently Accessed**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
+Click the **gear icon** (next to the Eye icon). The left bar has five sections, **Commands**, **Global Var**, **Files Column**, **Quick Access** and **Frequently Accessed**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
 
 ### Global Var
 Manage the variables that commands can use as `{NAME}`.
@@ -795,6 +869,16 @@ Choose what the file panel's Details view shows. Changes apply at once and are s
 - **Keep folders above files when sorting** (on by default). Turn it off to let folders mix in with the files according to the sort.
 - The choices include Dimensions, Length, Album, Artist, Actor, Genre and Rating, which come from the file's properties (section 4, "More columns").
 - **Reset columns** (bottom left) brings back Name, Date Modified, Type and Size, and the default date options.
+
+### Quick Access
+Choose what the Quick Access row (above the folder tree, section 3) shows. Each change applies at once and is saved.
+- The list shows **Drive (C:)**, **Home**, **Desktop**, **Downloads** and **Documents**, then your other drives (for example Drive (D:)), each with its path. The first five are **ticked** at first; the other drives are not.
+- **Tick** an item to show it in the bar (it goes to the end of the row); **untick** it to take it off.
+- The bar holds **6 items** at most. The header of the list says how many are shown ("5 of 6 shown"). Ticking a seventh item is refused with a message; untick one first.
+- Folders you added by right-click (*Add to Quick Access*) are listed at the end, ticked. Unticking one **removes** it, so it also leaves this list; add it again by right-click.
+- Everything unticked is allowed: the bar is then empty, and stays empty the next time boonsh starts.
+- Right-clicking a folder to add it, and right-clicking a button to remove it, work as before.
+- **Reset Quick Access** (bottom left) brings back Home, Desktop, Downloads, Documents and the C: drive; folders you added are removed.
 
 ### Frequently Accessed
 Settings for the panel above the Folder Tree (section 3). Changes apply at once and are saved.
@@ -871,7 +955,7 @@ The thin bar at the bottom shows, from left to right:
 | Terminal commands (Settings) | Yes |
 | Bulk rename undo history (last 5 batches) | Yes |
 | Bulk rename presets you saved (up to 30) | Yes |
-| Sort levels, the columns shown and their order, the date options | Yes |
+| Sort levels, the columns shown and their order, the date options, the grouping | Yes |
 | Frequently Accessed: the visit counts, on / off and the number of folders | Yes |
 | Panel sizes, column widths, preview open or closed, search box and Subfolders switch | No (reset on each start) |
 

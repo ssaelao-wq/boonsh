@@ -30,8 +30,8 @@ export interface ColumnDef {
 // Canonical order. "Name" is always first and always shown.
 export const COLUMNS: ColumnDef[] = [
   { id: 'name', label: 'Name', width: 320 },
-  { id: 'modified', label: 'Date Modified', width: 140 },
-  { id: 'created', label: 'Date Created', width: 140 },
+  { id: 'modified', label: 'Date Modified', width: 165 },
+  { id: 'created', label: 'Date Created', width: 165 },
   { id: 'ext', label: 'Type', width: 200 },
   { id: 'size', label: 'Size', width: 90, right: true },
   { id: 'location', label: 'Location', width: 240 },
