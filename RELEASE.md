@@ -6,6 +6,14 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.9.1 (2026-10-03)
+
+### Changed
+- **The built-in `move` and `copy` commands now type `move {SELEC} {DEST}` and `copy {SELEC} {DEST}`** at the prompt (they typed just `move ` / `copy `), so new users see Global Variables at work. The usage hint under the bar is unchanged. A saved `move` / `copy` that was never edited is updated; an edited one is kept.
+
+### Added
+- **Manual** in the Settings gear: the whole `FEATURES_SPEC.md` shown inside the app (headings, tables, contents list that jumps to a section, links), always the manual of the installed version. The dialog is wider on that page. New library `marked` (MIT), listed in `THIRD_PARTY_LICENSES.txt` and in Settings > About.
+
 ## 0.9.0 (2026-10-03)
 
 ### Added

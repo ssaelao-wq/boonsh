@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.0**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.1**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -845,7 +845,7 @@ A helper for beginners: click **Commands**, point at a group on the left, then c
 
 | Group | Commands |
 | --- | --- |
-| Basic Commands | ren, del, copy, move, mkdir, dir / ls, cls |
+| Basic Commands | ren, del, copy, move, mkdir, dir / ls, cls. **move** and **copy** type `move {SELEC} {DEST}` and `copy {SELEC} {DEST}` at the prompt (their usage hint still shows `move "source.txt" "destination.txt"`), ready-made examples of Global Variables (see below): assign the files to `{SELEC}` and the target folder to `{DEST}`, then pick the command. A `move` or `copy` saved by an older version that you never edited is updated to this; reset the list to get it back if you changed it. |
 | Network Commands | ping, ipconfig, netstat, tracert, nslookup, Test-NetConnection |
 | System Commands | tasklist, taskkill, systeminfo, whoami |
 | Customize | (empty: yours to fill) |
@@ -875,7 +875,7 @@ How values are written:
 
 ## 10. Settings: customize terminal commands
 
-Click the **gear icon** (next to the Eye icon). The left bar has six sections, **Commands**, **Global Var**, **Files Column**, **Quick Access**, **Frequently Accessed** and **About**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
+Click the **gear icon** (next to the Eye icon). The left bar has seven sections, **Commands**, **Global Var**, **Files Column**, **Quick Access**, **Frequently Accessed**, **Manual** and **About**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
 
 ### Global Var
 Manage the variables that commands can use as `{NAME}`.
@@ -904,6 +904,9 @@ Choose what the Quick Access row (above the folder tree, section 3) shows. Each 
 - Everything unticked is allowed: the bar is then empty, and stays empty the next time boonsh starts.
 - Right-clicking a folder to add it, and right-clicking a button to remove it, work as before.
 - **Reset Quick Access** (bottom left) brings back Home, Desktop, Downloads, Documents and the C: drive; folders you added are removed.
+
+### Manual
+This document, shown inside the app (the dialog grows wider for it). It is the manual of the version you have installed, because the file is built into the app. Click an item in the **Contents** list, or any `#` link, to jump to that section; links to web pages open in your browser. You can select and copy the text. The Reset button is not shown on this page.
 
 ### About
 Information about boonsh itself. Nothing here can be changed.

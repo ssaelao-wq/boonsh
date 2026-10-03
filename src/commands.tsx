@@ -26,8 +26,8 @@ export const DEFAULT_COMMAND_GROUPS: CommandGroup[] = [
     items: [
       { id: 'basic-ren', name: 'ren (rename)', insertText: 'ren ', description: 'Rename a file or folder', usage: 'ren "oldname.txt" "newname.txt"' },
       { id: 'basic-del', name: 'del (delete)', insertText: 'del ', description: 'Delete a file or folder', usage: 'del "filename.txt"' },
-      { id: 'basic-copy', name: 'copy', insertText: 'copy ', description: 'Copy file or folder to location', usage: 'copy "source.txt" "destination.txt"' },
-      { id: 'basic-move', name: 'move', insertText: 'move ', description: 'Move file or directory', usage: 'move "source.txt" "destination.txt"' },
+      { id: 'basic-copy', name: 'copy', insertText: 'copy {SELEC} {DEST}', description: 'Copy file or folder to location', usage: 'copy "source.txt" "destination.txt"' },
+      { id: 'basic-move', name: 'move', insertText: 'move {SELEC} {DEST}', description: 'Move file or directory', usage: 'move "source.txt" "destination.txt"' },
       { id: 'basic-mkdir', name: 'mkdir', insertText: 'mkdir ', description: 'Create a new directory', usage: 'mkdir "NewFolder"' },
       { id: 'basic-dir', name: 'dir / ls', insertText: 'dir', description: 'List current folder contents', usage: 'dir' },
       { id: 'basic-cls', name: 'cls', insertText: 'cls', description: 'Clear terminal screen', usage: 'cls' },
@@ -79,6 +79,19 @@ const cloneDefaults = (): CommandGroup[] =>
   DEFAULT_COMMAND_GROUPS.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i })) }));
 
 // Saved groups are user-edited; the group set itself is fixed (always the default groups, in order).
+// Built-in commands whose typed text changed in a later version. A saved command that still types just the old plain
+// word (the user never edited the typed text) gets the new text; an edited one is left alone. Only the typed text
+// changes, the usage hint stays as the user has it. Matched by id or, for lists saved before ids existed, by name.
+const OLD_PLAIN: Record<string, string> = { move: 'move', copy: 'copy' };
+
+function upgradeBuiltin(item: CommandItem): CommandItem {
+  const key = item.id.startsWith('basic-') ? item.id.slice(6) : item.name.trim().toLowerCase();
+  const word = OLD_PLAIN[key];
+  if (word === undefined || item.insertText.trim().toLowerCase() !== word) return item;
+  const now = DEFAULT_COMMAND_GROUPS.flatMap((g) => g.items).find((i) => i.name === word);
+  return now ? { ...item, insertText: now.insertText } : item;
+}
+
 export function loadCommandGroups(): CommandGroup[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -96,7 +109,8 @@ export function loadCommandGroups(): CommandGroup[] {
           insertText: typeof i.insertText === 'string' ? i.insertText : i.name,
           description: typeof i.description === 'string' ? i.description : '',
           usage: typeof i.usage === 'string' ? i.usage : '',
-        }));
+        }))
+        .map(upgradeBuiltin);
       return { ...def, items };
     });
   } catch {

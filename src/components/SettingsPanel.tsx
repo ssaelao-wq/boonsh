@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark, Info } from 'lucide-react';
+import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark, Info, BookText } from 'lucide-react';
 import { CommandGroup, CommandItem, GroupIcon, newCommandId } from '../commands';
 import { GlobalVarDef, VarTakes, newVarId, validateVarName, MAX_NAME_LENGTH } from '../globalVars';
 import { PathVars } from '../pathVars';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import licenseText from '../../LICENSE?raw';
+import { ManualView } from './ManualView';
 import { APP_NAME, COPYRIGHT, REPO_URL, COMPONENTS } from '../about';
 import { QuickAccessItem } from '../types';
 import { QA_MAX, isShown, settingsRows } from '../quickAccess';
@@ -35,7 +36,7 @@ interface SettingsPanelProps {
   onQaReset: () => void;
 }
 
-type Section = 'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess' | 'about';
+type Section = 'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess' | 'manual' | 'about';
 
 interface VarDraft {
   name: string;
@@ -433,12 +434,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="settings-dialog" onClick={(e) => e.stopPropagation()}>
+      <div className={`settings-dialog ${section === 'manual' ? 'wide' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Settings size={14} />
             <span>Settings</span>
-            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : section === 'about' ? 'About' : 'Commands'}</span>
+            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : section === 'manual' ? 'Manual' : section === 'about' ? 'About' : 'Commands'}</span>
           </div>
           <button onClick={onClose} title="Close (Esc)" style={{ padding: 2 }}>
             <X size={14} />
@@ -450,6 +451,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <>
               These commands appear in the terminal's <b>Commands 💡</b> menu. Pick a group, then add, edit or delete its
               commands. Use {'{SELEC}'}, {'{DEST}'} or your own variables in a command. Changes are saved automatically.
+            </>
+          ) : section === 'manual' ? (
+            <>
+              The boonsh manual: every feature, how to use it and its limits. Click an item in the contents list to jump to it.
             </>
           ) : section === 'about' ? (
             <>
@@ -537,6 +542,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <span className="settings-count">{freqSettings.enabled ? 'On' : 'Off'}</span>
             </div>
             <div
+              className={`terminal-cmd-cat-item ${section === 'manual' ? 'active' : ''}`}
+              onClick={() => selectSection('manual')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <BookText size={13} style={{ color: 'var(--text-muted)' }} />
+                <span>Manual</span>
+              </div>
+            </div>
+            <div
               className={`terminal-cmd-cat-item ${section === 'about' ? 'active' : ''}`}
               onClick={() => {
                 setAboutMessage('');
@@ -550,7 +564,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           </div>
 
-          {section === 'about' ? (
+          {section === 'manual' ? (
+            <div className="settings-commands">
+              <div className="settings-commands-toolbar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <BookText size={13} style={{ color: 'var(--text-muted)' }} />
+                  <span>boonsh manual</span>
+                </div>
+                <span className="settings-col-note">{version ? `version ${version}` : ''}</span>
+              </div>
+              <ManualView />
+            </div>
+          ) : section === 'about' ? (
             <div className="settings-commands">
               <div className="settings-commands-toolbar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -923,7 +948,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="settings-footer">
-          {section === 'about' ? <span /> : <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
+          {section === 'about' || section === 'manual' ? <span /> : <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
             <RotateCcw size={13} />
             <span>{section === 'vars' ? 'Reset variables' : section === 'columns' ? 'Reset columns' : section === 'frequent' ? 'Reset settings' : section === 'quickaccess' ? 'Reset Quick Access' : 'Reset commands'}</span>
           </button>}
