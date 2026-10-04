@@ -27,17 +27,17 @@ export const QuickAccessBar: React.FC<QuickAccessBarProps> = ({
   const getIcon = (type: string) => {
     switch (type) {
       case 'home':
-        return <Home size={13} />;
+        return <Home size={13} style={{ color: '#f97316' }} />;
       case 'desktop':
-        return <Monitor size={13} />;
+        return <Monitor size={13} style={{ color: '#3b82f6' }} />;
       case 'downloads':
-        return <Download size={13} />;
+        return <Download size={13} style={{ color: '#10b981' }} />;
       case 'documents':
-        return <FileText size={13} />;
+        return <FileText size={13} style={{ color: '#8b5cf6' }} />;
       case 'drive':
-        return <HardDrive size={13} />;
+        return <HardDrive size={13} style={{ color: '#64748b' }} />;
       default:
-        return <Folder size={13} />;
+        return <Folder size={13} style={{ color: '#f59e0b' }} />;
     }
   };
 

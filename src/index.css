@@ -1076,6 +1076,8 @@ textarea.search-floating:focus {
 .xterm {
   height: 100% !important;
   width: 100% !important;
+  /* FitAddon subtracts this padding, so one spare row stays empty under the prompt (it was clipped) */
+  padding-bottom: 16px;
 }
 
 .xterm-viewport {
@@ -1810,6 +1812,25 @@ textarea.search-floating:focus {
   white-space: nowrap;
 }
 
+
+/* Colored status text: bright tones on the dark theme, deeper tones on the light one (both read well).
+   The prefix beats the light theme's blanket `span { color }` rule. */
+.app-container {
+  --status-count: #38bdf8;
+  --status-select: #fbbf24;
+  --status-shell: #4ade80;
+  --status-busy: #fb923c;
+}
+.app-container.light-theme {
+  --status-count: #0369a1;
+  --status-select: #b45309;
+  --status-shell: #15803d;
+  --status-busy: #c2410c;
+}
+.app-container .status-bar span.status-count { color: var(--status-count); }
+.app-container .status-bar span.status-selected-item { color: var(--status-select); }
+.app-container .status-bar span.status-shell { color: var(--status-shell); }
+.app-container .status-bar span.status-busy { color: var(--status-busy); }
 
 /* Global Var dropdown (terminal header) */
 .terminal-vars-dropdown {

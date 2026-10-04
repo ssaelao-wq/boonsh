@@ -175,11 +175,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title="Go Up Directory"
           style={{ opacity: parentPath ? 1 : 0.4 }}
         >
-          <FolderUp size={16} />
+          <FolderUp size={16} style={{ color: '#f59e0b' }} />
         </button>
 
         <button onClick={onRefresh} title="Refresh Directory (F5)">
-          <RefreshCw size={14} />
+          <RefreshCw size={14} style={{ color: '#10b981' }} />
         </button>
 
         <div className="header-divider" />
@@ -191,7 +191,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title="Cut selected items (Ctrl+X)"
           style={{ opacity: selectionCount > 0 ? 1 : 0.4 }}
         >
-          <Scissors size={14} />
+          <Scissors size={14} style={{ color: '#ef4444' }} />
         </button>
         <button
           onClick={onCopy}
@@ -199,7 +199,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title="Copy selected items (Ctrl+C)"
           style={{ opacity: selectionCount > 0 ? 1 : 0.4 }}
         >
-          <Copy size={14} />
+          <Copy size={14} style={{ color: '#3b82f6' }} />
         </button>
         <button
           onClick={onPaste}
@@ -211,7 +211,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           }
           style={{ opacity: clipboard ? 1 : 0.4 }}
         >
-          <ClipboardPaste size={14} />
+          <ClipboardPaste size={14} style={{ color: '#8b5cf6' }} />
         </button>
         <button
           onClick={onDelete}
@@ -219,7 +219,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title="Delete selected items to Recycle Bin (Del)"
           style={{ opacity: selectionCount > 0 ? 1 : 0.4 }}
         >
-          <Trash2 size={14} />
+          <Trash2 size={14} style={{ color: '#f43f5e' }} />
         </button>
       </div>
 
@@ -345,7 +345,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={handleToggleSearch}
           title="Toggle Search Bar"
         >
-          <Search size={14} />
+          <Search size={14} style={{ color: '#06b6d4' }} />
         </button>
       )}
 
@@ -357,21 +357,21 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={() => onViewModeChange('details')}
           title="Details View"
         >
-          <LayoutList size={14} />
+          <LayoutList size={14} style={{ color: '#0ea5e9' }} />
         </button>
         <button
           className={viewMode === 'tiles' ? 'active' : ''}
           onClick={() => onViewModeChange('tiles')}
           title="Tiles View"
         >
-          <LayoutGrid size={14} />
+          <LayoutGrid size={14} style={{ color: '#14b8a6' }} />
         </button>
         <button
           className={viewMode === 'thumbnails' ? 'active' : ''}
           onClick={() => onViewModeChange('thumbnails')}
           title="Thumbnail Grid View"
         >
-          <Grid size={14} />
+          <Grid size={14} style={{ color: '#ec4899' }} />
         </button>
 
         <div className="header-divider" />
@@ -382,7 +382,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={onToggleFilePanel}
           title="Toggle Middle File Panel (Ctrl+Shift+F)"
         >
-          <FolderTree size={14} />
+          <FolderTree size={14} style={{ color: '#84cc16' }} />
         </button>
 
         {/* Toggle Bottom Preview Drawer */}
@@ -391,7 +391,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={onTogglePreview}
           title="Toggle Preview Drawer (Ctrl+P)"
         >
-          <Eye size={14} />
+          <Eye size={14} style={{ color: '#6366f1' }} />
         </button>
 
         {/* Settings (Command Manager) */}
@@ -400,7 +400,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={onOpenSettings}
           title="Settings: Manage Terminal Commands"
         >
-          <Settings size={14} />
+          <Settings size={14} style={{ color: '#64748b' }} />
         </button>
 
         <div className="header-divider" />
@@ -410,7 +410,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={onToggleTheme}
           title={`Switch Theme (Current: ${theme === 'dark' ? 'Black Theme' : 'White Theme'})`}
         >
-          {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+          {theme === 'dark' ? <Sun size={14} style={{ color: '#f59e0b' }} /> : <Moon size={14} style={{ color: '#818cf8' }} />}
         </button>
       </div>
     </div>

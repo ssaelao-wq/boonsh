@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.1**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.2**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -833,6 +833,7 @@ Open it with the **Eye icon** or **Ctrl+P**. It appears below the file panel and
 
 The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, else `cmd`. It uses a fixed-width font (Cascadia Code) at 12 px, remembers 5,000 lines of scrollback, follows the dark or light theme, and the prompt is short: `<username> >` (or `admin >` in admin mode).
 
+- **Copy / cut / paste:** select text with the mouse. **Ctrl+C** copies it (with nothing selected, Ctrl+C still interrupts the running command). **Ctrl+V** pastes the clipboard at the prompt. **Ctrl+X** with a selection copies it (output text cannot be removed, so cut = copy; with no selection it goes to the shell). Right-click in the terminal for **Cut**, **Copy** and **Paste** (Cut and Copy are greyed out with no selection).
 - Everything you can do in PowerShell works. Drop files onto the terminal to type their paths.
 - Folder sync works both ways (see [section 3](#two-way-sync-with-the-terminal)).
 - Keys like Ctrl+A, Ctrl+C, Ctrl+V and Del go **to the terminal**, not the file panel, while you are typing in it.

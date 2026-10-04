@@ -4,7 +4,23 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 ## Unreleased
 
-Nothing yet.
+(none yet)
+
+## 0.9.2 (2026-10-04)
+
+### Fixed
+
+- Terminal: the bottom pixels of the last prompt line were cut off. One empty row is now kept under the prompt.
+
+### Changed
+
+- Status bar text is colored (counts blue, selection amber, shell green, busy message orange) with separate tones for the dark and light themes.
+
+### Added
+
+- Colored icons on the toolbar buttons, the Quick Access chips and the terminal right-click menu.
+- Terminal: select text with the mouse, then copy it with **Ctrl+C**, paste with **Ctrl+V**, or use the right-click menu (**Cut**, **Copy**, **Paste**). Without a selection Ctrl+C still interrupts the running command.
+
 
 ## 0.9.1 (2026-10-03)
 

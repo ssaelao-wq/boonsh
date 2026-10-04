@@ -11,7 +11,11 @@ import {
   X,
   Variable,
   ChevronRight,
+  Scissors,
+  Copy,
+  ClipboardPaste,
 } from 'lucide-react';
+import { useMenuPosition } from '../useMenuPosition';
 import { CommandGroup, CommandItem, GroupIcon } from '../commands';
 import { PathVars, PathVarName, displayPath } from '../pathVars';
 import { GlobalVarDef } from '../globalVars';
@@ -27,6 +31,13 @@ interface TerminalPanelProps {
   globalVars: GlobalVarDef[];
   pathVars: PathVars;
   onClearPathVar: (name: PathVarName) => void;
+}
+
+function copySelection(term: XTerm, clear: boolean) {
+  const text = term.getSelection();
+  if (!text) return;
+  navigator.clipboard.writeText(text).catch(() => {});
+  if (clear) term.clearSelection();
 }
 
 export const TerminalPanel: React.FC<TerminalPanelProps> = ({
@@ -51,6 +62,20 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onUserInputRef.current = onUserInput;
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [username, setUsername] = useState<string>('User');
+
+  const [termMenu, setTermMenu] = useState<{ x: number; y: number; hasSel: boolean } | null>(null);
+  const termMenuPos = useMenuPosition(termMenu);
+
+  const pasteFromClipboard = () => {
+    setTermMenu(null);
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        if (text && xtermRef.current) xtermRef.current.paste(text);
+      })
+      .catch(() => {})
+      .finally(() => xtermRef.current?.focus());
+  };
 
   const [showHelperMenu, setShowHelperMenu] = useState<boolean>(false);
   const [showVarsMenu, setShowVarsMenu] = useState<boolean>(false);
@@ -125,6 +150,21 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     const unlistenPromise = listen<{ data: string }>('pty-output', (event) => {
       term.write(event.payload.data);
       term.scrollToBottom();
+    });
+
+    // Ctrl+C copies when text is selected (else it stays the shell's interrupt); Ctrl+X does the same
+    // for a selection (output text cannot be removed, so cut = copy); Ctrl+V is left to the browser
+    // paste event, which xterm turns into input. Without a selection Ctrl+X still reaches the shell.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown' || !e.ctrlKey || e.altKey) return true;
+      const key = e.key.toLowerCase();
+      if ((key === 'c' || key === 'x') && term.hasSelection()) {
+        copySelection(term, key === 'x');
+        e.preventDefault();
+        return false;
+      }
+      if (key === 'v') return false;
+      return true;
     });
 
     // Handle user input in terminal
@@ -514,7 +554,52 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       )}
 
       {/* Main Interactive PowerShell Terminal */}
-      <div className="terminal-container" ref={terminalRef} style={{ background: theme === 'light' ? '#f4f4f5' : '#000000' }} />
+      <div
+        className="terminal-container"
+        ref={terminalRef}
+        style={{ background: theme === 'light' ? '#f4f4f5' : '#000000' }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setTermMenu({ x: e.clientX, y: e.clientY, hasSel: !!xtermRef.current?.hasSelection() });
+        }}
+      />
+
+      {termMenu && (
+        <>
+          <div
+            className="context-menu-overlay"
+            onClick={() => setTermMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setTermMenu(null);
+            }}
+          />
+          <div className="context-menu" ref={termMenuPos.ref} style={termMenuPos.style}>
+            {([
+              ['Cut', Scissors, true],
+              ['Copy', Copy, false],
+            ] as const).map(([label, Icon, clear]) => (
+              <div
+                key={label}
+                className="context-menu-item"
+                style={termMenu.hasSel ? undefined : { opacity: 0.4, pointerEvents: 'none' }}
+                onClick={() => {
+                  if (xtermRef.current) copySelection(xtermRef.current, clear);
+                  setTermMenu(null);
+                  xtermRef.current?.focus();
+                }}
+              >
+                <Icon size={13} style={{ color: clear ? '#ef4444' : '#3b82f6' }} />
+                <span>{label}</span>
+              </div>
+            ))}
+            <div className="context-menu-item" onClick={pasteFromClipboard}>
+              <ClipboardPaste size={13} style={{ color: '#8b5cf6' }} />
+              <span>Paste</span>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -25,13 +25,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   return (
     <div className="status-bar">
       <div className="status-bar-left">
-        <span>{totalFolders} folders, {totalFiles} files</span>
+        <span className="status-count">{totalFolders} folders, {totalFiles} files</span>
         <span className="status-divider">|</span>
-        <span>Total Size: {totalSizeFormatted}</span>
+        <span className="status-count">Total Size: {totalSizeFormatted}</span>
         {busyMessage && (
           <>
             <span className="status-divider">|</span>
-            <span>{busyMessage}</span>
+            <span className="status-busy">{busyMessage}</span>
           </>
         )}
       </div>
