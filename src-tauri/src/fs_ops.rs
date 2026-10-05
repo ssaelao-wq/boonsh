@@ -644,6 +644,72 @@ pub fn save_capture(video_path: String, name: String, data: String) -> Result<St
 
 /// Shows the Windows "Open" dialog and returns the chosen file, or None when it was cancelled.
 /// `filter` is in the dialog's own form, for example "Video|*.mp4;*.mkv|All files|*.*".
+/// Opens `path` with a chosen program (the "Open with" menu). The program is started directly, no shell.
+#[tauri::command]
+pub fn open_with_app(app: String, path: String) -> Result<(), String> {
+    if !PathBuf::from(&app).is_file() {
+        return Err(format!("The program was not found: {}", app));
+    }
+    // Store apps live under ...\WindowsApps\<package>\ and cannot be started from there (access denied);
+    // their per-user "app execution alias" with the same file name can.
+    let mut exe = PathBuf::from(&app);
+    if app.to_lowercase().contains("\\windowsapps\\") {
+        if let (Some(local), Some(name)) = (std::env::var_os("LOCALAPPDATA"), exe.file_name()) {
+            let alias = PathBuf::from(local).join("Microsoft").join("WindowsApps").join(name);
+            if alias.is_file() {
+                exe = alias;
+            }
+        }
+    }
+    // The program may already be running (single-instance apps like Notepad++ pass the file to their open
+    // window), so let it come to the front.
+    #[cfg(target_os = "windows")]
+    win_launcher::allow_all_set_foreground();
+    std::process::Command::new(&exe)
+        .arg(&path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not start '{}': {}", app, e))
+}
+
+/// Lets the user pick a program (.exe) and returns `[path, friendly name]`, or None when cancelled.
+/// The friendly name is the file description in the exe's version info, else the file name.
+#[tauri::command]
+pub async fn pick_app() -> Result<Option<(String, String)>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            use std::os::windows::process::CommandExt;
+            use std::process::Command;
+            let script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8;Add-Type -AssemblyName System.Windows.Forms;                 $d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='Choose a program';$d.Filter='Programs (*.exe)|*.exe|All files (*.*)|*.*';                 $d.InitialDirectory=[Environment]::GetFolderPath('ProgramFiles');                 $o=New-Object System.Windows.Forms.Form -Property @{TopMost=$true};                 if($d.ShowDialog($o) -eq 'OK'){$n=(Get-Item -LiteralPath $d.FileName).VersionInfo.FileDescription;[Console]::Out.Write($d.FileName+\"`n\"+$n)}";
+            let out = Command::new("powershell")
+                .args(["-STA", "-NoProfile", "-NonInteractive", "-Command", script])
+                .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+                .output()
+                .map_err(|e| format!("Could not open the file dialog: {}", e))?;
+            let text = String::from_utf8_lossy(&out.stdout).to_string();
+            let mut lines = text.lines();
+            let path = lines.next().unwrap_or("").trim().to_string();
+            if path.is_empty() {
+                return Ok(None);
+            }
+            let desc = lines.next().unwrap_or("").trim().to_string();
+            let name = if desc.is_empty() {
+                PathBuf::from(&path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| path.clone())
+            } else {
+                desc
+            };
+            Ok(Some((path, name)))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(None)
+    }
+}
+
 #[tauri::command]
 pub async fn pick_file(title: String, filter: String) -> Result<Option<String>, String> {
     #[cfg(target_os = "windows")]

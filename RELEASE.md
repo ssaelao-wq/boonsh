@@ -4,7 +4,13 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 ## Unreleased
 
-(none yet)
+Nothing yet.
+
+## 0.9.3 (2026-10-05)
+
+### Added
+
+- Right-click on a file: the menu now starts with **New**, then **Open**, then **Open with**, a submenu with the (up to 3) programs you use most for that file type and **Choose App...**. Choose App opens a list of the programs Windows has registered for that file type (the same ones Explorer offers) plus the other installed programs, with **Browse...** for any other program. Programs are remembered per file type as you use them (a `.zip` does not show the program you use for `.txt`). A program that is already running (such as Notepad++) is brought to the front with the file.
 
 ## 0.9.2 (2026-10-04)
 

@@ -301,3 +301,147 @@ mod assoc_tests {
         assert!(default_app("txt").map_or(false, |n| !n.is_empty()));
     }
 }
+
+/// A program Windows lists as able to open a file type (what Explorer's "Open with" offers).
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct AppHandler {
+    pub path: String, // the .exe
+    pub name: String, // friendly name
+    pub recommended: bool, // registered by the program itself for this file type
+}
+
+/// Programs registered for an extension (`ext` has no dot), through `SHAssocEnumHandlers` with the
+/// "recommended" filter. Store (UWP) apps have no .exe path to start directly, so only handlers whose
+/// name is an existing .exe are kept; duplicates (same exe) are dropped.
+#[cfg(windows)]
+pub fn app_handlers(ext: &str, recommended: bool) -> Vec<AppHandler> {
+    use windows::core::HSTRING;
+    use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED};
+    use windows::Win32::UI::Shell::{IAssocHandler, SHAssocEnumHandlers, ASSOC_FILTER_NONE, ASSOC_FILTER_RECOMMENDED};
+
+    let mut out: Vec<AppHandler> = Vec::new();
+    if ext.is_empty() {
+        return out;
+    }
+    unsafe {
+        let com_ok = CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_ok();
+        if let Ok(list) = SHAssocEnumHandlers(
+            &HSTRING::from(format!(".{}", ext)),
+            if recommended { ASSOC_FILTER_RECOMMENDED } else { ASSOC_FILTER_NONE },
+        ) {
+            loop {
+                let mut slot: [Option<IAssocHandler>; 1] = [None];
+                let mut fetched = 0u32;
+                if list.Next(&mut slot, Some(&mut fetched)).is_err() || fetched == 0 {
+                    break;
+                }
+                let Some(h) = slot[0].take() else { break };
+                let take = |p: windows::core::PWSTR| -> String {
+                    let s = p.to_string().unwrap_or_default();
+                    CoTaskMemFree(Some(p.0 as *const _));
+                    s
+                };
+                let path = h.GetName().map(take).unwrap_or_default();
+                let name = h.GetUIName().map(take).unwrap_or_default();
+                if path.to_lowercase().ends_with(".exe")
+                    && std::path::Path::new(&path).is_file()
+                    && !out.iter().any(|a| a.path.eq_ignore_ascii_case(&path))
+                {
+                    let name = if name.trim().is_empty() {
+                        std::path::Path::new(&path)
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_else(|| path.clone())
+                    } else {
+                        name
+                    };
+                    out.push(AppHandler { path, name, recommended });
+                }
+            }
+        }
+        if com_ok {
+            CoUninitialize();
+        }
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out
+}
+
+#[cfg(not(windows))]
+pub fn app_handlers(_ext: &str, _recommended: bool) -> Vec<AppHandler> {
+    Vec::new()
+}
+
+/// Programs installed with an "App Paths" registration (how Notepad++ and many others announce themselves),
+/// as `(exe path, friendly name)`. They are not tied to a file type.
+#[cfg(windows)]
+fn installed_apps() -> Vec<(String, String)> {
+    use std::os::windows::process::CommandExt;
+    let script = r#"[Console]::OutputEncoding=[Text.Encoding]::UTF8;
+        foreach($r in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths'){
+        if(Test-Path $r){ Get-ChildItem $r | ForEach-Object {
+        $p=(Get-ItemProperty $_.PSPath).'(default)'; if($p){$p=$p.Trim('"')};
+        if($p -and $p.ToLower().EndsWith('.exe') -and (Test-Path -LiteralPath $p)){
+        $n=(Get-Item -LiteralPath $p).VersionInfo.FileDescription; if(-not $n){$n=[IO.Path]::GetFileNameWithoutExtension($p)};
+        [Console]::Out.WriteLine($p+'|'+$n.Trim()) } } } }"#;
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .output();
+    let Ok(out) = out else { return Vec::new() };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.split_once('|'))
+        .map(|(p, n)| (p.trim().to_string(), n.trim().to_string()))
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn installed_apps() -> Vec<(String, String)> {
+    Vec::new()
+}
+
+/// Programs for the "Choose App" dialog: those registered for this extension first (`recommended`), then
+/// every other program Windows or its installer lists, sorted by name. `ext` has no dot.
+#[tauri::command]
+pub async fn list_app_handlers(ext: String) -> Result<Vec<AppHandler>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ext = ext.to_lowercase();
+        let mut list = app_handlers(&ext, true);
+        let mut others = app_handlers(&ext, false);
+        for (path, name) in installed_apps() {
+            others.push(AppHandler { path, name, recommended: false });
+        }
+        others.retain(|a| !list.iter().any(|r| r.path.eq_ignore_ascii_case(&a.path)));
+        others.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        others.dedup_by(|a, b| a.path.eq_ignore_ascii_case(&b.path));
+        list.extend(others);
+        list
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[cfg(all(test, windows))]
+mod handler_tests {
+    use super::*;
+
+    #[test]
+    fn handlers_for_a_common_type() {
+        let list = app_handlers("txt", true);
+        println!("{:?}", list);
+        assert!(!list.is_empty(), "Windows lists at least one program for .txt");
+        assert!(list.iter().all(|a| a.path.to_lowercase().ends_with(".exe") && !a.name.is_empty()));
+        assert!(app_handlers("", true).is_empty());
+    }
+}
+
+#[cfg(all(test, windows))]
+mod installed_tests {
+    #[test]
+    fn lists_installed_programs() {
+        let apps = super::installed_apps();
+        println!("{:?}", apps.iter().map(|a| a.1.clone()).collect::<Vec<_>>());
+        assert!(apps.iter().all(|(p, n)| p.to_lowercase().ends_with(".exe") && !n.is_empty()));
+    }
+}

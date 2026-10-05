@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { OpenWithApp, loadOpenWith, saveOpenWith, topApps, recordUse, removeApp, extOf } from '../openWith';
 import {
+  AppWindow,
+  FolderSearch,
   Folder,
   FileCode,
   FileImage,
@@ -203,7 +206,13 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
 
   const [showNewSubmenu, setShowNewSubmenu] = useState<boolean>(false);
   const [showVarSubmenu, setShowVarSubmenu] = useState<boolean>(false);
-  useEffect(() => setShowVarSubmenu(false), [contextMenu]);
+  const [showOpenWith, setShowOpenWith] = useState<boolean>(false);
+  const [appPicker, setAppPicker] = useState<{ item: FileItem; apps: { path: string; name: string; recommended: boolean }[] | null } | null>(null);
+  const [openWithApps, setOpenWithApps] = useState<OpenWithApp[]>(loadOpenWith);
+  useEffect(() => {
+    setShowVarSubmenu(false);
+    setShowOpenWith(false);
+  }, [contextMenu]);
   // The submenu opens level with its row; near the bottom of the window, slide it up so it stays visible
   const varSubmenuRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -345,6 +354,43 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
     } else {
       onOpenFile(item);
     }
+  };
+
+  // Open with: start the file in a chosen program and count the use (the menu lists the most used ones)
+  const openWithApp = (item: FileItem, appPath: string, appName: string) => {
+    setContextMenu(null);
+    setAppPicker(null);
+    invoke('open_with_app', { app: appPath, path: item.path })
+      .then(() => {
+        const next = recordUse(openWithApps, appPath, appName, extOf(item.name));
+        setOpenWithApps(next);
+        saveOpenWith(next);
+      })
+      .catch((err) => {
+        alert(String(err));
+        const next = removeApp(openWithApps, appPath); // a program that is gone leaves the list
+        setOpenWithApps(next);
+        saveOpenWith(next);
+      });
+  };
+
+  // Choose App: a dialog with the programs Windows lists for this file type (apps = null while loading)
+  const chooseApp = (item: FileItem) => {
+    setContextMenu(null);
+    setAppPicker({ item, apps: null });
+    invoke<{ path: string; name: string; recommended: boolean }[]>('list_app_handlers', { ext: extOf(item.name) })
+      .then((apps) => setAppPicker((cur) => (cur && cur.item === item ? { item, apps } : cur)))
+      .catch(() => setAppPicker((cur) => (cur && cur.item === item ? { item, apps: [] } : cur)));
+  };
+
+  // "Browse...": any program from a file dialog
+  const browseApp = (item: FileItem) => {
+    setAppPicker(null);
+    invoke<[string, string] | null>('pick_app')
+      .then((app) => {
+        if (app) openWithApp(item, app[0], app[1]);
+      })
+      .catch((err) => alert(String(err)));
   };
 
   const handleCreateFolder = () => {
@@ -913,22 +959,13 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
             }}
           />
           <div className="context-menu" ref={menuPos.ref} style={menuPos.style}>
-            {contextMenu.item && (
-              <div
-                className="context-menu-item"
-                onClick={() => handleOpenItem(contextMenu.item!)}
-              >
-                <ExternalLink size={13} style={{ color: 'var(--text-muted)' }} />
-                <span>Open</span>
-              </div>
-            )}
-
             {/* New Submenu Trigger */}
             <div
               className="context-menu-item"
               onMouseEnter={() => {
                 setShowNewSubmenu(true);
                 setShowVarSubmenu(false);
+                setShowOpenWith(false);
               }}
               onClick={() => setShowNewSubmenu(!showNewSubmenu)}
               style={{ justifyContent: 'space-between' }}
@@ -960,6 +997,60 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 </div>
               )}
             </div>
+
+            {contextMenu.item && (
+              <div
+                className="context-menu-item"
+                onMouseEnter={() => {
+                  setShowNewSubmenu(false);
+                  setShowVarSubmenu(false);
+                  setShowOpenWith(false);
+                }}
+                onClick={() => handleOpenItem(contextMenu.item!)}
+              >
+                <ExternalLink size={13} style={{ color: 'var(--text-muted)' }} />
+                <span>Open</span>
+              </div>
+            )}
+
+            {contextMenu.item && !contextMenu.item.is_dir && (
+              <div
+                className="context-menu-item"
+                onMouseEnter={() => {
+                  setShowOpenWith(true);
+                  setShowNewSubmenu(false);
+                  setShowVarSubmenu(false);
+                }}
+                onClick={() => setShowOpenWith(!showOpenWith)}
+                style={{ justifyContent: 'space-between' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <AppWindow size={13} style={{ color: 'var(--text-muted)' }} />
+                  <span>Open with</span>
+                </div>
+                <ChevronRight size={13} style={{ color: 'var(--text-dim)' }} />
+
+                {showOpenWith && (
+                  <div className={menuPos.submenuClass} onClick={(e) => e.stopPropagation()}>
+                    {topApps(openWithApps, extOf(contextMenu.item.name)).map((a) => (
+                      <div
+                        key={a.path}
+                        className="context-menu-item"
+                        title={a.path}
+                        onClick={() => openWithApp(contextMenu.item!, a.path, a.name)}
+                      >
+                        <AppWindow size={13} style={{ color: 'var(--text-muted)' }} />
+                        <span>{a.name}</span>
+                      </div>
+                    ))}
+                    <div className="context-menu-item" onClick={() => chooseApp(contextMenu.item!)}>
+                      <FolderSearch size={13} style={{ color: 'var(--text-muted)' }} />
+                      <span>Choose App...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="context-menu-divider" />
 
@@ -1005,6 +1096,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                   onMouseEnter={() => {
                     setShowVarSubmenu(true);
                     setShowNewSubmenu(false);
+                    setShowOpenWith(false);
                   }}
                   onClick={() => setShowVarSubmenu(!showVarSubmenu)}
                   style={{ justifyContent: 'space-between' }}
@@ -1160,6 +1252,56 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Choose App: programs Windows lists for this file type */}
+      {appPicker && (
+        <div className="modal-overlay" onClick={() => setAppPicker(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">Open with</div>
+            <div className="modal-body">
+              <span className="modal-label" title={appPicker.item.path}>
+                Choose a program to open {appPicker.item.name}:
+              </span>
+              <div className="app-picker-list">
+                {appPicker.apps === null && <div className="app-picker-empty">Looking for programs...</div>}
+                {appPicker.apps !== null && appPicker.apps.length === 0 && (
+                  <div className="app-picker-empty">Windows lists no program for this file type. Use Browse...</div>
+                )}
+                {[true, false].map((rec) => {
+                  const group = (appPicker.apps ?? []).filter((a) => a.recommended === rec);
+                  if (group.length === 0) return null;
+                  return (
+                    <React.Fragment key={String(rec)}>
+                      <div className="app-picker-heading">
+                        {rec ? `Recommended for .${extOf(appPicker.item.name)}` : 'Other programs'}
+                      </div>
+                      {group.map((a) => (
+                        <div
+                          key={a.path}
+                          className="context-menu-item app-picker-item"
+                          title={a.path}
+                          onClick={() => openWithApp(appPicker.item, a.path, a.name)}
+                        >
+                          <AppWindow size={14} style={{ color: '#3b82f6' }} />
+                          <span>{a.name}</span>
+                        </div>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => setAppPicker(null)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn-primary" onClick={() => browseApp(appPicker.item)}>
+                  Browse...
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

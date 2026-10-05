@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.2**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.3**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -68,7 +68,7 @@ This document describes everything boonsh can do, how to use it, and where its l
 ### Folder tree
 - Shows **This PC** with all your drives. Click the arrow to expand a folder, or click the name to open it and expand it.
 - The tree follows you: when you open a folder elsewhere, the tree expands to it and scrolls it into view.
-- Right-click a folder: Open, New (Folder, Text Document, Shortcut), Add to Quick Access, Refresh. Right-clicking also opens that folder.
+- Right-click a folder: New (Folder, Text Document, Shortcut), Open, Add to Quick Access, Refresh. Right-clicking also opens that folder.
 
 ### Frequently Accessed (above the Folder Tree)
 A short list of the folders you open most, so you can jump back to them in one click.
@@ -426,8 +426,9 @@ A preset is a saved list of rules, in their order with all their settings, plus 
 
 | Entry | Notes |
 | --- | --- |
-| Open | Opens a folder, or a file in its default app. |
-| New | Folder, Text Document, Shortcut. |
+| New | **First entry.** Folder, Text Document, Shortcut. |
+| Open | Second entry. Opens a folder, or a file in its default app. |
+| Open with | Files only. A submenu with up to **3 programs you used most for this file type** (hover for the full path; a type you have never opened this way, such as `.zip`, shows only Choose App...), then **Choose App...**, which opens a dialog with two lists: the programs Windows has registered for this file type (the ones Explorer's *Open with* offers), then **Other programs** (everything else Windows or an installer has registered, such as Notepad++); click one to open the file with it, or **Browse...** to pick any `.exe`. Microsoft Store apps are started through their app alias. Opening a file through either one counts as a use, so the list fills as you work; each file type keeps its own counts. A program that no longer exists is shown in an error and dropped from the list. The list is saved in this app (`boonsh_open_with`) and is not the same as Windows' own *Open with* list. |
 | Add to Quick Access | For folders. For files it adds the current folder instead. |
 | Cut, Copy | Show the number of items when more than one is selected. |
 | Paste | Greyed out until you've cut or copied something. |
