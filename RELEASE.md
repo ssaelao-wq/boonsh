@@ -6,6 +6,26 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.9.7 (2026-10-07)
+
+### Added
+
+- **Import / Export of a command group** (Settings, Commands): export the selected group to a **JSON** or **CSV** file (the Save dialog's file type decides) and import a `.json` / `.csv` file into the selected group. Duplicates (same name and text) are skipped, a hot key already in use is dropped, and a message reports the result. JSON is the recommended format; CSV opens in Excel.
+- **Command hot keys.** In Settings, Commands, each command can have a hot key: the fixed group **Ctrl + Alt +** and a drop-down of the keys still free (A-Z, 0-9, F1-F12). Pressing it while the command line has the focus types the command at the prompt, like picking it in the Commands menu; with the focus anywhere else nothing happens. The hot key is shown beside the command in the menu.
+- **Settings, Commands: add your own groups.** **New group** (for example "Cisco Network"), plus **Rename** and **Delete** for the groups you made. They appear in the terminal's Commands menu after the built-in groups. The four built-in groups stay fixed.
+- **Tab colors.** Every tab header has a color, taken in turn from 10 predefined colors so neighbouring tabs differ. Right-click a tab, **Change Tab Color** (below Rename Tab), to pick another of the 10.
+- **Reorder tabs** by dragging a tab sideways along the bar.
+- **Settings, CONST Global Var** (below Global Var): constants with a Name, a Value and a Description, such as `{IP}` = 202.283.242.97. Write `{IP}` in a command and the value is typed in its place. They are saved and stay until you delete them; renaming one updates your commands.
+
+### Changed
+
+- The group buttons in Settings, Commands (New group, Rename, Delete, and the new Import / Export) are **icons only** with a tooltip, to save room; the icons are colored.
+- The command line header shows a **CONST Global Var** button (when at least one constant exists) next to Global Var; click a constant to type its value at the prompt.
+- The **Commands**, **Global Var** and **CONST Global Var** buttons (and their Settings sections) have colored icons.
+- **Settings, Commands: the groups are a drop-down list** instead of a row of buttons, easier to see and to use with many groups.
+- The command line tab bar is always shown, also with a single tab, with the **+** button above the header. A lone tab has no **x** (there is always one command line).
+- The user button at the top-right of the command line header now reads **User: <name>** (and **User: <name> (Admin)** for an Administrator tab).
+
 ## 0.9.6 (2026-10-07)
 
 ### Fixed

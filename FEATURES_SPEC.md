@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.6**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.7**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -833,13 +833,15 @@ Open it with the **Eye icon** or **Ctrl+P**. It appears below the file panel and
 
 ## 9. Terminal
 
-The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, else `cmd`. It uses a fixed-width font (Cascadia Code) at 12 px, remembers 5,000 lines of scrollback, follows the dark or light theme, and the prompt is short: `<username> >` (or `admin >` in admin mode).
+The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, else `cmd`. It uses a fixed-width font (Cascadia Code) at 12 px, remembers 5,000 lines of scrollback, follows the dark or light theme, and the prompt is short: `<username> >` (or `admin >` in admin mode). The button at the top-right of the terminal header shows **User: <name>** (with **(Admin)** in an Administrator tab); click it to switch that tab's login.
 
 - **Copy / cut / paste:** select text with the mouse. **Ctrl+C** copies it (with nothing selected, Ctrl+C still interrupts the running command). **Ctrl+V** pastes the clipboard at the prompt. **Ctrl+X** with a selection copies it (output text cannot be removed, so cut = copy; with no selection it goes to the shell). Right-click in the terminal for **Cut**, **Copy** and **Paste** (Cut and Copy are greyed out with no selection).
 - **Tabs:** the terminal can hold several command lines at once, one per tab, in a tab bar above the terminal header.
-  - There is **always at least one command line**. It opens when boonsh starts. While there is only one, **no tab bar is shown**; the bar appears when you open a second tab and goes away again when you are back to one. Every tab is named after your user name; use **Rename Tab** to tell them apart.
-  - **New tab:** the **+** at the end of the tab bar, or right-click the terminal header (the bar with the Commands button) and choose **New Tab**. The new tab opens in the folder the file panel shows and becomes the active tab. With one tab only the header's right-click menu is available (the **+** is part of the tab bar).
-  - **Close a tab:** the **x** on the tab, or right-click the tab and choose **Close Tab**. **Close All Tabs** is in the header's right-click menu (greyed out with one tab) and leaves one fresh tab. If a program is still running in the tab (boonsh knows between pressing Enter and the next prompt), boonsh asks before closing it. Typing `exit` in a tab closes that tab; closing the last tab (or `exit` in it) opens a fresh one.
+  - There is **always at least one command line**. It opens when boonsh starts. The **tab bar is always shown**, also with one tab. Every tab is named after your user name; use **Rename Tab** to tell them apart.
+  - **New tab:** the **+** at the end of the tab bar, or right-click the terminal header (the bar with the Commands button) and choose **New Tab**. The new tab opens in the folder the file panel shows and becomes the active tab.
+  - **Close a tab:** the **x** on the tab (a lone tab has none), or right-click the tab and choose **Close Tab**. **Close All Tabs** is in the header's right-click menu (greyed out with one tab) and leaves one fresh tab. If a program is still running in the tab (boonsh knows between pressing Enter and the next prompt), boonsh asks before closing it. Typing `exit` in a tab closes that tab; closing the last tab (or `exit` in it) opens a fresh one.
+  - **Colors:** every tab header has a color, taken in turn from 10 predefined colors (blue, red, green, orange, purple, teal, pink, brown, indigo, cyan) so tabs next to each other look different. The active tab is drawn in the full color, the others in a softer tint. Right-click a tab and choose **Change Tab Color** (below Rename Tab) to see the 10 colors and pick one. Colors are not saved when you close boonsh.
+  - **Reorder:** press a tab and drag it sideways; it swaps places with the tabs it passes. The order is not saved when you close boonsh.
   - **Rename:** right-click the tab, **Rename Tab**, type the name, press Enter (Esc cancels, an empty name is ignored). The name is not saved when you close boonsh.
   - **Tabs and the file panel:** the file panel follows the **active** tab. Click another tab and the file panel switches to the folder that tab's shell is in. Open a folder in the file panel and only the active tab gets the `cd`. A `cd` typed in a background tab does not move the file panel; it is remembered for when you switch to that tab.
   - Each tab keeps its own history, running program and scrollback. Hiding the terminal (below) keeps all tabs running.
@@ -852,7 +854,7 @@ The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pws
 A helper for beginners: click **Commands**, point at a group on the left, then click a command on the right.
 - The command's text is **typed at the prompt for you** (it is not run, so you can add arguments and press Enter yourself).
 - A **usage hint** appears under the bar, like `ren "oldname.txt" "newname.txt"`. Close it with its X.
-- Groups and commands are editable in Settings (next section). Built-in groups:
+- Groups and commands are editable in Settings (next section), and you can add groups of your own, which appear in this menu after the built-in ones. Built-in groups:
 
 | Group | Commands |
 | --- | --- |
@@ -861,7 +863,7 @@ A helper for beginners: click **Commands**, point at a group on the left, then c
 | System Commands | tasklist, taskkill, systeminfo, whoami |
 | Customize | (empty: yours to fill) |
 
-If a group is empty, the menu shows a link that opens Settings.
+If a group is empty, the menu shows a link that opens Settings. Groups you add yourself (for example **Cisco Network**) are listed below Customize.
 
 ### {SELEC} and {DEST}: files for terminal commands
 Two variables link the file panel and the terminal. They exist only while boonsh is open.
@@ -873,6 +875,7 @@ How values are written:
 - A path **inside the current folder** is relative (`.\AITutor\server.js`, or `.` for the folder itself). Any other path is absolute (`D:\somboon-data\Dev\AITutor\server.js`). The same text is shown in the right-click menu.
 - Several selected items become several separate paths. Paths with spaces or special characters are quoted (`".\my folder\a.txt"`); in `{DEST}/x.jpg` the whole word is quoted. If you put your own quotes around a variable, boonsh does not add more.
 - While the command is **still waiting at the prompt** (you have not typed in the terminal), assigning a variable, clearing one, or opening another folder in the file panel **rewrites that line**: it is cleared (Esc) and typed again with the new values and paths relative to the new folder. Once you type anything in the terminal, boonsh leaves the line alone.
+- The buttons in the terminal's top bar have colored icons: **Commands** (amber book), **Global Var** (cyan) and **CONST Global Var** (purple lock; see section 10). The same colors mark the sections in Settings.
 - The terminal's top bar has a **Global Var** button next to Commands. Click it to see every variable with its full value (relative to the current folder where possible) and an X to clear it. Only variables that have a value are listed, and the button is hidden while none is set. Hover a path for its absolute form.
 
 **Create your own variables.** In Settings (gear), **Global Var**, you can add more variables, rename or delete them (see section 10). Every variable you create appears in the right-click **Assign to Global Var** submenu, in the terminal's **Global Var** button, and can be used as `{NAME}` in your commands and in the search (`input:{NAME}`, see section 7).
@@ -886,7 +889,7 @@ How values are written:
 
 ## 10. Settings: customize terminal commands
 
-Click the **gear icon** (next to the Eye icon). The left bar has seven sections, **Commands**, **Global Var**, **Files Column**, **Quick Access**, **Frequently Accessed**, **Manual** and **About**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
+Click the **gear icon** (next to the Eye icon). The left bar has eight sections, **Commands**, **Global Var**, **CONST Global Var**, **Files Column**, **Quick Access**, **Frequently Accessed**, **Manual** and **About**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
 
 ### Global Var
 Manage the variables that commands can use as `{NAME}`.
@@ -896,6 +899,15 @@ Manage the variables that commands can use as `{NAME}`.
 - Each row shows the variable's current value or *Not set*. Reset variables brings back just `{SELEC}` and `{DEST}`.
 - Only the list of variables is stored; the values are forgotten when boonsh closes.
 - The variables show up automatically in the right-click **Assign to Global Var** submenu and in the terminal's **Global Var** button.
+
+### CONST Global Var
+Constants: a name with a **fixed value** that commands can use as `{NAME}`, for example `{IP}` = `202.283.242.97`. The section sits below **Global Var**.
+- **Add constant**: a **Name** (letters, digits and `_`, up to 30 characters, saved in capitals), a **Value** (the text that is typed in place of `{NAME}`; required, one line) and an optional **Description**, for example *This is the IP of XYZ server*. A name cannot be used twice, and cannot be the name of a Global Var either.
+- Each row shows `{IP} = 202.283.242.97` and the description. **Edit** (pencil or double-click) can change the value, the description and the **name**; a rename replaces `{OLD}` by `{NEW}` in your command texts and usage examples.
+- **Delete** (trash) removes it after you confirm. Commands that still mention it keep the text `{NAME}` as typed. There is no Reset button here: a constant stays until you delete it, also after you close boonsh.
+- Use it like any variable: write `ping {IP}` as the **Terminal text** of a command (Settings, Commands). When you pick the command, the value is typed in as written: it is not quoted and not turned into a relative path. In a larger word it works too (`ssh admin@{IP}`). A `{NAME}` that is not defined stays as typed.
+- The terminal header shows a purple **CONST Global Var** button next to **Global Var** as soon as there is at least one constant (hidden when there are none). Click it to list every constant with its value and description; **click a row to type its value at the prompt**.
+- Constants are not offered in the right-click **Assign to Global Var** menu or the search (`input:`), because they hold text, not files.
 
 ### Files Column
 Choose what the file panel's Details view shows. Changes apply at once and are saved.
@@ -936,8 +948,23 @@ Settings for the panel above the Folder Tree (section 3). Changes apply at once 
 - **Reset settings** (bottom left) goes back to On and 3 folders; the visit counts are kept.
 
 ### Commands
-Pick a group with the tabs### Add a command
-1. Open Settings and pick a group on the left (for example **Customize**).
+The **Group** drop-down at the top lists every group with the number of commands in it; pick one to see its commands.
+
+The icons beside the drop-down have no text, to save room; **hold the mouse over one to read what it does**: **New group** (green folder with +), **Rename** (blue pencil), **Delete** (red trash can), then **Import** (cyan arrow down) and **Export** (orange arrow up).
+
+### Export and import a group
+Share a group's commands with a colleague, back them up, or edit them in Excel.
+- **Export** (orange arrow up): choose the file name and the type in the Save dialog. **JSON file (*.json)** is first in the list; **CSV file for Excel (*.csv)** is the other. A group with no commands cannot be exported. Every command is written with its name, terminal text, description, usage example and hot key. Built-in and your own groups can be exported.
+- **Import** (cyan arrow down): choose a `.json` or `.csv` file. Its commands are **added to the group that is selected** in the drop-down (the group name inside a JSON file is not used, so you can import into any group). A message tells you the result, for example *Imported 3 commands. Skipped 1 duplicate (already in the group). 1 hot key not kept (not valid or already used).* A command is a **duplicate** when the group already has one with the same name and terminal text; it is skipped, so importing the same file twice changes nothing. A hot key is kept only when it is valid and not used by another command; the command is imported without it otherwise. Rows with no name or no terminal text are skipped. A file that cannot be read shows the reason.
+- **Which format?** **JSON is the better choice** for sharing and backups: it keeps every character exactly (commas, quotes, line breaks, Thai text), has the group name and a version, and cannot be broken by a spreadsheet. **CSV** is for editing many commands in Excel or Google Sheets; save it as **CSV UTF-8** so Thai text stays right. boonsh's CSV starts with a header row `name,insertText,description,usage,hotkey`, so Excel opens it in columns; on import the column names are matched by name (the order does not matter; `terminalText` / `text` also work for `insertText`).
+- The JSON file looks like: `{ "format": "boonsh-commands", "version": 1, "group": "Cisco Network", "commands": [ { "name": "show ip", "insertText": "show ip route ", "description": "...", "usage": "...", "hotkey": "Ctrl+Alt+R" } ] }`. A plain list of commands (`[ {...}, {...} ]`) is accepted too.
+
+### Add a group
+Click **New group** (the green folder icon), type a name (up to 30 characters, no duplicates, for example `Cisco Network`) and click **Add group** (Enter also works; Esc or **Cancel** stops). The new group is selected, and it shows in the terminal's **Commands** menu after the built-in groups. Add commands to it as below.
+- **Rename** and **Delete** work only on groups you added (they are greyed out for the four built-in groups). Deleting a group asks first and removes its commands too.
+
+### Add a command
+1. Open Settings and pick a group in the **Group** drop-down (for example **Customize**, or a group of your own).
 2. Click **Add command**.
 3. Fill in the form, then click **Add command**:
 
@@ -947,7 +974,16 @@ Pick a group with the tabs### Add a command
 | **Terminal text** (required) | What gets typed at the prompt when you pick it. Keep a **trailing space** if you will add arguments. `{SELEC}` and `{DEST}` are filled in from your file-panel choices. | `ren {SELEC} {DEST}` |
 | **Description** | One line explaining it. | `Rename a file or folder` |
 | **Usage example** | Shown as the hint after you pick it. | `ren "oldname.txt" "newname.txt"` |
+| **Hot key** | Optional. Pick a key after the fixed **Ctrl + Alt +** (see below). | `K` (Ctrl+Alt+K) |
 | **Group** | Which group it belongs to. | `Customize` |
+
+### Hot keys for commands
+Give a command a hot key and you can type it at the prompt from the keyboard, without opening **Commands** and choosing the group and command. Pressing the hot key does exactly what picking the command in the menu does (the text is typed at the prompt with `{SELEC}`, `{DEST}` and your constants filled in, the usage hint appears, nothing runs until you press Enter).
+- **Set it:** in the command's form (Add or Edit) the **Hot key** line shows the fixed group **Ctrl + Alt +** and a **drop-down** of keys: the letters A-Z, the digits 0-9 and F1-F12. Pick one (or **(no hot key)**). The drop-down lists only the keys **no other command uses**, so a clash cannot be chosen.
+- **Only while the command line is active:** a hot key works only when the **command line has the keyboard focus** (you clicked in the terminal, so a command line tab is active). With the focus in the file panel, the search box or anywhere else, **nothing happens**, so a Ctrl+Alt combination used by another program or by the rest of boonsh never clashes. It is also off while Settings is open and while the terminal is hidden.
+- The hot key is shown beside the command in the Commands menu and on its row in Settings.
+- **Suggestions** (mnemonic letters): `Ctrl+Alt+K` taskkill, `Ctrl+Alt+P` ping, `Ctrl+Alt+I` ipconfig, `Ctrl+Alt+N` netstat, `Ctrl+Alt+T` tasklist, `Ctrl+Alt+D` dir. None is set until you set it.
+- Limits: another program may use a Ctrl+Alt combination as a global hot key (then it never reaches boonsh; choose another key). On keyboards where **AltGr** types characters (some European layouts), Ctrl+Alt+letter is also AltGr+letter, so a hot key swallows that character in the terminal. The key is the physical key, so it is the same on every layout.
 
 ### Edit a command
 Click the **pencil icon** on its row (or **double-click** the row), change the fields, and click **Save changes**. Changing the **Group** field **moves** the command to that group.
@@ -956,9 +992,9 @@ Click the **pencil icon** on its row (or **double-click** the row), change the f
 Click the **trash icon** on its row and confirm. This works on the built-in commands too.
 
 ### Other things to know
-- **Reset to defaults** (bottom left) brings back the original command list. It asks first, and your added and edited commands are lost.
+- **Reset to defaults** (bottom left) brings back the original command list. It asks first, and your added and edited commands, and the groups you added, are lost.
 - **Esc** closes an open form first, then the Settings window. **Done** closes the window.
-- The four groups are fixed: you can change the commands in them, but you can't add, rename or delete groups.
+- The four built-in groups (Basic, Network, System, Customize) can't be renamed or deleted, but you can change their commands. Groups you add can be renamed and deleted.
 - The list is stored on this computer by the app. It stays after you close boonsh.
 - Keyboard shortcuts for files are switched off while Settings is open.
 
@@ -976,6 +1012,7 @@ Click the **trash icon** on its row and confirm. This works on the built-in comm
 | Ctrl+Shift+F | Show or hide the file panel (leaves the folder tree and terminal) |
 | Home, End, Left, Right, PageUp, PageDown | Move between images (when an image is previewed) |
 | `+`, `-`, `1`, `0` or `F`, `L`, Ctrl+G | Image zoom, 1:1, fit, lock zoom, go to image |
+| Ctrl+Alt+(letter, digit or F1-F12) | A command hot key you set in Settings, Commands: types that command at the prompt, only while the command line has the focus |
 | Esc | Exit full-screen preview; close Settings or its open form; cancel path editing |
 | Enter / Esc in the path bar | Go to the typed path / cancel |
 

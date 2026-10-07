@@ -34,6 +34,7 @@ import {
   resetGlobalVars,
   renameInText,
 } from './globalVars';
+import { ConstVar, loadConstVars, saveConstVars, constMap } from './constVars';
 import { CommandGroup, loadCommandGroups, saveCommandGroups, resetCommandGroups } from './commands';
 import {
   RenameBatch,
@@ -43,6 +44,7 @@ import {
   loadRenameHistory,
   saveRenameHistory,
 } from './bulkRename';
+import { tabColor } from './tabColors';
 import { FileItem, QuickAccessItem, FileListResult, ViewMode, ItemDetails, TermTab } from './types';
 import {
   FrequentStats,
@@ -124,6 +126,11 @@ export function App() {
   const pathVarsRef = useRef(pathVars);
   pathVarsRef.current = pathVars;
   const varNames = () => globalVarsRef.current.map((v) => v.name);
+  // CONST variables ({IP} = 202.283.242.97): saved with their values, filled into commands as written
+  const [constVars, setConstVars] = useState<ConstVar[]>(loadConstVars);
+  const constVarsRef = useRef(constVars);
+  constVarsRef.current = constVars;
+  const consts = () => constMap(constVarsRef.current);
   // Command template (with {SELEC}/{DEST}) sitting untouched at the prompt. While it is set, the typed line can be
   // rewritten when a variable or the folder changes. The terminal clears it as soon as the user types.
   const pendingCmdRef = useRef<string | null>(null);
@@ -138,7 +145,7 @@ export function App() {
 
   // Type a command template at the prompt, expanded against the current folder.
   const pickCommand = async (template: string) => {
-    const text = expandTemplate(template, pathVarsRef.current, currentPathRef.current);
+    const text = expandTemplate(template, pathVarsRef.current, currentPathRef.current, consts());
     const replace = pendingCmdRef.current !== null;
     pendingCmdRef.current = hasPlaceholder(template, varNames()) ? template : null;
     if (replace) await rewritePromptLine(text);
@@ -150,7 +157,7 @@ export function App() {
     setPathVars(next);
     const template = pendingCmdRef.current;
     if (template !== null) {
-      rewritePromptLine(expandTemplate(template, next, currentPathRef.current)).catch(() => {});
+      rewritePromptLine(expandTemplate(template, next, currentPathRef.current, consts())).catch(() => {});
     }
   };
 
@@ -185,6 +192,29 @@ export function App() {
     saveGlobalVars(next);
     pendingCmdRef.current = null; // names changed under the prompt line; leave it as it is
     setPathVarValues(values);
+  };
+
+  // Settings added, renamed, edited or deleted CONST variables. A rename updates {OLD} in the commands.
+  const handleConstVarsChange = (next: ConstVar[]) => {
+    const old = constVarsRef.current;
+    let commands = commandGroups;
+    for (const def of next) {
+      const before = old.find((o) => o.id === def.id);
+      if (before && before.name !== def.name) {
+        commands = commands.map((g) => ({
+          ...g,
+          items: g.items.map((i) => ({
+            ...i,
+            insertText: renameInText(i.insertText, before.name, def.name),
+            usage: renameInText(i.usage, before.name, def.name),
+          })),
+        }));
+      }
+    }
+    if (commands !== commandGroups) handleCommandGroupsChange(commands);
+    constVarsRef.current = next;
+    setConstVars(next);
+    saveConstVars(next);
   };
 
   // Sort State
@@ -446,6 +476,7 @@ export function App() {
   const tabsRef = useRef<TermTab[]>([]);
   const activeTabIdRef = useRef<string | null>(null);
   const tabCounterRef = useRef(0);
+  const tabColorRef = useRef(0); // next color of the rotation
   const userNameRef = useRef('User');
   const firstTabRef = useRef(false);
   const appLevelRef = useRef<'admin' | 'normal'>('normal'); // the login boonsh itself runs with
@@ -479,7 +510,16 @@ export function App() {
   const newTab = () => {
     const id = `tab${++tabCounterRef.current}`;
     atPromptRef.current[id] = true;
-    updateTabs([...tabsRef.current, { id, name: userNameRef.current, cwd: currentPathRef.current, level: appLevelRef.current }]);
+    updateTabs([
+      ...tabsRef.current,
+      {
+        id,
+        name: userNameRef.current,
+        cwd: currentPathRef.current,
+        level: appLevelRef.current,
+        color: tabColor(tabColorRef.current++),
+      },
+    ]);
     pendingCmdRef.current = null;
     activate(id);
   };
@@ -573,6 +613,19 @@ export function App() {
   const renameTab = (id: string, name: string) => {
     updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, name } : t)));
   };
+  const recolorTab = (id: string, color: string) => {
+    updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, color } : t)));
+  };
+  // Drag a tab to a new place in the bar (index among the tabs)
+  const moveTab = (id: string, toIndex: number) => {
+    const list = tabsRef.current;
+    const from = list.findIndex((t) => t.id === id);
+    if (from < 0 || from === toIndex || toIndex < 0 || toIndex >= list.length) return;
+    const next = [...list];
+    const [t] = next.splice(from, 1);
+    next.splice(toIndex, 0, t);
+    updateTabs(next);
+  };
 
   // The first tab: named after the user, opens in the default folder
   useEffect(() => {
@@ -612,7 +665,7 @@ export function App() {
     }
     (async () => {
       await rewritePromptLine(`cd "${path}"\r`);
-      await ptyWrite(expandTemplate(template, pathVarsRef.current, path));
+      await ptyWrite(expandTemplate(template, pathVarsRef.current, path, consts()));
     })().catch(() => {});
   };
 
@@ -1093,6 +1146,8 @@ export function App() {
           pathVars={pathVars}
           onGlobalVarsChange={handleGlobalVarsChange}
           onGlobalVarsReset={() => handleGlobalVarsChange(resetGlobalVars())}
+          constVars={constVars}
+          onConstVarsChange={handleConstVarsChange}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -1270,6 +1325,8 @@ export function App() {
             onCloseTab={closeTab}
             onCloseAllTabs={closeAllTabs}
             onRenameTab={renameTab}
+            onRecolorTab={recolorTab}
+            onMoveTab={moveTab}
             onShellExit={(id) => removeTab(id, true)}
             onSwitchLevel={switchTabLevel}
             onSpawnFailed={spawnFailed}
@@ -1278,9 +1335,11 @@ export function App() {
             onPickCommand={pickCommand}
             onUserInput={() => { pendingCmdRef.current = null; }}
             globalVars={globalVars}
+            constVars={constVars}
             pathVars={pathVars}
             onClearPathVar={(name) => assignPathVar(name, [])}
             commandGroups={commandGroups}
+            hotkeysOn={!showSettings}
             onOpenSettings={() => openSettings()}
           />
         </div>

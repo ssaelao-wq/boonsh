@@ -1,4 +1,5 @@
 import React from 'react';
+import { isHotkey } from './hotkey';
 import { Folder, Globe, Cpu, Wrench } from 'lucide-react';
 
 export interface CommandItem {
@@ -7,6 +8,7 @@ export interface CommandItem {
   insertText: string; // text typed into the terminal when the command is picked
   description: string;
   usage: string;
+  hotkey?: string; // e.g. "Ctrl+Alt+K": types the command at the prompt from anywhere in the app
 }
 
 export type CommandGroupIcon = 'folder' | 'globe' | 'cpu' | 'wrench';
@@ -15,6 +17,20 @@ export interface CommandGroup {
   category: string;
   icon: CommandGroupIcon;
   items: CommandItem[];
+  custom?: boolean; // a group the user made (can be renamed and deleted); the four built-in groups cannot
+}
+
+export const MAX_GROUP_NAME = 30;
+
+// Returns an error message for a bad group name, or '' when it is fine. `ignore` is the group being renamed.
+export function validateGroupName(name: string, groups: CommandGroup[], ignore?: string): string {
+  const n = name.trim();
+  if (!n) return 'Group name is required.';
+  if (n.length > MAX_GROUP_NAME) return `Group name can be at most ${MAX_GROUP_NAME} characters.`;
+  if (groups.some((g) => g.category !== ignore && g.category.toLowerCase() === n.toLowerCase())) {
+    return `A group named "${n}" already exists.`;
+  }
+  return '';
 }
 
 const STORAGE_KEY = 'boonsh_commands';
@@ -78,7 +94,8 @@ export const newCommandId = () =>
 const cloneDefaults = (): CommandGroup[] =>
   DEFAULT_COMMAND_GROUPS.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i })) }));
 
-// Saved groups are user-edited; the group set itself is fixed (always the default groups, in order).
+// Saved groups are user-edited. The four built-in groups are always present, in order; groups the user added
+// follow them in the order they were made.
 // Built-in commands whose typed text changed in a later version. A saved command that still types just the old plain
 // word (the user never edited the typed text) gets the new text; an edited one is left alone. Only the typed text
 // changes, the usage hint stays as the user has it. Matched by id or, for lists saved before ids existed, by name.
@@ -98,7 +115,7 @@ export function loadCommandGroups(): CommandGroup[] {
     if (!raw) return cloneDefaults();
     const saved = JSON.parse(raw);
     if (!Array.isArray(saved)) return cloneDefaults();
-    return DEFAULT_COMMAND_GROUPS.map((def) => {
+    const builtin = DEFAULT_COMMAND_GROUPS.map((def) => {
       const match = saved.find((g: any) => g && g.category === def.category && Array.isArray(g.items));
       if (!match) return { ...def, items: def.items.map((i) => ({ ...i })) };
       const items: CommandItem[] = match.items
@@ -109,10 +126,35 @@ export function loadCommandGroups(): CommandGroup[] {
           insertText: typeof i.insertText === 'string' ? i.insertText : i.name,
           description: typeof i.description === 'string' ? i.description : '',
           usage: typeof i.usage === 'string' ? i.usage : '',
+          hotkey: typeof i.hotkey === 'string' && isHotkey(i.hotkey) ? i.hotkey : undefined,
         }))
         .map(upgradeBuiltin);
       return { ...def, items };
     });
+    const names = new Set(builtin.map((g) => g.category.toLowerCase()));
+    const custom: CommandGroup[] = [];
+    for (const g of saved) {
+      if (!g || typeof g.category !== 'string' || !g.category.trim() || !Array.isArray(g.items)) continue;
+      const key = g.category.trim().toLowerCase();
+      if (names.has(key)) continue;
+      names.add(key);
+      custom.push({
+        category: g.category.trim(),
+        icon: 'folder',
+        custom: true,
+        items: g.items
+          .filter((i: any) => i && typeof i.name === 'string')
+          .map((i: any) => ({
+            id: typeof i.id === 'string' ? i.id : newCommandId(),
+            name: i.name,
+            insertText: typeof i.insertText === 'string' ? i.insertText : i.name,
+            description: typeof i.description === 'string' ? i.description : '',
+            usage: typeof i.usage === 'string' ? i.usage : '',
+            hotkey: typeof i.hotkey === 'string' && isHotkey(i.hotkey) ? i.hotkey : undefined,
+          })),
+      });
+    }
+    return [...builtin, ...custom];
   } catch {
     return cloneDefaults();
   }

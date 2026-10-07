@@ -10,18 +10,23 @@ import {
   BookOpen,
   X,
   Variable,
+  Lock,
   ChevronRight,
   Scissors,
   Copy,
   ClipboardPaste,
   Plus,
   Pencil,
+  Palette,
 } from 'lucide-react';
 import { useMenuPosition } from '../useMenuPosition';
 import { CommandGroup, CommandItem, GroupIcon } from '../commands';
 import { PathVars, PathVarName, displayPath } from '../pathVars';
 import { GlobalVarDef } from '../globalVars';
+import { ConstVar } from '../constVars';
+import { hotkeyFromEvent } from '../hotkey';
 import { TermTab } from '../types';
+import { TAB_COLORS } from '../tabColors';
 
 interface TerminalPanelProps {
   currentPath: string;
@@ -34,6 +39,8 @@ interface TerminalPanelProps {
   onCloseTab: (id: string) => void;
   onCloseAllTabs: () => void;
   onRenameTab: (id: string, name: string) => void;
+  onRecolorTab: (id: string, color: string) => void;
+  onMoveTab: (id: string, toIndex: number) => void;
   onShellExit: (id: string) => void; // the shell of a tab ended (typed `exit`)
   onSwitchLevel: () => void; // the Admin / normal user button: change the login of the active tab
   onSpawnFailed: (id: string, message: string) => void; // a tab's shell could not start
@@ -42,8 +49,10 @@ interface TerminalPanelProps {
   commandGroups: CommandGroup[];
   onOpenSettings: () => void;
   onPickCommand: (template: string) => Promise<void>;
+  hotkeysOn: boolean; // false while a dialog (Settings) is open
   onUserInput: () => void;
   globalVars: GlobalVarDef[];
+  constVars: ConstVar[];
   pathVars: PathVars;
   onClearPathVar: (name: PathVarName) => void;
 }
@@ -84,6 +93,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onCloseTab,
   onCloseAllTabs,
   onRenameTab,
+  onRecolorTab,
+  onMoveTab,
   onShellExit,
   onSwitchLevel,
   onSpawnFailed,
@@ -92,8 +103,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   commandGroups,
   onOpenSettings,
   onPickCommand,
+  hotkeysOn,
   onUserInput,
   globalVars,
+  constVars,
   pathVars,
   onClearPathVar,
 }) => {
@@ -130,6 +143,40 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const headerCtxPos = useMenuPosition(headerCtx);
   const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
 
+  const [colorOpen, setColorOpen] = useState(false); // the swatches inside the tab menu
+
+  // Drag a tab sideways to reorder: while the mouse is held, the tab swaps with whichever tab is under it
+  const tabElsRef = useRef<Record<string, HTMLDivElement | null>>({});
+  const dragRef = useRef<{ id: string; x: number; moved: boolean } | null>(null);
+  const justDraggedRef = useRef(false);
+  const onMoveTabRef = useRef(onMoveTab);
+  onMoveTabRef.current = onMoveTab;
+  const startTabDrag = (e: React.MouseEvent, id: string) => {
+    if (e.button !== 0 || renaming) return;
+    dragRef.current = { id, x: e.clientX, moved: false };
+    const move = (ev: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      if (!d.moved && Math.abs(ev.clientX - d.x) < 5) return;
+      d.moved = true;
+      const list = tabsRef.current;
+      const over = list.findIndex((t) => {
+        const r = tabElsRef.current[t.id]?.getBoundingClientRect();
+        return r && ev.clientX >= r.left && ev.clientX <= r.right;
+      });
+      if (over >= 0 && list[over].id !== d.id) onMoveTabRef.current(d.id, over);
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      justDraggedRef.current = !!dragRef.current?.moved; // swallow the click that ends a drag
+      dragRef.current = null;
+      setTimeout(() => (justDraggedRef.current = false), 0);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
   const commitRename = () => {
     if (renaming) {
       const name = renaming.draft.trim();
@@ -143,6 +190,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   const [showHelperMenu, setShowHelperMenu] = useState<boolean>(false);
   const [showVarsMenu, setShowVarsMenu] = useState<boolean>(false);
+  const [showConstMenu, setShowConstMenu] = useState<boolean>(false);
   const [activeCategory, setActiveCategory] = useState<string>('Basic Commands');
   const [usageBanner, setUsageBanner] = useState<{ command: string; usage: string } | null>(null);
 
@@ -377,8 +425,23 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }).catch(() => {});
   };
 
+  // Command hot keys (Settings, Commands): the same as picking the command in the menu. They work only while the
+  // command line has the keyboard focus (a command line tab is active), so Ctrl+Alt combinations used by anything
+  // else never clash; with focus elsewhere nothing happens. The capture handler runs before xterm sees the key.
+  const onHotkey = (e: React.KeyboardEvent) => {
+    if (!hotkeysOn || !visible || !activeTabId) return;
+    const hk = hotkeyFromEvent(e.nativeEvent);
+    if (!hk) return;
+    const item = commandGroups.flatMap((g) => g.items).find((i) => i.hotkey === hk);
+    if (!item) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.repeat) handleSelectCommand(item);
+  };
+
   return (
     <div
+      onKeyDownCapture={onHotkey}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -394,25 +457,32 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
-      {/* Command line tabs: shown only when there is more than one */}
-      {tabs.length > 1 && (
+      {/* Command line tabs: always shown, even for a single tab */}
       <div className="terminal-tabs">
         {tabs.map((t) => (
           <div
             key={t.id}
+            ref={(el) => {
+              tabElsRef.current[t.id] = el;
+            }}
             className={`terminal-tab ${t.id === activeTabId ? 'active' : ''}`}
-            onClick={() => onSelectTab(t.id)}
+            style={{ '--tab-color': t.color } as React.CSSProperties}
+            onMouseDown={(e) => startTabDrag(e, t.id)}
+            onClick={() => {
+              if (!justDraggedRef.current) onSelectTab(t.id);
+            }}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              setColorOpen(false);
               setTabCtx({ x: e.clientX, y: e.clientY, id: t.id });
             }}
             title={t.name}
           >
             {t.level === 'admin' ? (
-              <ShieldCheck size={12} style={{ color: '#22c55e', flexShrink: 0 }} />
+              <ShieldCheck size={12} style={{ color: '#86efac', flexShrink: 0 }} />
             ) : (
-              <TermIcon size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              <TermIcon size={12} style={{ flexShrink: 0 }} />
             )}
             {renaming && renaming.id === t.id ? (
               <input
@@ -432,23 +502,25 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             ) : (
               <span className="terminal-tab-name">{t.name}</span>
             )}
-            <button
-              className="terminal-tab-close"
-              title="Close tab"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCloseTab(t.id);
-              }}
-            >
-              <X size={11} />
-            </button>
+            {tabs.length > 1 && (
+              <button
+                className="terminal-tab-close"
+                title="Close tab"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCloseTab(t.id);
+                }}
+              >
+                <X size={11} />
+              </button>
+            )}
           </div>
         ))}
         <button className="terminal-tab-new" title="New tab" onClick={onNewTab}>
           <Plus size={13} />
         </button>
       </div>
-      )}
 
       {/* Terminal Top Bar with Admin Status & Command Helper */}
       <div
@@ -482,6 +554,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             onClick={() => {
               setShowHelperMenu(!showHelperMenu);
               setShowVarsMenu(false);
+              setShowConstMenu(false);
             }}
             title="Beginner Command Helper: Click to select common commands"
             style={{
@@ -494,7 +567,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               borderColor: 'var(--border-color)',
             }}
           >
-            <BookOpen size={12} style={{ color: 'var(--accent)' }} />
+            <BookOpen size={12} style={{ color: '#f59e0b' }} />
             <span>Commands 💡</span>
           </button>
 
@@ -504,6 +577,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             onClick={() => {
               setShowVarsMenu(!showVarsMenu);
               setShowHelperMenu(false);
+              setShowConstMenu(false);
             }}
             title="Global variables shared by the file panel and terminal commands"
             style={{
@@ -516,11 +590,67 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               borderColor: 'var(--border-color)',
             }}
           >
-            <Variable size={12} style={{ color: 'var(--accent)' }} />
+            <Variable size={12} style={{ color: '#06b6d4' }} />
             <span>Global Var</span>
           </button>
           )}
+
+          {/* CONST Global Var: fixed values; click one to type its value at the prompt */}
+          {constVars.length > 0 && (
+          <button
+            onClick={() => {
+              setShowConstMenu(!showConstMenu);
+              setShowVarsMenu(false);
+              setShowHelperMenu(false);
+            }}
+            title="CONST Global Var: fixed values you can type into the command line"
+            style={{
+              padding: '2px 7px',
+              fontSize: 11,
+              display: 'flex',
+              gap: 4,
+              alignItems: 'center',
+              background: showConstMenu ? 'var(--bg-selected)' : 'var(--bg-panel-secondary)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
+            <Lock size={12} style={{ color: '#a855f7' }} />
+            <span>CONST Global Var</span>
+          </button>
+          )}
         </div>
+
+        {showConstMenu && constVars.length > 0 && (
+          <>
+            <div
+              style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1040 }}
+              onClick={() => setShowConstMenu(false)}
+            />
+            <div className="terminal-vars-dropdown">
+              {constVars.map((v) => (
+                <div
+                  key={v.id}
+                  className="terminal-vars-row"
+                  style={{ cursor: 'pointer' }}
+                  title={v.description ? `${v.description} (click to type the value)` : 'Click to type the value'}
+                  onClick={() => {
+                    setShowConstMenu(false);
+                    onPickCommand(`{${v.name}}`).finally(() => xtermRef.current?.focus());
+                  }}
+                >
+                  <span className="terminal-vars-name">{`{${v.name}}`}</span>
+                  <div className="terminal-vars-value">
+                    <div>{v.value}</div>
+                    {v.description && <div style={{ color: 'var(--text-muted)' }}>{v.description}</div>}
+                  </div>
+                </div>
+              ))}
+              <div className="terminal-vars-hint">
+                Click one to type its value at the prompt. Add or change them in Settings, CONST Global Var.
+              </div>
+            </div>
+          </>
+        )}
 
         {showVarsMenu && setVarNames.length > 0 && (
           <>
@@ -616,7 +746,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
                       className="terminal-cmd-item"
                       onClick={() => handleSelectCommand(item)}
                     >
-                      <div className="terminal-cmd-name">{item.name}</div>
+                      <div className="terminal-cmd-name">
+                        {item.name}
+                        {item.hotkey && <span className="hotkey-badge">{item.hotkey}</span>}
+                      </div>
                       <div className="terminal-cmd-desc">{item.description}</div>
                       <div className="terminal-cmd-usage-preview">Usage: {item.usage}</div>
                     </div>
@@ -634,7 +767,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             style={{ padding: '2px 8px', fontSize: 11, display: 'flex', gap: 5, alignItems: 'center', borderColor: 'var(--border-light)' }}
           >
             <ShieldCheck size={14} style={{ color: '#22c55e' }} />
-            <span style={{ color: '#22c55e' }}>{username} (Admin)</span>
+            <span style={{ color: '#22c55e' }}>User: {username} (Admin)</span>
           </button>
         ) : (
           <button
@@ -643,7 +776,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             style={{ padding: '2px 8px', fontSize: 11, display: 'flex', gap: 5, alignItems: 'center' }}
           >
             <ShieldAlert size={14} style={{ color: '#ef4444' }} />
-            <span>{username}</span>
+            <span>User: {username}</span>
           </button>
         )}
       </div>
@@ -720,6 +853,26 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               <Pencil size={13} style={{ color: '#3b82f6' }} />
               <span>Rename Tab</span>
             </div>
+            <div className="context-menu-item" onClick={() => setColorOpen((o) => !o)}>
+              <Palette size={13} style={{ color: '#a855f7' }} />
+              <span>Change Tab Color</span>
+            </div>
+            {colorOpen && (
+              <div className="tab-color-grid">
+                {TAB_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className={`tab-color-swatch ${tabs.find((x) => x.id === tabCtx.id)?.color === c ? 'current' : ''}`}
+                    style={{ background: c }}
+                    title={c}
+                    onClick={() => {
+                      onRecolorTab(tabCtx.id, c);
+                      setTabCtx(null);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}

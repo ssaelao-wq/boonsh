@@ -740,6 +740,53 @@ pub async fn pick_file(title: String, filter: String) -> Result<Option<String>, 
     }
 }
 
+/// Shows the Windows "Save as" dialog and returns the chosen file, or None when it was cancelled. `filter` is in the
+/// dialog's own form ("JSON file (*.json)|*.json|CSV file (*.csv)|*.csv"); the first type is the default and an
+/// existing file asks before it is overwritten.
+#[tauri::command]
+pub async fn save_file_dialog(title: String, filter: String, default_name: String) -> Result<Option<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            use std::os::windows::process::CommandExt;
+            use std::process::Command;
+            let script = format!(
+                "[Console]::OutputEncoding=[Text.Encoding]::UTF8;Add-Type -AssemblyName System.Windows.Forms;                  $d=New-Object System.Windows.Forms.SaveFileDialog;$d.Title='{}';$d.Filter='{}';$d.FileName='{}';$d.OverwritePrompt=$true;                  $d.AddExtension=$true;$d.InitialDirectory=[Environment]::GetFolderPath('MyDocuments');                  $o=New-Object System.Windows.Forms.Form -Property @{{TopMost=$true}};                  if($d.ShowDialog($o) -eq 'OK'){{[Console]::Out.Write($d.FileName)}}",
+                title.replace('\'', "''"),
+                filter.replace('\'', "''"),
+                default_name.replace('\'', "''")
+            );
+            let out = Command::new("powershell")
+                .args(["-STA", "-NoProfile", "-NonInteractive", "-Command", &script])
+                .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+                .output()
+                .map_err(|e| format!("Could not open the file dialog: {}", e))?;
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            Ok(if path.is_empty() { None } else { Some(path) })
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (title, filter, default_name);
+        Ok(None)
+    }
+}
+
+/// Writes a text file (UTF-8) chosen by the user, for exports. Replaces an existing file (the dialog asked already).
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, content.as_bytes()).map_err(|e| format!("Could not save '{}': {}", path, e))
+}
+
+/// Reads a small text file for an import (max 5 MB): UTF-8, with or without a BOM; an older Thai file saved by Excel
+/// as TIS-620 is decoded too, like `read_subtitle`.
+#[tauri::command]
+pub fn read_import_file(path: String) -> Result<String, String> {
+    read_subtitle(path).map_err(|e| e.replace("subtitle file", "file"))
+}
+
 #[tauri::command]
 pub fn read_image_base64(path: String) -> Result<String, String> {
     let path_buf = PathBuf::from(&path);

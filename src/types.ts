@@ -50,4 +50,5 @@ export interface TermTab {
   name: string;
   cwd: string;
   level: 'admin' | 'normal'; // the login this tab's shell runs with
+  color: string; // the tab header color (one of TAB_COLORS)
 }

@@ -28,7 +28,8 @@ export const newVarId = () =>
 const cloneDefaults = (): GlobalVarDef[] => DEFAULT_GLOBAL_VARS.map((v) => ({ ...v }));
 
 // Returns an error message for a bad name, or '' when it is fine. `ignoreId` is the variable being edited.
-export function validateVarName(name: string, defs: GlobalVarDef[], ignoreId?: string): string {
+// `defs` holds every name in use (global and CONST variables share one set of {NAME}s).
+export function validateVarName(name: string, defs: { id: string; name: string }[], ignoreId?: string): string {
   const n = name.trim();
   if (!n) return 'Name is required.';
   if (n.length > MAX_NAME_LENGTH) return `Name can be at most ${MAX_NAME_LENGTH} characters.`;

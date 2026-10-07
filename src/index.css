@@ -1893,26 +1893,60 @@ textarea.search-floating:focus {
   color: var(--text-muted);
 }
 
-/* Settings: command group tabs (right panel) */
-.settings-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px 10px 0;
-}
-.settings-tab {
+/* Settings: command group dropdown and its New / Rename / Delete buttons (right panel) */
+.settings-group-bar {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  font-size: 11px;
-  background: var(--bg-panel-secondary);
-  border: 1px solid var(--border-color);
+  gap: 6px;
+  padding: 8px 10px 0;
 }
-.settings-tab.active {
-  background: var(--bg-selected);
-  border-color: var(--border-light);
+.settings-group-bar button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.settings-group-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.settings-group-bar .settings-icon-btn {
+  padding: 4px 6px;
+}
+.settings-icon-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border-light);
+  margin: 0 2px;
+}
+.settings-note {
+  margin: 0 12px 6px;
+  padding: 4px 8px;
+  font-size: 11px;
   color: var(--text-main);
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  word-break: break-all;
+}
+.settings-group-select {
+  flex: 1;
+  min-width: 140px;
+  max-width: 300px;
+  margin: 0;
+}
+.settings-group-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.settings-group-form .modal-input {
+  flex: 1;
+  max-width: 300px;
+  margin: 0;
 }
 
 /* Sort arrow + level number in the file panel's column headers */
@@ -2374,6 +2408,38 @@ textarea.search-floating:focus {
   color: var(--text-dim);
 }
 
+/* Command hot keys */
+.hotkey-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 5px;
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-main);
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+}
+.settings-hotkey-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.settings-hotkey-row .modal-input {
+  width: 160px;
+  margin: 0;
+}
+.settings-hotkey-prefix {
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-main);
+  padding: 4px 8px;
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+}
+
 /* Command line tabs (above the terminal header) */
 .terminal-tabs {
   display: flex;
@@ -2396,22 +2462,48 @@ textarea.search-floating:focus {
   max-width: 180px;
   padding: 0 6px 0 8px;
   font-size: 11px;
-  color: var(--text-muted);
-  background: var(--bg-panel-secondary);
-  border: 1px solid var(--border-color);
+  --tab-color: #2563eb;
+  color: var(--text-main);
+  /* each tab has its own color: a soft tint when idle, the full color when active */
+  background: color-mix(in srgb, var(--tab-color) 35%, var(--bg-panel-secondary));
+  border: 1px solid var(--tab-color);
   border-bottom: none;
   border-radius: 5px 5px 0 0;
   cursor: pointer;
   flex-shrink: 0;
+  user-select: none;
 }
 .terminal-tab:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--tab-color) 55%, var(--bg-panel-secondary));
 }
 .terminal-tab.active {
-  background: var(--bg-panel);
-  color: var(--text-main);
-  border-color: var(--border-light);
+  background: var(--tab-color);
+  color: #ffffff;
   height: 26px;
+  font-weight: 600;
+}
+.terminal-tab.active .terminal-tab-close {
+  color: #ffffff;
+}
+.tab-color-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 22px);
+  gap: 6px;
+  padding: 6px 12px 8px;
+}
+.tab-color-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.tab-color-swatch.current {
+  border-color: var(--text-main);
+}
+.tab-color-swatch:hover {
+  transform: scale(1.12);
 }
 .terminal-tab-name {
   overflow: hidden;

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark, Info, BookText } from 'lucide-react';
-import { CommandGroup, CommandItem, GroupIcon, newCommandId } from '../commands';
+import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark, Info, BookText, Lock, FolderPlus, Download, Upload } from 'lucide-react';
+import { CommandGroup, CommandItem, GroupIcon, newCommandId, validateGroupName, MAX_GROUP_NAME } from '../commands';
+import { ConstVar, newConstId } from '../constVars';
+import { validateHotkey, availableKeys, HOTKEY_PREFIX } from '../hotkey';
+import { toJson, toCsv, parseImport, mergeImport, importMessage } from '../commandsIo';
 import { GlobalVarDef, VarTakes, newVarId, validateVarName, MAX_NAME_LENGTH } from '../globalVars';
 import { PathVars } from '../pathVars';
 import { invoke } from '@tauri-apps/api/core';
@@ -22,6 +25,8 @@ interface SettingsPanelProps {
   pathVars: PathVars;
   onGlobalVarsChange: (defs: GlobalVarDef[]) => void;
   onGlobalVarsReset: () => void;
+  constVars: ConstVar[];
+  onConstVarsChange: (defs: ConstVar[]) => void;
   initialSection: Section;
   colPrefs: ColumnPrefs;
   onColPrefsChange: (prefs: ColumnPrefs) => void;
@@ -36,13 +41,21 @@ interface SettingsPanelProps {
   onQaReset: () => void;
 }
 
-type Section = 'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess' | 'manual' | 'about';
+type Section = 'commands' | 'vars' | 'consts' | 'columns' | 'frequent' | 'quickaccess' | 'manual' | 'about';
 
 interface VarDraft {
   name: string;
   takes: VarTakes;
   description: string;
 }
+
+interface ConstDraft {
+  name: string;
+  value: string;
+  description: string;
+}
+
+type ConstEditState = { mode: 'add'; draft: ConstDraft } | { mode: 'edit'; id: string; draft: ConstDraft };
 
 type VarEditState = { mode: 'add'; draft: VarDraft } | { mode: 'edit'; id: string; draft: VarDraft };
 
@@ -52,6 +65,7 @@ interface Draft {
   description: string;
   usage: string;
   category: string;
+  hotkey: string;
 }
 
 type EditState = { mode: 'add'; draft: Draft } | { mode: 'edit'; id: string; draft: Draft };
@@ -65,6 +79,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   pathVars,
   onGlobalVarsChange,
   onGlobalVarsReset,
+  constVars,
+  onConstVarsChange,
   initialSection,
   colPrefs,
   onColPrefsChange,
@@ -91,6 +107,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [section, setSection] = useState<Section>(initialSection);
   const [varEditing, setVarEditing] = useState<VarEditState | null>(null);
   const [varError, setVarError] = useState<string>('');
+  const [constEditing, setConstEditing] = useState<ConstEditState | null>(null);
+  const [constError, setConstError] = useState<string>('');
+  // Naming a new command group, or renaming a custom one
+  const [groupEditing, setGroupEditing] = useState<{ mode: 'add' | 'rename'; draft: string } | null>(null);
+  const [groupError, setGroupError] = useState<string>('');
+  const [groupNote, setGroupNote] = useState<string>(''); // result of an import / export
   const [activeCategory, setActiveCategory] = useState<string>(groups[0]?.category ?? '');
   const [editing, setEditing] = useState<EditState | null>(null);
   const [error, setError] = useState<string>('');
@@ -102,7 +124,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
-      if (varEditing) {
+      if (constEditing) {
+        setConstEditing(null);
+        setConstError('');
+      } else if (groupEditing) {
+        setGroupEditing(null);
+        setGroupError('');
+      } else if (varEditing) {
         setVarEditing(null);
         setVarError('');
       } else if (editing) {
@@ -114,19 +142,102 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing, varEditing, onClose]);
+  }, [editing, varEditing, constEditing, groupEditing, onClose]);
 
   const selectGroup = (category: string) => {
     setActiveCategory(category);
     setEditing(null);
     setError('');
+    setGroupEditing(null);
+    setGroupError('');
+    setGroupNote('');
+  };
+
+  const handleGroupSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!groupEditing) return;
+    const name = groupEditing.draft.trim();
+    const renaming = groupEditing.mode === 'rename';
+    const err = validateGroupName(name, groups, renaming ? activeGroup.category : undefined);
+    if (err) {
+      setGroupError(err);
+      return;
+    }
+    if (renaming) {
+      onChange(groups.map((g) => (g.category === activeGroup.category ? { ...g, category: name } : g)));
+    } else {
+      onChange([...groups, { category: name, icon: 'folder', custom: true, items: [] }]);
+    }
+    setActiveCategory(name);
+    setGroupEditing(null);
+    setGroupError('');
+  };
+
+  // Export the selected group's commands to a .json or .csv file (the Save dialog's file type decides)
+  const handleExport = async () => {
+    setGroupError('');
+    setGroupNote('');
+    if (activeGroup.items.length === 0) {
+      setGroupError('This group has no commands to export.');
+      return;
+    }
+    try {
+      const safe = activeGroup.category.replace(/[\\/:*?"<>|]+/g, '_');
+      const path = await invoke<string | null>('save_file_dialog', {
+        title: `Export the commands of "${activeGroup.category}"`,
+        filter: 'JSON file (*.json)|*.json|CSV file for Excel (*.csv)|*.csv',
+        defaultName: `${safe} commands`,
+      });
+      if (!path) return;
+      const csv = path.toLowerCase().endsWith('.csv');
+      await invoke('write_text_file', { path, content: csv ? toCsv(activeGroup.items) : toJson(activeGroup.category, activeGroup.items) });
+      const n = activeGroup.items.length;
+      setGroupNote(`Exported ${n} command${n === 1 ? '' : 's'} to ${path}`);
+    } catch (err) {
+      setGroupError(String(err));
+    }
+  };
+
+  // Import commands from a .json or .csv file into the selected group (duplicates are skipped)
+  const handleImport = async () => {
+    setGroupError('');
+    setGroupNote('');
+    try {
+      const path = await invoke<string | null>('pick_file', {
+        title: `Import commands into "${activeGroup.category}"`,
+        filter: 'Commands (*.json;*.csv)|*.json;*.csv|All files (*.*)|*.*',
+      });
+      if (!path) return;
+      const text = await invoke<string>('read_import_file', { path });
+      const incoming = parseImport(text, path);
+      const used = new Set(groups.flatMap((g) => g.items).map((i) => i.hotkey).filter((h): h is string => !!h));
+      const result = mergeImport(activeGroup.items, incoming, used, newCommandId);
+      if (result.added > 0) {
+        onChange(groups.map((g) => (g.category === activeGroup.category ? { ...g, items: result.items } : g)));
+      }
+      setGroupNote(importMessage(result));
+    } catch (err) {
+      setGroupError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleGroupDelete = () => {
+    if (!activeGroup.custom) return;
+    const n = activeGroup.items.length;
+    const what = n
+      ? `the group "${activeGroup.category}" and its ${n} command${n === 1 ? '' : 's'}`
+      : `the group "${activeGroup.category}"`;
+    if (!confirm(`Delete ${what}?`)) return;
+    onChange(groups.filter((g) => g.category !== activeGroup.category));
+    setActiveCategory(groups[0]?.category ?? '');
+    setEditing(null);
   };
 
   const startAdd = () => {
     setError('');
     setEditing({
       mode: 'add',
-      draft: { name: '', insertText: '', description: '', usage: '', category: activeGroup.category },
+      draft: { name: '', insertText: '', description: '', usage: '', category: activeGroup.category, hotkey: '' },
     });
   };
 
@@ -141,6 +252,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         description: item.description,
         usage: item.usage,
         category: activeGroup.category,
+        hotkey: item.hotkey ?? '',
       },
     });
   };
@@ -163,6 +275,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       return;
     }
 
+    const hotkeyError = validateHotkey(d.hotkey, groups, editing.mode === 'edit' ? editing.id : undefined);
+    if (hotkeyError) {
+      setError(hotkeyError);
+      return;
+    }
+
     const item: CommandItem = {
       id: editing.mode === 'edit' ? editing.id : newCommandId(),
       name: d.name.trim(),
@@ -170,6 +288,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       insertText: d.insertText.replace(/^\s+/, ''),
       description: d.description.trim(),
       usage: d.usage.trim(),
+      hotkey: d.hotkey || undefined,
     };
 
     const next = groups.map((g) => {
@@ -241,6 +360,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       onColPrefsReset();
       return;
     }
+    if (section === 'consts') return; // CONST variables have no reset: they stay until deleted
     if (section === 'vars') {
       if (!confirm('Reset the global variables to {SELEC} and {DEST}? Your own variables and their values will be lost.')) return;
       setVarEditing(null);
@@ -248,7 +368,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       onGlobalVarsReset();
       return;
     }
-    if (!confirm('Reset all commands to the defaults? Your added and edited commands will be lost.')) return;
+    if (!confirm('Reset all commands to the defaults? Your added and edited commands, and the groups you made, will be lost.')) return;
     setEditing(null);
     setError('');
     onReset();
@@ -261,6 +381,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     setError('');
     setVarEditing(null);
     setVarError('');
+    setConstEditing(null);
+    setConstError('');
+    setGroupEditing(null);
+    setGroupError('');
   };
 
   const startVarAdd = () => {
@@ -282,7 +406,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     e.preventDefault();
     if (!varEditing) return;
     const d = varEditing.draft;
-    const err = validateVarName(d.name, globalVars, varEditing.mode === 'edit' ? varEditing.id : undefined);
+    const err = validateVarName(d.name, [...globalVars, ...constVars], varEditing.mode === 'edit' ? varEditing.id : undefined);
     if (err) {
       setVarError(err);
       return;
@@ -305,6 +429,113 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     onGlobalVarsChange(globalVars.filter((x) => x.id !== v.id));
     if (varEditing?.mode === 'edit' && varEditing.id === v.id) setVarEditing(null);
   };
+
+  // ---- CONST variables ----
+  const startConstAdd = () => {
+    setConstError('');
+    setConstEditing({ mode: 'add', draft: { name: '', value: '', description: '' } });
+  };
+
+  const startConstEdit = (v: ConstVar) => {
+    setConstError('');
+    setConstEditing({ mode: 'edit', id: v.id, draft: { name: v.name, value: v.value, description: v.description } });
+  };
+
+  const updateConstDraft = (field: keyof ConstDraft, value: string) => {
+    if (!constEditing) return;
+    setConstEditing({ ...constEditing, draft: { ...constEditing.draft, [field]: value } });
+  };
+
+  const handleConstSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!constEditing) return;
+    const d = constEditing.draft;
+    const err = validateVarName(
+      d.name,
+      [...globalVars, ...constVars],
+      constEditing.mode === 'edit' ? constEditing.id : undefined
+    );
+    if (err) {
+      setConstError(err);
+      return;
+    }
+    if (!d.value.trim()) {
+      setConstError('Value is required.');
+      return;
+    }
+    const def: ConstVar = {
+      id: constEditing.mode === 'edit' ? constEditing.id : newConstId(),
+      name: d.name.trim().toUpperCase(),
+      value: d.value.trim(),
+      description: d.description.trim(),
+    };
+    onConstVarsChange(
+      constEditing.mode === 'edit' ? constVars.map((v) => (v.id === def.id ? def : v)) : [...constVars, def]
+    );
+    setConstEditing(null);
+    setConstError('');
+  };
+
+  const handleConstDelete = (v: ConstVar) => {
+    if (!confirm(`Delete the constant {${v.name}} (${v.value})? Commands that use it will keep the text {${v.name}} unchanged.`)) return;
+    onConstVarsChange(constVars.filter((x) => x.id !== v.id));
+    if (constEditing?.mode === 'edit' && constEditing.id === v.id) setConstEditing(null);
+  };
+
+  const renderConstForm = (draft: ConstDraft, mode: 'add' | 'edit') => (
+    <form className="settings-cmd-form" onSubmit={handleConstSave}>
+      <div className="settings-form-title">{mode === 'add' ? 'New CONST variable' : 'Edit CONST variable'}</div>
+
+      <label className="modal-label">Name (written as {'{NAME}'} in commands)</label>
+      <input
+        className="modal-input settings-mono"
+        value={draft.name}
+        maxLength={MAX_NAME_LENGTH}
+        onChange={(e) => updateConstDraft('name', e.target.value)}
+        placeholder="e.g. IP"
+        autoFocus
+      />
+
+      <label className="modal-label">Value (typed in place of the name)</label>
+      <input
+        className="modal-input settings-mono"
+        value={draft.value}
+        onChange={(e) => updateConstDraft('value', e.target.value)}
+        placeholder="e.g. 202.283.242.97"
+      />
+
+      <label className="modal-label">Description</label>
+      <input
+        className="modal-input"
+        value={draft.description}
+        onChange={(e) => updateConstDraft('description', e.target.value)}
+        placeholder="e.g. This is the IP of XYZ server"
+      />
+
+      {mode === 'edit' && (
+        <div className="settings-empty" style={{ padding: '4px 0' }}>
+          Renaming also updates the old name in your commands.
+        </div>
+      )}
+
+      {constError && <div className="settings-error">{constError}</div>}
+
+      <div className="modal-footer">
+        <button
+          type="button"
+          onClick={() => {
+            setConstEditing(null);
+            setConstError('');
+          }}
+        >
+          Cancel
+        </button>
+        <button type="submit" className="active">
+          {mode === 'add' ? 'Add constant' : 'Save changes'}
+        </button>
+      </div>
+    </form>
+  );
 
   const renderVarForm = (draft: VarDraft, mode: 'add' | 'edit') => (
     <form className="settings-cmd-form" onSubmit={handleVarSave}>
@@ -400,6 +631,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         placeholder='e.g. ren "oldname.txt" "newname.txt"'
       />
 
+      <label className="modal-label">Hot key (optional): types this command at the prompt while the command line is active</label>
+      <div className="settings-hotkey-row">
+        <span className="settings-hotkey-prefix">Ctrl + Alt +</span>
+        <select
+          className="modal-input settings-mono"
+          value={draft.hotkey.startsWith(HOTKEY_PREFIX) ? draft.hotkey.slice(HOTKEY_PREFIX.length) : ''}
+          onChange={(e) => updateDraft('hotkey', e.target.value ? HOTKEY_PREFIX + e.target.value : '')}
+        >
+          <option value="">(no hot key)</option>
+          {availableKeys(groups, editing?.mode === 'edit' ? editing.id : undefined).map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <label className="modal-label">Group</label>
       <select
         className="modal-input"
@@ -439,7 +687,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Settings size={14} />
             <span>Settings</span>
-            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : section === 'manual' ? 'Manual' : section === 'about' ? 'About' : 'Commands'}</span>
+            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'consts' ? 'CONST Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : section === 'manual' ? 'Manual' : section === 'about' ? 'About' : 'Commands'}</span>
           </div>
           <button onClick={onClose} title="Close (Esc)" style={{ padding: 2 }}>
             <X size={14} />
@@ -451,6 +699,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <>
               These commands appear in the terminal's <b>Commands 💡</b> menu. Pick a group, then add, edit or delete its
               commands. Use {'{SELEC}'}, {'{DEST}'} or your own variables in a command. Changes are saved automatically.
+            </>
+          ) : section === 'consts' ? (
+            <>
+              A <b>CONST Global Var</b> is a name with a fixed value, for example <b>IP</b> = 202.283.242.97. Write{' '}
+              {'{IP}'} in a command and the value is typed in its place. Unlike the Global Var section, the values are
+              saved and stay until you delete them. Changes are saved automatically.
             </>
           ) : section === 'manual' ? (
             <>
@@ -493,7 +747,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               onClick={() => selectSection('commands')}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <BookOpen size={13} style={{ color: 'var(--text-muted)' }} />
+                <BookOpen size={13} style={{ color: '#f59e0b' }} />
                 <span>Commands</span>
               </div>
               <span className="settings-count">{groups.reduce((n, g) => n + g.items.length, 0)}</span>
@@ -503,10 +757,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               onClick={() => selectSection('vars')}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Variable size={13} style={{ color: 'var(--text-muted)' }} />
+                <Variable size={13} style={{ color: '#06b6d4' }} />
                 <span>Global Var</span>
               </div>
               <span className="settings-count">{globalVars.length}</span>
+            </div>
+            <div
+              className={`terminal-cmd-cat-item ${section === 'consts' ? 'active' : ''}`}
+              onClick={() => selectSection('consts')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Lock size={13} style={{ color: '#a855f7' }} />
+                <span>CONST Global Var</span>
+              </div>
+              <span className="settings-count">{constVars.length}</span>
             </div>
             <div
               className={`terminal-cmd-cat-item ${section === 'columns' ? 'active' : ''}`}
@@ -834,20 +1098,97 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           ) : section === 'commands' ? (
             <div className="settings-commands">
-              {/* Command groups as tabs */}
-              <div className="settings-tabs">
-                {groups.map((g) => (
-                  <button
-                    key={g.category}
-                    className={`settings-tab ${g.category === activeGroup.category ? 'active' : ''}`}
-                    onClick={() => selectGroup(g.category)}
-                  >
-                    <GroupIcon icon={g.icon} />
-                    <span>{g.category}</span>
-                    <span className="settings-count">{g.items.length}</span>
-                  </button>
-                ))}
+              {/* Command groups: a dropdown, plus New / Rename / Delete (Rename and Delete for the groups the user made) */}
+              <div className="settings-group-bar">
+                <label className="modal-label" style={{ margin: 0 }}>Group</label>
+                {groupEditing ? (
+                  <form className="settings-group-form" onSubmit={handleGroupSave}>
+                    <input
+                      className="modal-input"
+                      value={groupEditing.draft}
+                      maxLength={MAX_GROUP_NAME}
+                      onChange={(e) => setGroupEditing({ ...groupEditing, draft: e.target.value })}
+                      placeholder="e.g. Cisco Network"
+                      autoFocus
+                    />
+                    <button type="submit" className="active">
+                      {groupEditing.mode === 'add' ? 'Add group' : 'Rename'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGroupEditing(null);
+                        setGroupError('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <select
+                      className="modal-input settings-group-select"
+                      value={activeGroup.category}
+                      onChange={(e) => selectGroup(e.target.value)}
+                    >
+                      {groups.map((g) => (
+                        <option key={g.category} value={g.category}>
+                          {g.category} ({g.items.length})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="settings-icon-btn"
+                      onClick={() => {
+                        setGroupError('');
+                        setGroupNote('');
+                        setGroupEditing({ mode: 'add', draft: '' });
+                      }}
+                      title="New group: make a group such as Cisco Network"
+                    >
+                      <FolderPlus size={14} style={{ color: '#22c55e' }} />
+                    </button>
+                    <button
+                      className="settings-icon-btn"
+                      disabled={!activeGroup.custom}
+                      onClick={() => {
+                        setGroupError('');
+                        setGroupNote('');
+                        setGroupEditing({ mode: 'rename', draft: activeGroup.category });
+                      }}
+                      title={activeGroup.custom ? 'Rename this group' : 'Rename: the built-in groups cannot be renamed'}
+                    >
+                      <Pencil size={14} style={{ color: '#3b82f6' }} />
+                    </button>
+                    <button
+                      className="settings-icon-btn"
+                      disabled={!activeGroup.custom}
+                      onClick={handleGroupDelete}
+                      title={activeGroup.custom ? 'Delete this group and its commands' : 'Delete: the built-in groups cannot be deleted'}
+                    >
+                      <Trash2 size={14} style={{ color: '#ef4444' }} />
+                    </button>
+                    <span className="settings-icon-sep" />
+                    <button
+                      className="settings-icon-btn"
+                      onClick={handleImport}
+                      title="Import: add commands from a .json or .csv file to this group"
+                    >
+                      <Download size={14} style={{ color: '#06b6d4' }} />
+                    </button>
+                    <button
+                      className="settings-icon-btn"
+                      disabled={activeGroup.items.length === 0}
+                      onClick={handleExport}
+                      title="Export: save this group's commands to a .json or .csv file"
+                    >
+                      <Upload size={14} style={{ color: '#f59e0b' }} />
+                    </button>
+                  </>
+                )}
               </div>
+              {groupError && <div className="settings-error" style={{ margin: '0 12px 6px' }}>{groupError}</div>}
+              {groupNote && <div className="settings-note">{groupNote}</div>}
 
               <div className="settings-commands-toolbar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -878,6 +1219,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         <div className="terminal-cmd-name">{item.name}</div>
                         {item.description && <div className="terminal-cmd-desc">{item.description}</div>}
                         {item.usage && <div className="terminal-cmd-usage-preview">Usage: {item.usage}</div>}
+                        {item.hotkey && <div className="terminal-cmd-usage-preview">Hot key: <span className="hotkey-badge">{item.hotkey}</span></div>}
                       </div>
                       <div className="settings-cmd-actions">
                         <button onClick={() => startEdit(item)} title="Edit command">
@@ -892,11 +1234,55 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 )}
               </div>
             </div>
+          ) : section === 'consts' ? (
+            <div className="settings-commands">
+              <div className="settings-commands-toolbar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Lock size={13} style={{ color: '#a855f7' }} />
+                  <span>CONST Global Var</span>
+                </div>
+                <button onClick={startConstAdd} disabled={constEditing?.mode === 'add'} title="Add a constant">
+                  <Plus size={13} />
+                  <span>Add constant</span>
+                </button>
+              </div>
+
+              <div className="settings-commands-list">
+                {constEditing?.mode === 'add' && renderConstForm(constEditing.draft, 'add')}
+
+                {constVars.length === 0 && constEditing?.mode !== 'add' && (
+                  <div className="settings-empty">
+                    No constants yet. Click <b>Add constant</b> to create one, for example IP = 202.283.242.97.
+                  </div>
+                )}
+
+                {constVars.map((v) =>
+                  constEditing?.mode === 'edit' && constEditing.id === v.id ? (
+                    <React.Fragment key={v.id}>{renderConstForm(constEditing.draft, 'edit')}</React.Fragment>
+                  ) : (
+                    <div key={v.id} className="settings-cmd-row" onDoubleClick={() => startConstEdit(v)}>
+                      <div className="settings-cmd-info">
+                        <div className="terminal-cmd-name settings-mono">{`{${v.name}} = ${v.value}`}</div>
+                        {v.description && <div className="terminal-cmd-desc">{v.description}</div>}
+                      </div>
+                      <div className="settings-cmd-actions">
+                        <button onClick={() => startConstEdit(v)} title="Edit or rename constant">
+                          <Pencil size={13} />
+                        </button>
+                        <button onClick={() => handleConstDelete(v)} title="Delete constant">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
           ) : (
             <div className="settings-commands">
               <div className="settings-commands-toolbar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Variable size={13} style={{ color: 'var(--text-muted)' }} />
+                  <Variable size={13} style={{ color: '#06b6d4' }} />
                   <span>Global Var</span>
                 </div>
                 <button onClick={startVarAdd} disabled={varEditing?.mode === 'add'} title="Add a global variable">
@@ -948,7 +1334,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="settings-footer">
-          {section === 'about' || section === 'manual' ? <span /> : <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
+          {section === 'about' || section === 'manual' || section === 'consts' ? <span /> : <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
             <RotateCcw size={13} />
             <span>{section === 'vars' ? 'Reset variables' : section === 'columns' ? 'Reset columns' : section === 'frequent' ? 'Reset settings' : section === 'quickaccess' ? 'Reset Quick Access' : 'Reset commands'}</span>
           </button>}
