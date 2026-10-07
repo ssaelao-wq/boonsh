@@ -64,7 +64,7 @@ pub fn default_start_dir() -> String {
 
 /// Quote a path for use as a single Windows command-line argument.
 /// A trailing backslash would escape the closing quote (`"C:\"`), so append `.`.
-fn quote_path_arg(path: &str) -> String {
+pub(crate) fn quote_path_arg(path: &str) -> String {
     if path.ends_with('\\') {
         format!("\"{}.\"", path)
     } else {
@@ -1359,6 +1359,48 @@ mod win_launcher {
 
             res != 0
         }
+    }
+}
+
+/// Starts this exe again as a command line helper (`args` = `--pty-helper ...`, see pty.rs) at the wanted
+/// elevation level, without touching the running app. An Administrator helper goes through PowerShell's
+/// `Start-Process -Verb RunAs` (the child is returned so a refused permission prompt is noticed at once); a
+/// normal-user helper is started with the Explorer shell's token, which only makes sense from an elevated app.
+pub(crate) fn launch_helper(admin: bool, args: &str) -> Result<Option<std::process::Child>, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dir = exe
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "C:\\".to_string());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        if admin {
+            win_launcher::allow_all_set_foreground();
+            let script = format!(
+                "$ErrorActionPreference='Stop'; Start-Process '{}' -Verb RunAs -WindowStyle Hidden -WorkingDirectory '{}' -ArgumentList '{}'",
+                exe.to_string_lossy().replace("'", "''"),
+                dir.replace("'", "''"),
+                args.replace("'", "''")
+            );
+            let child = std::process::Command::new("powershell")
+                .args(["-WindowStyle", "Hidden", "-NoProfile", "-NonInteractive", "-Command", &script])
+                .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+                .spawn()
+                .map_err(|e| format!("Failed to start the Administrator command line: {}", e))?;
+            return Ok(Some(child));
+        }
+        if win_launcher::launch_as_normal_user(&exe.to_string_lossy(), &dir, args) {
+            return Ok(None);
+        }
+        return Err("Could not start a normal-user command line (the Windows shell was not found).".to_string());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (admin, args, dir);
+        Err("Not supported on this system".to_string())
     }
 }
 

@@ -6,6 +6,16 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.9.5 (2026-10-07)
+
+### Changed
+
+- **The Admin / normal user button now changes only the active tab.** Before, it restarted the whole app, which closed every tab. Now the other tabs keep running as they are. An Administrator tab runs in a small separate helper process that Windows asks you to approve (one permission prompt per tab you switch to Administrator); the button shows the login of the active tab, and Administrator tabs have a green shield icon. If the permission prompt is refused the tab goes back to the app's own login. Switching restarts that tab's shell (it asks first when a program is running in it).
+
+### Fixed
+
+- Typing `exit` in a command line now closes its tab (Windows did not report that the shell had ended, so the tab used to stay open and dead).
+
 ## 0.9.4 (2026-10-07)
 
 ### Changed

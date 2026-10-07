@@ -10,6 +10,17 @@ use file_props::*;
 use fs_ops::*;
 use pty::*;
 
+/// `boonsh.exe --pty-helper ...` is a command line helper process (see pty.rs), not the app: it runs the helper
+/// and returns its exit code. `None` for a normal start.
+pub fn try_run_helper() -> Option<i32> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--pty-helper") {
+        Some(pty::run_helper(&args[2..]))
+    } else {
+        None
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()

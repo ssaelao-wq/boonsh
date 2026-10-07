@@ -35,6 +35,8 @@ interface TerminalPanelProps {
   onCloseAllTabs: () => void;
   onRenameTab: (id: string, name: string) => void;
   onShellExit: (id: string) => void; // the shell of a tab ended (typed `exit`)
+  onSwitchLevel: () => void; // the Admin / normal user button: change the login of the active tab
+  onSpawnFailed: (id: string, message: string) => void; // a tab's shell could not start
   onShellCwdChange: (id: string, path: string) => void;
   onPromptState: (id: string, atPrompt: boolean) => void;
   commandGroups: CommandGroup[];
@@ -83,6 +85,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onCloseAllTabs,
   onRenameTab,
   onShellExit,
+  onSwitchLevel,
+  onSpawnFailed,
   onShellCwdChange,
   onPromptState,
   commandGroups,
@@ -103,7 +107,6 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onPromptStateRef.current = onPromptState;
   const onUserInputRef = useRef(onUserInput);
   onUserInputRef.current = onUserInput;
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [username, setUsername] = useState<string>('User');
 
   const [termMenu, setTermMenu] = useState<{ x: number; y: number; hasSel: boolean } | null>(null);
@@ -135,6 +138,9 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     setRenaming(null);
   };
 
+  // The Admin / normal user button shows the login of the active tab
+  const isAdmin = tabs.find((t) => t.id === activeTabId)?.level === 'admin';
+
   const [showHelperMenu, setShowHelperMenu] = useState<boolean>(false);
   const [showVarsMenu, setShowVarsMenu] = useState<boolean>(false);
   const [activeCategory, setActiveCategory] = useState<string>('Basic Commands');
@@ -150,10 +156,6 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const activeCatObj = commandGroups.find((c) => c.category === activeCategory) || commandGroups[0];
 
   useEffect(() => {
-    invoke<boolean>('is_admin')
-      .then((res) => setIsAdmin(res))
-      .catch(() => {});
-
     invoke<string>('get_username')
       .then((name) => setUsername(name))
       .catch(() => {});
@@ -167,6 +169,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   themeRef.current = theme;
   const onShellExitRef = useRef(onShellExit);
   onShellExitRef.current = onShellExit;
+  const onSpawnFailedRef = useRef(onSpawnFailed);
+  onSpawnFailedRef.current = onSpawnFailed;
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
 
@@ -243,6 +247,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       cols: term.cols,
       rows: term.rows,
       cwd: tab.cwd || null,
+      level: tab.level,
     }).catch((err) => console.error('PTY Spawn Error:', err));
   };
 
@@ -255,6 +260,9 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       s.term.scrollToBottom();
     });
     const unlistenExit = listen<{ id: string }>('pty-exit', (event) => onShellExitRef.current(event.payload.id));
+    const unlistenFailed = listen<{ id: string; message: string }>('pty-failed', (event) =>
+      onSpawnFailedRef.current(event.payload.id, event.payload.message)
+    );
 
     // ResizeObserver to refit terminal canvas whenever container dimensions change
     const resizeObserver = new ResizeObserver(() => refit());
@@ -270,6 +278,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       window.removeEventListener('resize', refit);
       unlistenOut.then((u) => u());
       unlistenExit.then((u) => u());
+      unlistenFailed.then((u) => u());
       sessionsRef.current.forEach((s) => {
         s.osc.dispose();
         s.term.dispose();
@@ -400,7 +409,11 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             }}
             title={t.name}
           >
-            <TermIcon size={12} style={{ color: '#22c55e', flexShrink: 0 }} />
+            {t.level === 'admin' ? (
+              <ShieldCheck size={12} style={{ color: '#22c55e', flexShrink: 0 }} />
+            ) : (
+              <TermIcon size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            )}
             {renaming && renaming.id === t.id ? (
               <input
                 className="terminal-tab-input"
@@ -616,11 +629,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
         {isAdmin ? (
           <button
-            onClick={() => {
-              invoke('relaunch_as_normal', { currentPath })
-                .catch((err) => alert(`Failed to switch to Normal User: ${err}`));
-            }}
-            title="Running as Administrator. Click to switch back to Normal User mode"
+            onClick={onSwitchLevel}
+            title="This tab runs as Administrator. Click to switch this tab to Normal User mode (only this tab changes)"
             style={{ padding: '2px 8px', fontSize: 11, display: 'flex', gap: 5, alignItems: 'center', borderColor: 'var(--border-light)' }}
           >
             <ShieldCheck size={14} style={{ color: '#22c55e' }} />
@@ -628,11 +638,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           </button>
         ) : (
           <button
-            onClick={() => {
-              invoke('relaunch_as_admin', { currentPath })
-                .catch((err) => alert(`Failed to elevate to Administrator: ${err}`));
-            }}
-            title="Normal User Mode. Click to elevate to Administrator"
+            onClick={onSwitchLevel}
+            title="This tab runs as a normal user. Click to switch this tab to Administrator (only this tab changes; Windows asks for permission)"
             style={{ padding: '2px 8px', fontSize: 11, display: 'flex', gap: 5, alignItems: 'center' }}
           >
             <ShieldAlert size={14} style={{ color: '#ef4444' }} />

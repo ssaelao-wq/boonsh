@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.4**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.5**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -56,7 +56,7 @@ This document describes everything boonsh can do, how to use it, and where its l
 
 - **Normal start:** opens in your **Downloads** folder (or the current folder if Downloads doesn't exist).
 - **Start in a chosen folder:** run `boonsh.exe "C:\some\folder"`. Both the file panel and the terminal open there.
-- **Administrator mode:** the button at the right of the terminal bar shows your user name. Click it to relaunch boonsh as Administrator (Windows asks for permission). In admin mode the button is green and says `<name> (Admin)`, the small shield icon at the left of the bar turns green, and the prompt reads `admin >`. Click the button again to relaunch as a normal user. Either way the app **restarts** and reopens in the same folder, so unsaved terminal work is lost.
+- **Administrator mode (per tab):** the button at the right of the terminal bar shows the login of the **active tab**: your user name for a normal tab, a green `<name> (Admin)` for an Administrator tab. Click it to switch **that tab only** to the other login; the other tabs are not touched and boonsh does not restart. Switching to Administrator makes Windows ask for permission once (if you refuse, the tab goes back to a normal tab). The tab's shell is **restarted** in the same folder (it asks first when a program is running in it). An Administrator tab has a green shield icon on its tab, the small shield at the left of the bar turns green, and its prompt reads `admin >`. New tabs start with the login boonsh itself was started with, and the same works the other way round when boonsh was started as Administrator (a tab can be switched to a normal user). An Administrator tab runs in a small helper process; boonsh sends it your typing and shows its output, so only use it on a PC you trust.
 
 ## 3. Navigating
 

@@ -49,4 +49,5 @@ export interface TermTab {
   id: string;
   name: string;
   cwd: string;
+  level: 'admin' | 'normal'; // the login this tab's shell runs with
 }

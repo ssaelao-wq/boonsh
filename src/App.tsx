@@ -448,6 +448,7 @@ export function App() {
   const tabCounterRef = useRef(0);
   const userNameRef = useRef('User');
   const firstTabRef = useRef(false);
+  const appLevelRef = useRef<'admin' | 'normal'>('normal'); // the login boonsh itself runs with
   // Per tab: true while its shell sits at the prompt, false while a command or program (claude, vim, npm run dev
   // ...) is running. Keys sent to a running program would be typed into it, so a cd is held back until the
   // prompt returns.
@@ -478,7 +479,7 @@ export function App() {
   const newTab = () => {
     const id = `tab${++tabCounterRef.current}`;
     atPromptRef.current[id] = true;
-    updateTabs([...tabsRef.current, { id, name: userNameRef.current, cwd: currentPathRef.current }]);
+    updateTabs([...tabsRef.current, { id, name: userNameRef.current, cwd: currentPathRef.current, level: appLevelRef.current }]);
     pendingCmdRef.current = null;
     activate(id);
   };
@@ -534,6 +535,41 @@ export function App() {
     pendingCmdRef.current = null;
     newTab(); // there is always one command line
   };
+  // Give a tab a new shell with the other login: same place in the bar, same name and folder, new id (so the old
+  // shell is ended and a new one starts). Only this tab changes; the others keep running as they are.
+  const replaceTab = (oldId: string, level: 'admin' | 'normal') => {
+    const list = tabsRef.current;
+    if (!list.some((t) => t.id === oldId)) return;
+    const nid = `tab${++tabCounterRef.current}`;
+    delete atPromptRef.current[oldId];
+    delete heldCdRef.current[oldId];
+    atPromptRef.current[nid] = true;
+    updateTabs(list.map((t) => (t.id === oldId ? { ...t, id: nid, level } : t)));
+    if (activeTabIdRef.current === oldId) {
+      pendingCmdRef.current = null;
+      activate(nid);
+    }
+  };
+  const switchTabLevel = () => {
+    const id = activeTabIdRef.current;
+    const t = tabsRef.current.find((x) => x.id === id);
+    if (!id || !t) return;
+    if (
+      atPromptRef.current[id] === false &&
+      !window.confirm("Switching the login restarts this tab's command line and ends the program running in it. Continue?")
+    ) {
+      return;
+    }
+    replaceTab(id, t.level === 'admin' ? 'normal' : 'admin');
+  };
+  // A tab's shell could not start (the Windows permission prompt was refused ...): back to the app's own login
+  const spawnFailed = (id: string, message: string) => {
+    window.alert(message);
+    const t = tabsRef.current.find((x) => x.id === id);
+    if (!t) return;
+    if (t.level !== appLevelRef.current) replaceTab(id, appLevelRef.current);
+    else removeTab(id);
+  };
   const renameTab = (id: string, name: string) => {
     updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, name } : t)));
   };
@@ -542,12 +578,18 @@ export function App() {
   useEffect(() => {
     if (firstTabRef.current) return; // StrictMode runs effects twice in dev
     firstTabRef.current = true;
-    invoke<string>('get_username')
-      .then((n) => {
-        userNameRef.current = n;
-      })
-      .catch(() => {})
-      .finally(newTab);
+    Promise.all([
+      invoke<string>('get_username')
+        .then((n) => {
+          userNameRef.current = n;
+        })
+        .catch(() => {}),
+      invoke<boolean>('is_admin')
+        .then((a) => {
+          appLevelRef.current = a ? 'admin' : 'normal';
+        })
+        .catch(() => {}),
+    ]).finally(newTab);
   }, []);
 
   // Bi-directional navigation: Navigate GUI & send cd command to the active tab's PowerShell
@@ -1229,6 +1271,8 @@ export function App() {
             onCloseAllTabs={closeAllTabs}
             onRenameTab={renameTab}
             onShellExit={(id) => removeTab(id, true)}
+            onSwitchLevel={switchTabLevel}
+            onSpawnFailed={spawnFailed}
             onShellCwdChange={handleShellCwdChange}
             onPromptState={(id, atPrompt) => { atPromptRef.current[id] = atPrompt; }}
             onPickCommand={pickCommand}
