@@ -1,6 +1,6 @@
 [package]
 name = "boonsh"
-version = "0.9.5"
+version = "0.9.6"
 description = "boonsh - Standalone Hybrid PowerShell & File Manager"
 authors = ["Somboon L."]
 license = "MIT"

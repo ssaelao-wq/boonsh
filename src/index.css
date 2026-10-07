@@ -1084,6 +1084,21 @@ textarea.search-floating:focus {
   overflow-y: auto !important;
 }
 
+/* Every layer of the terminal follows the theme (xterm paints the viewport and the 16px spare row under the
+   prompt with its own background, which stayed black in light mode). Same colours as xtermTheme(). */
+.terminal-container,
+.terminal-container .xterm,
+.terminal-container .xterm-viewport,
+.terminal-container .xterm-screen {
+  background-color: #000000 !important;
+}
+.app-container.light-theme .terminal-container,
+.app-container.light-theme .terminal-container .xterm,
+.app-container.light-theme .terminal-container .xterm-viewport,
+.app-container.light-theme .terminal-container .xterm-screen {
+  background-color: #f4f4f5 !important;
+}
+
 /* 2-Step Terminal Command Helper Menu & Usage Banner */
 .terminal-cmd-dropdown {
   position: absolute;

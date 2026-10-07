@@ -6,6 +6,12 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.9.6 (2026-10-07)
+
+### Fixed
+
+- Light theme: the spare row under the last prompt line of the command line panel stayed black. Every layer of the terminal now follows the theme.
+
 ## 0.9.5 (2026-10-07)
 
 ### Changed
