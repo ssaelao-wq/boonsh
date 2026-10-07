@@ -6,6 +6,12 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.9.8 (2026-10-07)
+
+### Changed
+
+- Command line tabs: the tab names (and the x) are always white, in the dark and the light theme, and the idle tabs use a darker shade of their color so the white text stays easy to read.
+
 ## 0.9.7 (2026-10-07)
 
 ### Added

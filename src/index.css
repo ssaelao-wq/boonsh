@@ -2463,9 +2463,10 @@ textarea.search-floating:focus {
   padding: 0 6px 0 8px;
   font-size: 11px;
   --tab-color: #2563eb;
-  color: var(--text-main);
-  /* each tab has its own color: a soft tint when idle, the full color when active */
-  background: color-mix(in srgb, var(--tab-color) 35%, var(--bg-panel-secondary));
+  color: #ffffff;
+  /* each tab has its own color, with white text in both themes: a slightly darker shade when idle, the full color
+     when active (the dark mix keeps white readable even in the light theme) */
+  background: color-mix(in srgb, var(--tab-color) 62%, #18181b);
   border: 1px solid var(--tab-color);
   border-bottom: none;
   border-radius: 5px 5px 0 0;
@@ -2474,7 +2475,12 @@ textarea.search-floating:focus {
   user-select: none;
 }
 .terminal-tab:hover {
-  background: color-mix(in srgb, var(--tab-color) 55%, var(--bg-panel-secondary));
+  background: color-mix(in srgb, var(--tab-color) 82%, #18181b);
+}
+/* the light theme colors every span; the tab text stays white */
+.app-container .terminal-tab,
+.app-container .terminal-tab span {
+  color: #ffffff;
 }
 .terminal-tab.active {
   background: var(--tab-color);
@@ -2482,7 +2488,11 @@ textarea.search-floating:focus {
   height: 26px;
   font-weight: 600;
 }
-.terminal-tab.active .terminal-tab-close {
+.terminal-tab .terminal-tab-close {
+  color: #ffffff;
+}
+.terminal-tab .terminal-tab-close:hover {
+  background: rgba(0, 0, 0, 0.3);
   color: #ffffff;
 }
 .tab-color-grid {

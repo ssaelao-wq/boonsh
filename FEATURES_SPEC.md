@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.7**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.8**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -840,7 +840,7 @@ The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pws
   - There is **always at least one command line**. It opens when boonsh starts. The **tab bar is always shown**, also with one tab. Every tab is named after your user name; use **Rename Tab** to tell them apart.
   - **New tab:** the **+** at the end of the tab bar, or right-click the terminal header (the bar with the Commands button) and choose **New Tab**. The new tab opens in the folder the file panel shows and becomes the active tab.
   - **Close a tab:** the **x** on the tab (a lone tab has none), or right-click the tab and choose **Close Tab**. **Close All Tabs** is in the header's right-click menu (greyed out with one tab) and leaves one fresh tab. If a program is still running in the tab (boonsh knows between pressing Enter and the next prompt), boonsh asks before closing it. Typing `exit` in a tab closes that tab; closing the last tab (or `exit` in it) opens a fresh one.
-  - **Colors:** every tab header has a color, taken in turn from 10 predefined colors (blue, red, green, orange, purple, teal, pink, brown, indigo, cyan) so tabs next to each other look different. The active tab is drawn in the full color, the others in a softer tint. Right-click a tab and choose **Change Tab Color** (below Rename Tab) to see the 10 colors and pick one. Colors are not saved when you close boonsh.
+  - **Colors:** every tab header has a color, taken in turn from 10 predefined colors (blue, red, green, orange, purple, teal, pink, brown, indigo, cyan) so tabs next to each other look different. The tab names are **white in both the dark and the light theme**; the active tab is drawn in the full color and the others in a slightly darker shade of it. Right-click a tab and choose **Change Tab Color** (below Rename Tab) to see the 10 colors and pick one. Colors are not saved when you close boonsh.
   - **Reorder:** press a tab and drag it sideways; it swaps places with the tabs it passes. The order is not saved when you close boonsh.
   - **Rename:** right-click the tab, **Rename Tab**, type the name, press Enter (Esc cancels, an empty name is ignored). The name is not saved when you close boonsh.
   - **Tabs and the file panel:** the file panel follows the **active** tab. Click another tab and the file panel switches to the folder that tab's shell is in. Open a folder in the file panel and only the active tab gets the `cd`. A `cd` typed in a background tab does not move the file panel; it is remembered for when you switch to that tab.
