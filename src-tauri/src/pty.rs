@@ -1,35 +1,42 @@
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::thread;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::fs_ops::default_start_dir;
 
-pub struct PtyState {
-    pub writer: Arc<Mutex<Option<Box<dyn Write + Send>>>>,
-    pub pty_pair: Arc<Mutex<Option<portable_pty::PtyPair>>>,
+/// One terminal tab: its shell, the pipe into it and the pseudo console it runs in.
+pub struct Session {
+    writer: Box<dyn Write + Send>,
+    pair: portable_pty::PtyPair,
+    child: Box<dyn portable_pty::Child + Send + Sync>,
 }
 
-impl Default for PtyState {
-    fn default() -> Self {
-        Self {
-            writer: Arc::new(Mutex::new(None)),
-            pty_pair: Arc::new(Mutex::new(None)),
-        }
-    }
+/// All open terminal tabs, by the id the frontend gave them.
+#[derive(Default)]
+pub struct PtyState {
+    sessions: Mutex<HashMap<String, Session>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PtyOutputPayload {
+    pub id: String,
     pub data: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PtyExitPayload {
+    pub id: String,
 }
 
 #[tauri::command]
 pub fn pty_spawn(
     app: AppHandle,
     state: State<'_, PtyState>,
+    id: String,
     cols: u16,
     rows: u16,
     cwd: Option<String>,
@@ -78,7 +85,7 @@ pub fn pty_spawn(
     };
     cmd.cwd(initial_cwd);
 
-    let _child = pair
+    let child = pair
         .slave
         .spawn_command(cmd)
         .map_err(|e| format!("Failed to spawn shell '{}': {}", shell_cmd, e))?;
@@ -93,11 +100,11 @@ pub fn pty_spawn(
         .take_writer()
         .map_err(|e| format!("Failed to take PTY writer: {}", e))?;
 
-    *state.writer.lock().unwrap() = Some(writer);
-    *state.pty_pair.lock().unwrap() = Some(pair);
+    state.sessions.lock().unwrap().insert(id.clone(), Session { writer, pair, child });
 
     // Spawn background thread to stream PTY output to frontend via Tauri event
     let app_handle = app.clone();
+    let id = id.clone();
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
         let mut reader = reader;
@@ -106,23 +113,27 @@ pub fn pty_spawn(
                 Ok(0) => break, // EOF
                 Ok(n) => {
                     let s = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = app_handle.emit("pty-output", PtyOutputPayload { data: s });
+                    let _ = app_handle.emit("pty-output", PtyOutputPayload { id: id.clone(), data: s });
                 }
                 Err(_) => break,
             }
         }
+        // The shell ended (typed `exit`, or the tab was closed): the frontend closes the tab
+        let _ = app_handle.emit("pty-exit", PtyExitPayload { id });
     });
 
     Ok(shell_cmd.to_string())
 }
 
 #[tauri::command]
-pub fn pty_write(state: State<'_, PtyState>, data: String) -> Result<(), String> {
-    if let Some(ref mut writer) = *state.writer.lock().unwrap() {
-        writer
+pub fn pty_write(state: State<'_, PtyState>, id: String, data: String) -> Result<(), String> {
+    if let Some(session) = state.sessions.lock().unwrap().get_mut(&id) {
+        session
+            .writer
             .write_all(data.as_bytes())
             .map_err(|e| format!("Failed to write to PTY: {}", e))?;
-        writer
+        session
+            .writer
             .flush()
             .map_err(|e| format!("Failed to flush PTY writer: {}", e))?;
     }
@@ -130,9 +141,11 @@ pub fn pty_write(state: State<'_, PtyState>, data: String) -> Result<(), String>
 }
 
 #[tauri::command]
-pub fn pty_resize(state: State<'_, PtyState>, cols: u16, rows: u16) -> Result<(), String> {
-    if let Some(ref pair) = *state.pty_pair.lock().unwrap() {
-        pair.master
+pub fn pty_resize(state: State<'_, PtyState>, id: String, cols: u16, rows: u16) -> Result<(), String> {
+    if let Some(session) = state.sessions.lock().unwrap().get(&id) {
+        session
+            .pair
+            .master
             .resize(PtySize {
                 rows,
                 cols,
@@ -140,6 +153,16 @@ pub fn pty_resize(state: State<'_, PtyState>, cols: u16, rows: u16) -> Result<()
                 pixel_height: 0,
             })
             .map_err(|e| format!("Failed to resize PTY: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Ends a tab's shell (and anything running in it) and forgets the session.
+#[tauri::command]
+pub fn pty_close(state: State<'_, PtyState>, id: String) -> Result<(), String> {
+    let session = state.sessions.lock().unwrap().remove(&id);
+    if let Some(mut session) = session {
+        let _ = session.child.kill();
     }
     Ok(())
 }

@@ -14,16 +14,29 @@ import {
   Scissors,
   Copy,
   ClipboardPaste,
+  Plus,
+  Pencil,
 } from 'lucide-react';
 import { useMenuPosition } from '../useMenuPosition';
 import { CommandGroup, CommandItem, GroupIcon } from '../commands';
 import { PathVars, PathVarName, displayPath } from '../pathVars';
 import { GlobalVarDef } from '../globalVars';
+import { TermTab } from '../types';
 
 interface TerminalPanelProps {
   currentPath: string;
   theme: 'dark' | 'light';
-  onShellCwdChange: (path: string) => void;
+  visible: boolean;
+  tabs: TermTab[];
+  activeTabId: string | null;
+  onSelectTab: (id: string) => void;
+  onNewTab: () => void;
+  onCloseTab: (id: string) => void;
+  onCloseAllTabs: () => void;
+  onRenameTab: (id: string, name: string) => void;
+  onShellExit: (id: string) => void; // the shell of a tab ended (typed `exit`)
+  onShellCwdChange: (id: string, path: string) => void;
+  onPromptState: (id: string, atPrompt: boolean) => void;
   commandGroups: CommandGroup[];
   onOpenSettings: () => void;
   onPickCommand: (template: string) => Promise<void>;
@@ -32,6 +45,24 @@ interface TerminalPanelProps {
   pathVars: PathVars;
   onClearPathVar: (name: PathVarName) => void;
 }
+
+/** One tab's terminal: its xterm, the element it lives in, and its prompt (OSC) handler. */
+interface Session {
+  term: XTerm;
+  fit: FitAddon;
+  el: HTMLDivElement;
+  osc: { dispose: () => void };
+}
+
+const xtermTheme = (t: 'dark' | 'light') => {
+  const isLight = t === 'light';
+  return {
+    background: isLight ? '#f4f4f5' : '#000000',
+    foreground: isLight ? '#09090b' : '#ffffff',
+    cursor: isLight ? '#09090b' : '#ffffff',
+    selectionBackground: isLight ? '#d4d4d8' : '#3f3f46',
+  };
+};
 
 function copySelection(term: XTerm, clear: boolean) {
   const text = term.getSelection();
@@ -43,7 +74,17 @@ function copySelection(term: XTerm, clear: boolean) {
 export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   currentPath,
   theme,
+  visible,
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onNewTab,
+  onCloseTab,
+  onCloseAllTabs,
+  onRenameTab,
+  onShellExit,
   onShellCwdChange,
+  onPromptState,
   commandGroups,
   onOpenSettings,
   onPickCommand,
@@ -58,6 +99,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   // Latest callback for the mount-once OSC handler below
   const onShellCwdChangeRef = useRef(onShellCwdChange);
   onShellCwdChangeRef.current = onShellCwdChange;
+  const onPromptStateRef = useRef(onPromptState);
+  onPromptStateRef.current = onPromptState;
   const onUserInputRef = useRef(onUserInput);
   onUserInputRef.current = onUserInput;
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
@@ -75,6 +118,21 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       })
       .catch(() => {})
       .finally(() => xtermRef.current?.focus());
+  };
+
+  // Tab right-click menu, header right-click menu, and the tab being renamed
+  const [tabCtx, setTabCtx] = useState<{ x: number; y: number; id: string } | null>(null);
+  const tabCtxPos = useMenuPosition(tabCtx);
+  const [headerCtx, setHeaderCtx] = useState<{ x: number; y: number } | null>(null);
+  const headerCtxPos = useMenuPosition(headerCtx);
+  const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
+
+  const commitRename = () => {
+    if (renaming) {
+      const name = renaming.draft.trim();
+      if (name) onRenameTab(renaming.id, name);
+    }
+    setRenaming(null);
   };
 
   const [showHelperMenu, setShowHelperMenu] = useState<boolean>(false);
@@ -101,11 +159,35 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       .catch(() => {});
   }, []);
 
-  // Initialize xterm.js PTY connection
-  useEffect(() => {
-    if (!terminalRef.current) return;
+  // ---- Tabs: one xterm + one PTY per tab; only the active tab's xterm is shown ----
+  const sessionsRef = useRef<Map<string, Session>>(new Map());
+  const activeIdRef = useRef<string | null>(activeTabId);
+  activeIdRef.current = activeTabId;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  const onShellExitRef = useRef(onShellExit);
+  onShellExitRef.current = onShellExit;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
 
-    const isLight = theme === 'light';
+  // Fit the active terminal to its box and tell its PTY
+  const refit = () => {
+    const id = activeIdRef.current;
+    const s = id ? sessionsRef.current.get(id) : undefined;
+    if (!id || !s) return;
+    s.fit.fit();
+    s.term.scrollToBottom();
+    invoke('pty_resize', { id, cols: s.term.cols, rows: s.term.rows }).catch(() => {});
+  };
+
+  const createSession = (tab: TermTab) => {
+    const host = terminalRef.current;
+    if (!host) return;
+    const el = document.createElement('div');
+    el.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;';
+    el.style.display = tab.id === activeIdRef.current ? 'block' : 'none';
+    host.appendChild(el);
+
     const term = new XTerm({
       // Fixed-width app font (--font-mono) at the file panel's 12px; xterm needs a literal font string
       fontFamily:
@@ -113,43 +195,22 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
         '"Cascadia Code", Consolas, "Courier New", monospace',
       fontSize: 12,
       lineHeight: 1.15,
-      theme: {
-        background: isLight ? '#f4f4f5' : '#000000',
-        foreground: isLight ? '#09090b' : '#ffffff',
-        cursor: isLight ? '#09090b' : '#ffffff',
-        selectionBackground: isLight ? '#d4d4d8' : '#3f3f46',
-      },
+      theme: xtermTheme(themeRef.current),
       cursorBlink: true,
       scrollback: 5000,
     });
-
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    term.open(terminalRef.current);
-    fitAddon.fit();
-
-    xtermRef.current = term;
-    fitAddonRef.current = fitAddon;
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.open(el);
+    fit.fit();
 
     // Shell prompt reports its working directory via OSC 9;9 (see pty.rs) -> sync file panel
-    const oscDisposable = term.parser.registerOscHandler(9, (data) => {
+    const osc = term.parser.registerOscHandler(9, (data) => {
       if (!data.startsWith('9;')) return false;
+      onPromptStateRef.current(tab.id, true); // the prompt function ran: the shell is idle again
       const path = data.slice(2).replace(/^"|"$/g, '');
-      if (path) onShellCwdChangeRef.current(path);
+      if (path) onShellCwdChangeRef.current(tab.id, path);
       return true;
-    });
-
-    // Spawn native Windows PTY process (pwsh.exe / powershell.exe)
-    invoke<string>('pty_spawn', {
-      cols: term.cols,
-      rows: term.rows,
-      cwd: currentPath || null,
-    }).catch((err) => console.error('PTY Spawn Error:', err));
-
-    // Listen for terminal output from Rust backend and auto-scroll to bottom
-    const unlistenPromise = listen<{ data: string }>('pty-output', (event) => {
-      term.write(event.payload.data);
-      term.scrollToBottom();
     });
 
     // Ctrl+C copies when text is selected (else it stays the shell's interrupt); Ctrl+X does the same
@@ -169,83 +230,89 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
     // Handle user input in terminal
     term.onData((data) => {
+      if (data.includes('\r')) onPromptStateRef.current(tab.id, false); // Enter: a command or program is running until the next prompt
       onUserInputRef.current(); // anything typed here means a pending {SELEC}/{DEST} line is no longer ours to rewrite
-      invoke('pty_write', { data }).catch((err) =>
-        console.error('PTY Write Error:', err)
-      );
+      invoke('pty_write', { id: tab.id, data }).catch((err) => console.error('PTY Write Error:', err));
     });
+
+    sessionsRef.current.set(tab.id, { term, fit, el, osc });
+
+    // Spawn native Windows PTY process (pwsh.exe / powershell.exe)
+    invoke<string>('pty_spawn', {
+      id: tab.id,
+      cols: term.cols,
+      rows: term.rows,
+      cwd: tab.cwd || null,
+    }).catch((err) => console.error('PTY Spawn Error:', err));
+  };
+
+  // Output and shell-exit events from the Rust backend (every tab's, told apart by id); resize hooks
+  useEffect(() => {
+    const unlistenOut = listen<{ id: string; data: string }>('pty-output', (event) => {
+      const s = sessionsRef.current.get(event.payload.id);
+      if (!s) return;
+      s.term.write(event.payload.data);
+      s.term.scrollToBottom();
+    });
+    const unlistenExit = listen<{ id: string }>('pty-exit', (event) => onShellExitRef.current(event.payload.id));
 
     // ResizeObserver to refit terminal canvas whenever container dimensions change
-    const resizeObserver = new ResizeObserver(() => {
-      if (fitAddonRef.current && xtermRef.current) {
-        fitAddonRef.current.fit();
-        xtermRef.current.scrollToBottom();
-        invoke('pty_resize', {
-          cols: xtermRef.current.cols,
-          rows: xtermRef.current.rows,
-        }).catch(() => {});
-      }
-    });
-
-    if (terminalRef.current) {
-      resizeObserver.observe(terminalRef.current);
-    }
-
-    const handleResize = () => {
-      if (fitAddonRef.current && xtermRef.current) {
-        fitAddonRef.current.fit();
-        xtermRef.current.scrollToBottom();
-        invoke('pty_resize', {
-          cols: xtermRef.current.cols,
-          rows: xtermRef.current.rows,
-        }).catch(() => {});
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
+    const resizeObserver = new ResizeObserver(() => refit());
+    if (terminalRef.current) resizeObserver.observe(terminalRef.current);
+    window.addEventListener('resize', refit);
 
     // Multi-stage initial fit sequence to handle window maximization & startup layout stabilization
-    const refitInitial = () => {
-      if (fitAddonRef.current && xtermRef.current) {
-        fitAddonRef.current.fit();
-        xtermRef.current.scrollToBottom();
-        invoke('pty_resize', {
-          cols: xtermRef.current.cols,
-          rows: xtermRef.current.rows,
-        }).catch(() => {});
-      }
-    };
-
-    const t1 = setTimeout(refitInitial, 50);
-    const t2 = setTimeout(refitInitial, 150);
-    const t3 = setTimeout(refitInitial, 350);
-    const t4 = setTimeout(refitInitial, 750);
+    const timers = [50, 150, 350, 750].map((ms) => setTimeout(refit, ms));
 
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
+      timers.forEach(clearTimeout);
       resizeObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
-      unlistenPromise.then((unlisten) => unlisten());
-      oscDisposable.dispose();
-      term.dispose();
+      window.removeEventListener('resize', refit);
+      unlistenOut.then((u) => u());
+      unlistenExit.then((u) => u());
+      sessionsRef.current.forEach((s) => {
+        s.osc.dispose();
+        s.term.dispose();
+      });
+      sessionsRef.current.clear();
     };
   }, []);
 
+  // A new tab gets its xterm and shell; a closed tab loses them (the shell is ended in the backend)
+  const tabIds = tabs.map((t) => t.id).join('|');
+  useEffect(() => {
+    const map = sessionsRef.current;
+    for (const t of tabsRef.current) if (!map.has(t.id)) createSession(t);
+    for (const [id, s] of Array.from(map)) {
+      if (tabsRef.current.some((t) => t.id === id)) continue;
+      s.osc.dispose();
+      s.term.dispose();
+      s.el.remove();
+      map.delete(id);
+      invoke('pty_close', { id }).catch(() => {});
+    }
+  }, [tabIds]);
+
+  // Show the active tab's terminal (also when the panel is shown again), refit it and give it the cursor
+  useEffect(() => {
+    const map = sessionsRef.current;
+    map.forEach((s, id) => {
+      s.el.style.display = id === activeTabId ? 'block' : 'none';
+    });
+    const s = activeTabId ? map.get(activeTabId) : undefined;
+    xtermRef.current = s ? s.term : null;
+    fitAddonRef.current = s ? s.fit : null;
+    if (!visible || !s) return;
+    refit();
+    const timer = setTimeout(() => {
+      refit();
+      s.term.focus();
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [activeTabId, visible, tabIds]);
+
   // Synchronize terminal fit & scroll whenever usageBanner toggles
   useEffect(() => {
-    const refit = () => {
-      if (fitAddonRef.current && xtermRef.current) {
-        fitAddonRef.current.fit();
-        xtermRef.current.scrollToBottom();
-        invoke('pty_resize', {
-          cols: xtermRef.current.cols,
-          rows: xtermRef.current.rows,
-        }).catch(() => {});
-      }
-    };
     refit();
     const timer = setTimeout(refit, 50);
     return () => clearTimeout(timer);
@@ -253,29 +320,15 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   // Update xterm theme dynamically when app theme changes
   useEffect(() => {
-    if (xtermRef.current) {
-      const isLight = theme === 'light';
-      xtermRef.current.options.theme = {
-        background: isLight ? '#f4f4f5' : '#000000',
-        foreground: isLight ? '#09090b' : '#ffffff',
-        cursor: isLight ? '#09090b' : '#ffffff',
-        selectionBackground: isLight ? '#d4d4d8' : '#3f3f46',
-      };
-    }
+    sessionsRef.current.forEach((s) => {
+      s.term.options.theme = xtermTheme(theme);
+    });
   }, [theme]);
 
   // Refit terminal whenever container resizes
   useEffect(() => {
-    setTimeout(() => {
-      if (fitAddonRef.current && xtermRef.current) {
-        fitAddonRef.current.fit();
-        xtermRef.current.scrollToBottom();
-        invoke('pty_resize', {
-          cols: xtermRef.current.cols,
-          rows: xtermRef.current.rows,
-        }).catch(() => {});
-      }
-    }, 50);
+    const timer = setTimeout(refit, 50);
+    return () => clearTimeout(timer);
   }, [currentPath]);
 
   // Handle Drag & Drop of file paths into terminal
@@ -283,7 +336,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     e.preventDefault();
     const textData = e.dataTransfer.getData('text/plain');
     if (textData) {
-      invoke('pty_write', { data: textData }).then(() => {
+      invoke('pty_write', { id: activeIdRef.current, data: textData }).then(() => {
         if (xtermRef.current) {
           xtermRef.current.scrollToBottom();
           xtermRef.current.focus();
@@ -332,8 +385,64 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
+      {/* Command line tabs: shown only when there is more than one */}
+      {tabs.length > 1 && (
+      <div className="terminal-tabs">
+        {tabs.map((t) => (
+          <div
+            key={t.id}
+            className={`terminal-tab ${t.id === activeTabId ? 'active' : ''}`}
+            onClick={() => onSelectTab(t.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setTabCtx({ x: e.clientX, y: e.clientY, id: t.id });
+            }}
+            title={t.name}
+          >
+            <TermIcon size={12} style={{ color: '#22c55e', flexShrink: 0 }} />
+            {renaming && renaming.id === t.id ? (
+              <input
+                className="terminal-tab-input"
+                autoFocus
+                value={renaming.draft}
+                onChange={(e) => setRenaming({ id: t.id, draft: e.target.value })}
+                onClick={(e) => e.stopPropagation()}
+                onFocus={(e) => e.target.select()}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') commitRename();
+                  if (e.key === 'Escape') setRenaming(null);
+                }}
+              />
+            ) : (
+              <span className="terminal-tab-name">{t.name}</span>
+            )}
+            <button
+              className="terminal-tab-close"
+              title="Close tab"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCloseTab(t.id);
+              }}
+            >
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+        <button className="terminal-tab-new" title="New tab" onClick={onNewTab}>
+          <Plus size={13} />
+        </button>
+      </div>
+      )}
+
       {/* Terminal Top Bar with Admin Status & Command Helper */}
       <div
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setHeaderCtx({ x: e.clientX, y: e.clientY });
+        }}
         style={{
           height: 28,
           minHeight: 28,
@@ -355,10 +464,6 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           ) : (
             <TermIcon size={13} style={{ color: 'var(--text-main)' }} />
           )}
-          <span>
-            {isAdmin ? 'PowerShell (Administrator)' : 'Interactive Terminal'}
-          </span>
-
           {/* Beginner Command Helper Button */}
           <button
             onClick={() => {
@@ -554,15 +659,98 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       )}
 
       {/* Main Interactive PowerShell Terminal */}
+      {tabs.length === 0 && (
+        <div className="terminal-empty">
+          <span>No command line is open.</span>
+          <button className="btn-primary" onClick={onNewTab}>
+            New Tab
+          </button>
+        </div>
+      )}
       <div
         className="terminal-container"
         ref={terminalRef}
-        style={{ background: theme === 'light' ? '#f4f4f5' : '#000000' }}
+        style={{
+          background: theme === 'light' ? '#f4f4f5' : '#000000',
+          ...(tabs.length === 0 ? { display: 'none' } : {}),
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           setTermMenu({ x: e.clientX, y: e.clientY, hasSel: !!xtermRef.current?.hasSelection() });
         }}
       />
+
+      {tabCtx && (
+        <>
+          <div
+            className="context-menu-overlay"
+            onClick={() => setTabCtx(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setTabCtx(null);
+            }}
+          />
+          <div className="context-menu" ref={tabCtxPos.ref} style={tabCtxPos.style}>
+            <div
+              className="context-menu-item"
+              onClick={() => {
+                const id = tabCtx.id;
+                setTabCtx(null);
+                onCloseTab(id);
+              }}
+            >
+              <X size={13} style={{ color: '#ef4444' }} />
+              <span>Close Tab</span>
+            </div>
+            <div
+              className="context-menu-item"
+              onClick={() => {
+                const t = tabs.find((x) => x.id === tabCtx.id);
+                setTabCtx(null);
+                if (t) setRenaming({ id: t.id, draft: t.name });
+              }}
+            >
+              <Pencil size={13} style={{ color: '#3b82f6' }} />
+              <span>Rename Tab</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {headerCtx && (
+        <>
+          <div
+            className="context-menu-overlay"
+            onClick={() => setHeaderCtx(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setHeaderCtx(null);
+            }}
+          />
+          <div className="context-menu" ref={headerCtxPos.ref} style={headerCtxPos.style}>
+            <div
+              className="context-menu-item"
+              onClick={() => {
+                setHeaderCtx(null);
+                onNewTab();
+              }}
+            >
+              <Plus size={13} style={{ color: '#22c55e' }} />
+              <span>New Tab</span>
+            </div>
+            <div
+              className={`context-menu-item ${tabs.length > 1 ? '' : 'disabled'}`}
+              onClick={() => {
+                setHeaderCtx(null);
+                if (tabs.length > 1) onCloseAllTabs();
+              }}
+            >
+              <X size={13} style={{ color: '#ef4444' }} />
+              <span>Close All Tabs</span>
+            </div>
+          </div>
+        </>
+      )}
 
       {termMenu && (
         <>

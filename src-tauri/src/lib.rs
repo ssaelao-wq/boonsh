@@ -19,6 +19,7 @@ pub fn run() {
             pty_spawn,
             pty_write,
             pty_resize,
+            pty_close,
             list_directory,
             get_quick_access,
             create_new_file,

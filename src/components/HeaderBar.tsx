@@ -19,6 +19,7 @@ import {
   ClipboardPaste,
   Trash2,
   HelpCircle,
+  Terminal,
 } from 'lucide-react';
 import { ViewMode } from '../types';
 
@@ -65,6 +66,8 @@ interface HeaderBarProps {
   onTogglePreview: () => void;
   showFilePanel: boolean;
   onToggleFilePanel: () => void;
+  showTerminal: boolean;
+  onToggleTerminal: () => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   onNavigate: (path: string) => void;
@@ -95,6 +98,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onTogglePreview,
   showFilePanel,
   onToggleFilePanel,
+  showTerminal,
+  onToggleTerminal,
   theme,
   onToggleTheme,
   onNavigate,
@@ -392,6 +397,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title="Toggle Preview Drawer (Ctrl+P)"
         >
           <Eye size={14} style={{ color: '#6366f1' }} />
+        </button>
+
+        {/* Show / hide the command line panel */}
+        <button
+          className={showTerminal ? 'active' : ''}
+          onClick={onToggleTerminal}
+          title={showTerminal ? 'Hide the command line panel' : 'Show the command line panel'}
+        >
+          <Terminal size={14} style={{ color: '#22c55e' }} />
         </button>
 
         {/* Settings (Command Manager) */}

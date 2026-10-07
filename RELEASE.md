@@ -6,6 +6,22 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.9.4 (2026-10-07)
+
+### Changed
+
+- The terminal header no longer shows the text "Interactive Terminal" / "PowerShell (Administrator)" (admin mode is still shown by the green shield icon, the green `<name> (Admin)` button and the `admin >` prompt).
+
+### Added
+
+- **Command line tabs.** A tab bar above the command line header holds one tab per shell. Each tab is named after the user, has an **x** to close it, and a **+** at the end for a new tab. Right-click a tab for **Close Tab** and **Rename Tab**; right-click the command line header (the bar with the Commands button) for **New Tab** and **Close All Tabs**. Switching tabs makes the file panel show the folder of that tab, and folder changes in the file panel go to the active tab only. There is always one command line: with a single tab the tab bar is hidden (open a second one with **New Tab** from the header menu and the bar appears), and closing the last tab or choosing **Close All Tabs** leaves one fresh tab. Closing a tab (or all tabs) while a program is running asks first; typing `exit` closes the tab.
+
+- A terminal icon in the top-right toolbar shows or hides the command line panel (shown by default). Hiding it gives the file panel the full width; the shell keeps running.
+
+### Fixed
+
+- Changing the folder in the file panel while a program runs in the terminal (such as Claude) no longer types `cd ...` into that program. The `cd` is sent only at the prompt; if you moved folders while the program ran, the terminal follows when the prompt returns.
+
 ## 0.9.3 (2026-10-05)
 
 ### Added

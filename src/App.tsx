@@ -43,7 +43,7 @@ import {
   loadRenameHistory,
   saveRenameHistory,
 } from './bulkRename';
-import { FileItem, QuickAccessItem, FileListResult, ViewMode, ItemDetails } from './types';
+import { FileItem, QuickAccessItem, FileListResult, ViewMode, ItemDetails, TermTab } from './types';
 import {
   FrequentStats,
   FrequentSettings,
@@ -105,6 +105,7 @@ export function App() {
   const [includeSubfolders, setIncludeSubfolders] = useState<boolean>(true);
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [showFilePanel, setShowFilePanel] = useState<boolean>(true); // Controls Middle File Panel
+  const [showTerminal, setShowTerminal] = useState<boolean>(true); // command line panel (hidden, not closed: the shell keeps running)
   const [shellEngine] = useState<string>('PowerShell 7');
 
   // Terminal helper commands (editable in Settings, persisted in localStorage)
@@ -130,9 +131,9 @@ export function App() {
   // Replace what is on the prompt line: Esc clears the line (PSReadLine and cmd). The pause keeps ConPTY from
   // reading Esc plus the next character as one Alt+key chord.
   const rewritePromptLine = async (text: string) => {
-    await invoke('pty_write', { data: '\x1b' });
+    await ptyWrite('\x1b');
     await new Promise((r) => setTimeout(r, 60));
-    await invoke('pty_write', { data: text });
+    await ptyWrite(text);
   };
 
   // Type a command template at the prompt, expanded against the current folder.
@@ -141,7 +142,7 @@ export function App() {
     const replace = pendingCmdRef.current !== null;
     pendingCmdRef.current = hasPlaceholder(template, varNames()) ? template : null;
     if (replace) await rewritePromptLine(text);
-    else await invoke('pty_write', { data: text });
+    else await ptyWrite(text);
   };
 
   const setPathVarValues = (next: PathVars) => {
@@ -436,25 +437,160 @@ export function App() {
     updateFreqStats(next);
   }, [currentPath]);
 
-  // Bi-directional navigation: Navigate GUI & send cd command to PowerShell
+  // ---- Command line tabs ----
+  // Each tab is its own shell. The active tab is the one the file panel follows, the one GUI navigation sends
+  // `cd` to, and the one commands/paths are typed into. Refs are updated together with the state so code that
+  // runs right after a change (select a new tab, then navigate) already sees it.
+  const [tabs, setTabs] = useState<TermTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const tabsRef = useRef<TermTab[]>([]);
+  const activeTabIdRef = useRef<string | null>(null);
+  const tabCounterRef = useRef(0);
+  const userNameRef = useRef('User');
+  const firstTabRef = useRef(false);
+  // Per tab: true while its shell sits at the prompt, false while a command or program (claude, vim, npm run dev
+  // ...) is running. Keys sent to a running program would be typed into it, so a cd is held back until the
+  // prompt returns.
+  const atPromptRef = useRef<Record<string, boolean>>({});
+  // Per tab: the folder the GUI moved to while a program was running; the shell is told when its prompt is back.
+  const heldCdRef = useRef<Record<string, string | null>>({});
+
+  const updateTabs = (next: TermTab[]) => {
+    tabsRef.current = next;
+    setTabs(next);
+  };
+  const activate = (id: string | null) => {
+    activeTabIdRef.current = id;
+    setActiveTabId(id);
+  };
+
+  // Type into the active tab's shell
+  const ptyWrite = (data: string): Promise<unknown> => {
+    const id = activeTabIdRef.current;
+    return id ? invoke('pty_write', { id, data }) : Promise.resolve();
+  };
+
+  // The file panel follows the tab: show the folder the tab's shell is in
+  const followTab = (t: TermTab) => {
+    if (t.cwd && normalizePath(t.cwd) !== normalizePath(currentPathRef.current)) fetchDirectory(t.cwd);
+  };
+
+  const newTab = () => {
+    const id = `tab${++tabCounterRef.current}`;
+    atPromptRef.current[id] = true;
+    updateTabs([...tabsRef.current, { id, name: userNameRef.current, cwd: currentPathRef.current }]);
+    pendingCmdRef.current = null;
+    activate(id);
+  };
+
+  const selectTab = (id: string) => {
+    if (id === activeTabIdRef.current) return;
+    const t = tabsRef.current.find((x) => x.id === id);
+    if (!t) return;
+    pendingCmdRef.current = null;
+    activate(id);
+    followTab(t);
+  };
+
+  const lastRespawnRef = useRef(0);
+  const removeTab = (id: string, byExit = false) => {
+    const list = tabsRef.current;
+    const idx = list.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    const next = list.filter((t) => t.id !== id);
+    delete atPromptRef.current[id];
+    delete heldCdRef.current[id];
+    updateTabs(next);
+    if (next.length === 0) {
+      // There is always one command line: the last tab going away leaves a fresh one. A shell that dies at once
+      // (a broken install) must not respawn in a loop, so a tab that ended on its own gets one only every 3 s.
+      pendingCmdRef.current = null;
+      activate(null);
+      if (!byExit || Date.now() - lastRespawnRef.current > 3000) {
+        lastRespawnRef.current = Date.now();
+        newTab();
+      }
+      return;
+    }
+    if (activeTabIdRef.current === id) {
+      const neighbor = next[idx] ?? next[idx - 1] ?? null;
+      pendingCmdRef.current = null;
+      activate(neighbor ? neighbor.id : null);
+      if (neighbor) followTab(neighbor);
+    }
+  };
+
+  const RUNNING_MSG = 'A program is still running in this tab. Close it anyway?';
+  const closeTab = (id: string) => {
+    if (atPromptRef.current[id] === false && !window.confirm(RUNNING_MSG)) return;
+    removeTab(id);
+  };
+  const closeAllTabs = () => {
+    if (tabsRef.current.some((t) => atPromptRef.current[t.id] === false) && !window.confirm(RUNNING_MSG)) return;
+    updateTabs([]);
+    activate(null);
+    atPromptRef.current = {};
+    heldCdRef.current = {};
+    pendingCmdRef.current = null;
+    newTab(); // there is always one command line
+  };
+  const renameTab = (id: string, name: string) => {
+    updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, name } : t)));
+  };
+
+  // The first tab: named after the user, opens in the default folder
+  useEffect(() => {
+    if (firstTabRef.current) return; // StrictMode runs effects twice in dev
+    firstTabRef.current = true;
+    invoke<string>('get_username')
+      .then((n) => {
+        userNameRef.current = n;
+      })
+      .catch(() => {})
+      .finally(newTab);
+  }, []);
+
+  // Bi-directional navigation: Navigate GUI & send cd command to the active tab's PowerShell
   const handleNavigate = (path: string) => {
     fetchDirectory(path);
-    // Send cd command to shell stdin. A command still waiting at the prompt is cleared first (else the cd would
-    // be glued onto it) and typed again afterwards, with its paths made relative to the new folder.
+    const id = activeTabIdRef.current;
+    if (!id) return;
+    updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, cwd: path } : t)));
+    if (atPromptRef.current[id] === false) {
+      heldCdRef.current[id] = path;
+      return;
+    }
+    heldCdRef.current[id] = null;
+    // A command still waiting at the prompt is cleared first (else the cd would be glued onto it) and typed
+    // again afterwards, with its paths made relative to the new folder.
     const template = pendingCmdRef.current;
     if (template === null) {
-      invoke('pty_write', { data: `cd "${path}"\r` }).catch(() => {});
+      ptyWrite(`cd "${path}"\r`).catch(() => {});
       return;
     }
     (async () => {
       await rewritePromptLine(`cd "${path}"\r`);
-      await invoke('pty_write', { data: expandTemplate(template, pathVarsRef.current, path) });
+      await ptyWrite(expandTemplate(template, pathVarsRef.current, path));
     })().catch(() => {});
   };
 
-  // Shell -> GUI: terminal prompt reported its cwd (e.g. after a typed `cd`).
+  // Shell -> GUI: a tab's prompt reported its cwd (e.g. after a typed `cd`).
   // Skip when it matches the last requested folder so a GUI-initiated cd doesn't refetch/reset selection.
-  const handleShellCwdChange = (path: string) => {
+  const handleShellCwdChange = (id: string, path: string) => {
+    // The program ended and the prompt is back in the old folder: take the shell to the folder the GUI is in now
+    const held = heldCdRef.current[id] ?? null;
+    if (held !== null) {
+      heldCdRef.current[id] = null;
+      if (normalizePath(path) !== normalizePath(held)) {
+        invoke('pty_write', { id, data: `cd "${held}"\r` }).catch(() => {});
+      }
+      return;
+    }
+    // Remember where this tab is, so switching back to it shows that folder
+    if (tabsRef.current.some((t) => t.id === id && t.cwd !== path)) {
+      updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, cwd: path } : t)));
+    }
+    if (id !== activeTabIdRef.current) return; // a tab in the background does not move the file panel
     const last = lastRequestedPathRef.current;
     if (last === null || normalizePath(path) !== normalizePath(last)) {
       fetchDirectory(path);
@@ -874,6 +1010,8 @@ export function App() {
         onTogglePreview={() => setShowPreview(!showPreview)}
         showFilePanel={showFilePanel}
         onToggleFilePanel={() => setShowFilePanel(!showFilePanel)}
+        showTerminal={showTerminal}
+        onToggleTerminal={() => setShowTerminal(!showTerminal)}
         theme={theme}
         onToggleTheme={() => {
           const next = theme === 'dark' ? 'light' : 'dark';
@@ -943,7 +1081,7 @@ export function App() {
       {/* Main Workspace Split Body */}
       <div className="workspace-body">
         {/* Left Panel Column (Quick Access Bar + Folder Tree + Optional Middle File Panel + Optional Preview) */}
-        <div className="left-column" style={{ width: showFilePanel ? `${leftWidthPct}%` : `${treeWidthPx}px` }}>
+        <div className="left-column" style={{ width: !showTerminal ? '100%' : showFilePanel ? `${leftWidthPct}%` : `${treeWidthPx}px` }}>
           {/* Quick Access Top Bar */}
           <QuickAccessBar
             items={quickAccess}
@@ -1070,17 +1208,29 @@ export function App() {
         </div>
 
         {/* Vertical Split Handle (between Left Panel and Right Terminal) */}
-        <div
-          className={`split-handle-v ${isDraggingV ? 'dragging' : ''}`}
-          onMouseDown={() => setIsDraggingV(true)}
-        />
+        {showTerminal && (
+          <div
+            className={`split-handle-v ${isDraggingV ? 'dragging' : ''}`}
+            onMouseDown={() => setIsDraggingV(true)}
+          />
+        )}
 
         {/* Right Panel Column (Dedicated Interactive PowerShell Terminal) */}
-        <div className="right-column">
+        <div className="right-column" style={showTerminal ? undefined : { display: 'none' }}>
           <TerminalPanel
             currentPath={currentPath}
             theme={theme}
+            visible={showTerminal}
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={selectTab}
+            onNewTab={newTab}
+            onCloseTab={closeTab}
+            onCloseAllTabs={closeAllTabs}
+            onRenameTab={renameTab}
+            onShellExit={(id) => removeTab(id, true)}
             onShellCwdChange={handleShellCwdChange}
+            onPromptState={(id, atPrompt) => { atPromptRef.current[id] = atPrompt; }}
             onPickCommand={pickCommand}
             onUserInput={() => { pendingCmdRef.current = null; }}
             globalVars={globalVars}

@@ -43,3 +43,10 @@ export interface ItemDetails {
   genre: string;
   rating: number; // stars, 0 = not rated
 }
+
+// One command line tab. `cwd` is the folder its shell was last in (what the file panel shows when the tab is active).
+export interface TermTab {
+  id: string;
+  name: string;
+  cwd: string;
+}

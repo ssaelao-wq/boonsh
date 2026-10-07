@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.3**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.4**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -50,13 +50,13 @@ This document describes everything boonsh can do, how to use it, and where its l
   - Up, Refresh | Cut, Copy, Paste, Delete
   - the path bar
   - Search (and the `?` help button when search is open)
-  - Details, Tiles and Thumbnails views | file panel toggle, Preview (Eye) | Settings (gear) | Theme (sun or moon)
+  - Details, Tiles and Thumbnails views | file panel toggle, Preview (Eye), terminal show/hide | Settings (gear) | Theme (sun or moon)
 
 ## 2. Starting the app
 
 - **Normal start:** opens in your **Downloads** folder (or the current folder if Downloads doesn't exist).
 - **Start in a chosen folder:** run `boonsh.exe "C:\some\folder"`. Both the file panel and the terminal open there.
-- **Administrator mode:** the button at the right of the terminal bar shows your user name. Click it to relaunch boonsh as Administrator (Windows asks for permission). In admin mode the button is green and says `<name> (Admin)`, the bar says "PowerShell (Administrator)", and the prompt reads `admin >`. Click the button again to relaunch as a normal user. Either way the app **restarts** and reopens in the same folder, so unsaved terminal work is lost.
+- **Administrator mode:** the button at the right of the terminal bar shows your user name. Click it to relaunch boonsh as Administrator (Windows asks for permission). In admin mode the button is green and says `<name> (Admin)`, the small shield icon at the left of the bar turns green, and the prompt reads `admin >`. Click the button again to relaunch as a normal user. Either way the app **restarts** and reopens in the same folder, so unsaved terminal work is lost.
 
 ## 3. Navigating
 
@@ -89,8 +89,9 @@ A short list of the folders you open most, so you can jump back to them in one c
 - Limits: **6 items** at most, and the same folder can't be added twice. Your list is remembered, also when it is empty.
 
 ### Two-way sync with the terminal
-- Open a folder in the file panel and the terminal runs `cd` to it.
+- Open a folder in the file panel and the terminal (its active tab) runs `cd` to it.
 - Type `cd` in the terminal (any form, including `cd ..`) and the file panel and tree switch to that folder when the next prompt appears.
+- **Only at the prompt:** the `cd` is sent only while the terminal sits at its prompt. While you run a program in it (Claude, vim, `npm run dev`, a long command ...) boonsh does **not** type into it; the file panel still moves, and when the program ends and the prompt returns, the terminal is moved to the folder the file panel is in. boonsh knows a program is running from the moment you press Enter until the next prompt appears.
 
 ## 4. The file panel
 
@@ -835,6 +836,14 @@ Open it with the **Eye icon** or **Ctrl+P**. It appears below the file panel and
 The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, else `cmd`. It uses a fixed-width font (Cascadia Code) at 12 px, remembers 5,000 lines of scrollback, follows the dark or light theme, and the prompt is short: `<username> >` (or `admin >` in admin mode).
 
 - **Copy / cut / paste:** select text with the mouse. **Ctrl+C** copies it (with nothing selected, Ctrl+C still interrupts the running command). **Ctrl+V** pastes the clipboard at the prompt. **Ctrl+X** with a selection copies it (output text cannot be removed, so cut = copy; with no selection it goes to the shell). Right-click in the terminal for **Cut**, **Copy** and **Paste** (Cut and Copy are greyed out with no selection).
+- **Tabs:** the terminal can hold several command lines at once, one per tab, in a tab bar above the terminal header.
+  - There is **always at least one command line**. It opens when boonsh starts. While there is only one, **no tab bar is shown**; the bar appears when you open a second tab and goes away again when you are back to one. Every tab is named after your user name; use **Rename Tab** to tell them apart.
+  - **New tab:** the **+** at the end of the tab bar, or right-click the terminal header (the bar with the Commands button) and choose **New Tab**. The new tab opens in the folder the file panel shows and becomes the active tab. With one tab only the header's right-click menu is available (the **+** is part of the tab bar).
+  - **Close a tab:** the **x** on the tab, or right-click the tab and choose **Close Tab**. **Close All Tabs** is in the header's right-click menu (greyed out with one tab) and leaves one fresh tab. If a program is still running in the tab (boonsh knows between pressing Enter and the next prompt), boonsh asks before closing it. Typing `exit` in a tab closes that tab; closing the last tab (or `exit` in it) opens a fresh one.
+  - **Rename:** right-click the tab, **Rename Tab**, type the name, press Enter (Esc cancels, an empty name is ignored). The name is not saved when you close boonsh.
+  - **Tabs and the file panel:** the file panel follows the **active** tab. Click another tab and the file panel switches to the folder that tab's shell is in. Open a folder in the file panel and only the active tab gets the `cd`. A `cd` typed in a background tab does not move the file panel; it is remembered for when you switch to that tab.
+  - Each tab keeps its own history, running program and scrollback. Hiding the terminal (below) keeps all tabs running.
+- **Show / hide the terminal:** the green terminal icon in the top-right toolbar (before the gear) hides the whole terminal side so the file panel gets the full width, and shows it again. The terminal is only hidden, not closed: the shell and any program in it keep running, and the folder `cd` still follows you. It is shown when boonsh starts.
 - Everything you can do in PowerShell works. Drop files onto the terminal to type their paths.
 - Folder sync works both ways (see [section 3](#two-way-sync-with-the-terminal)).
 - Keys like Ctrl+A, Ctrl+C, Ctrl+V and Del go **to the terminal**, not the file panel, while you are typing in it.
