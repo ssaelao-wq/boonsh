@@ -4,11 +4,13 @@ mod fs_ops;
 mod localtime;
 mod pty;
 mod search;
+mod secrets;
 
 use bulk_rename::*;
 use file_props::*;
 use fs_ops::*;
 use pty::*;
+use secrets::*;
 
 /// `boonsh.exe --pty-helper ...` is a command line helper process (see pty.rs), not the app: it runs the helper
 /// and returns its exit code. `None` for a normal start.
@@ -67,6 +69,9 @@ pub fn run() {
             relaunch_as_normal,
             get_username,
             force_window_to_front,
+            ai_key_get,
+            ai_key_set,
+            ai_key_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running boonsh tauri application");

@@ -10,6 +10,9 @@ import { TerminalPanel } from './components/TerminalPanel';
 import { StatusBar } from './components/StatusBar';
 import { SettingsPanel } from './components/SettingsPanel';
 import { FrequentPanel } from './components/FrequentPanel';
+import { AssistantPanel } from './components/AssistantPanel';
+import type { Section as SettingsSection } from './components/SettingsPanel';
+import { AssistantHost } from './assistant';
 import {
   GroupSpec,
   Bucket,
@@ -39,6 +42,7 @@ import { CommandGroup, loadCommandGroups, saveCommandGroups, resetCommandGroups 
 import {
   RenameBatch,
   RenameOp,
+  RulesForm,
   UndoResult,
   MAX_BATCHES,
   loadRenameHistory,
@@ -108,6 +112,15 @@ export function App() {
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [showFilePanel, setShowFilePanel] = useState<boolean>(true); // Controls Middle File Panel
   const [showTerminal, setShowTerminal] = useState<boolean>(true); // command line panel (hidden, not closed: the shell keeps running)
+  // AI Assistant panel, under the command line panel (remembered between runs)
+  const [showAssistant, setShowAssistant] = useState<boolean>(() => localStorage.getItem('boonsh_ai_panel') === '1');
+  const toggleAssistant = (on = !showAssistant) => {
+    setShowAssistant(on);
+    localStorage.setItem('boonsh_ai_panel', on ? '1' : '0');
+  };
+  const [assistantHeightPx, setAssistantHeightPx] = useState<number>(300);
+  const [isDraggingAi, setIsDraggingAi] = useState<boolean>(false);
+  const rightShown = showTerminal || showAssistant; // the right column holds the command line and the assistant
   const [shellEngine] = useState<string>('PowerShell 7');
 
   // Terminal helper commands (editable in Settings, persisted in localStorage)
@@ -235,7 +248,7 @@ export function App() {
     setFreqSettings(next);
     saveFrequentSettings(next);
   };
-  const [settingsStart, setSettingsStart] = useState<'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess'>('commands');
+  const [settingsStart, setSettingsStart] = useState<SettingsSection>('commands');
   const updateSort = (next: SortLevel[]) => {
     setSortLevels(next);
     saveSort(next);
@@ -274,7 +287,7 @@ export function App() {
     if (col === 'name') return;
     updatePrefs({ ...colPrefs, visible: colPrefs.visible.filter((c) => c !== col) });
   };
-  const openSettings = (section: 'commands' | 'vars' | 'columns' | 'frequent' | 'quickaccess' = 'commands') => {
+  const openSettings = (section: SettingsSection = 'commands') => {
     setSettingsStart(section);
     setShowSettings(true);
   };
@@ -418,9 +431,10 @@ export function App() {
   // Fetch Directory Contents
   const lastRequestedPathRef = useRef<string | null>(null);
   // selectPaths: select these items after loading (e.g. freshly pasted files) instead of the first item
-  const fetchDirectory = (targetPath?: string, selectPaths?: string[]) => {
+  // Resolves true when the folder was loaded, false when it could not be opened.
+  const fetchDirectory = (targetPath?: string, selectPaths?: string[]): Promise<boolean> => {
     if (targetPath) lastRequestedPathRef.current = targetPath;
-    invoke<FileListResult>('list_directory', { targetPath: targetPath || null })
+    return invoke<FileListResult>('list_directory', { targetPath: targetPath || null })
       .then((res) => {
         lastRequestedPathRef.current = res.current_path;
         setCurrentPath(res.current_path);
@@ -438,6 +452,7 @@ export function App() {
         } else {
           selectSingle(res.items.length > 0 ? res.items[0] : null);
         }
+        return true;
       })
       .catch((err) => {
         console.error('List directory error:', err);
@@ -449,6 +464,7 @@ export function App() {
             updateFreqStats(next);
           }
         }
+        return false;
       });
   };
 
@@ -646,14 +662,14 @@ export function App() {
   }, []);
 
   // Bi-directional navigation: Navigate GUI & send cd command to the active tab's PowerShell
-  const handleNavigate = (path: string) => {
-    fetchDirectory(path);
+  const handleNavigate = (path: string): Promise<boolean> => {
+    const loaded = fetchDirectory(path);
     const id = activeTabIdRef.current;
-    if (!id) return;
+    if (!id) return loaded;
     updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, cwd: path } : t)));
     if (atPromptRef.current[id] === false) {
       heldCdRef.current[id] = path;
-      return;
+      return loaded;
     }
     heldCdRef.current[id] = null;
     // A command still waiting at the prompt is cleared first (else the cd would be glued onto it) and typed
@@ -661,12 +677,13 @@ export function App() {
     const template = pendingCmdRef.current;
     if (template === null) {
       ptyWrite(`cd "${path}"\r`).catch(() => {});
-      return;
+      return loaded;
     }
     (async () => {
       await rewritePromptLine(`cd "${path}"\r`);
       await ptyWrite(expandTemplate(template, pathVarsRef.current, path, consts()));
     })().catch(() => {});
+    return loaded;
   };
 
   // Shell -> GUI: a tab's prompt reported its cwd (e.g. after a typed `cd`).
@@ -858,18 +875,22 @@ export function App() {
     setClipboard({ mode, paths: selectedItems.map((i) => i.path) });
   };
 
-  const pasteClipboard = () => {
-    if (!clipboard || !currentPath) return;
+  // Paste into the current folder; resolves with the new paths (the AI Assistant uses it too)
+  const pasteItems = async (): Promise<string[]> => {
+    if (!clipboard || !currentPath) return [];
     const dest = currentPath;
-    invoke<string[]>('paste_items', { paths: clipboard.paths, destDir: dest, mode: clipboard.mode })
-      .then((newPaths) => {
-        if (clipboard.mode === 'cut') setClipboard(null); // moved items can't be pasted again
-        fetchDirectory(dest, newPaths);
-      })
-      .catch((err) => {
-        alert(err);
-        fetchDirectory(dest);
-      });
+    try {
+      const newPaths = await invoke<string[]>('paste_items', { paths: clipboard.paths, destDir: dest, mode: clipboard.mode });
+      if (clipboard.mode === 'cut') setClipboard(null); // moved items can't be pasted again
+      fetchDirectory(dest, newPaths);
+      return newPaths;
+    } catch (err) {
+      fetchDirectory(dest);
+      throw err;
+    }
+  };
+  const pasteClipboard = () => {
+    pasteItems().catch((err) => alert(err));
   };
 
   // --- Zip: compress selection / extract selected .zip files (long-running; shown in status bar) ---
@@ -877,35 +898,51 @@ export function App() {
   const isZip = (i: FileItem) => !i.is_dir && i.ext.toLowerCase() === 'zip';
   const selectedZips = selectedItems.filter(isZip);
 
+  // Resolves with the new zip's path
+  const compressItems = async (items: FileItem[]): Promise<string> => {
+    if (busyMessage) throw new Error('boonsh is still busy with another zip job.');
+    const dest = currentPath;
+    setBusyMessage(`Compressing ${items.length} item(s)...`);
+    try {
+      const zipPath = await invoke<string>('compress_to_zip', { paths: items.map((i) => i.path), destDir: dest });
+      fetchDirectory(dest, [zipPath]);
+      return zipPath;
+    } finally {
+      setBusyMessage('');
+    }
+  };
   const compressSelection = () => {
     if (selectedItems.length === 0 || !currentPath || busyMessage) return;
-    const dest = currentPath;
-    setBusyMessage(`Compressing ${selectedItems.length} item(s)...`);
-    invoke<string>('compress_to_zip', { paths: selectedItems.map((i) => i.path), destDir: dest })
-      .then((zipPath) => fetchDirectory(dest, [zipPath]))
-      .catch((err) => alert(`Compress failed: ${err}`))
-      .finally(() => setBusyMessage(''));
+    compressItems(selectedItems).catch((err) => alert(`Compress failed: ${err}`));
   };
 
-  const extractSelectedZips = async () => {
-    if (selectedZips.length === 0 || !currentPath || busyMessage) return;
+  // Extracts each zip into a new folder; a zip that fails is reported through onError and the rest go on
+  const extractZips = async (zips: FileItem[], onError: (msg: string) => void): Promise<number> => {
+    if (busyMessage) throw new Error('boonsh is still busy with another zip job.');
     const dest = currentPath;
     const created: string[] = [];
-    for (const zip of selectedZips) {
+    for (const zip of zips) {
       setBusyMessage(`Extracting ${zip.name}...`);
       try {
         created.push(await invoke<string>('extract_zip', { path: zip.path, destDir: dest }));
       } catch (err) {
-        alert(`Extract failed for '${zip.name}': ${err}`);
+        onError(`Extract failed for '${zip.name}': ${err}`);
       }
     }
     setBusyMessage('');
     fetchDirectory(dest, created);
+    return created.length;
+  };
+  const extractSelectedZips = () => {
+    if (selectedZips.length === 0 || !currentPath || busyMessage) return;
+    extractZips(selectedZips, (msg) => alert(msg)).catch((err) => alert(err));
   };
 
   // --- Bulk rename (dialog in BulkRenameDialog.tsx, engine in bulk_rename.rs) and its undo history ---
   const [bulkRenamePaths, setBulkRenamePaths] = useState<string[] | null>(null);
   const [bulkRenameFolders, setBulkRenameFolders] = useState<number>(0); // folders among them (for "Include sub-folders")
+  // Rules the AI Assistant filled in for the dialog (null = the dialog's usual empty start)
+  const [bulkRenameForm, setBulkRenameForm] = useState<{ form: RulesForm; includeSub: boolean } | null>(null);
   const [renameTrigger, setRenameTrigger] = useState<number>(0); // F2 on one item: asks the file panel to open Rename
   const [renameHistory, setRenameHistory] = useState<RenameBatch[]>(loadRenameHistory); // newest first
   const [renameToast, setRenameToast] = useState<{ message: string; undoable: boolean } | null>(null);
@@ -926,6 +963,7 @@ export function App() {
     // 2 or more items, or one folder (to rename what is inside it, with "Include sub-folders")
     const ok = selectedItems.length >= 2 || (selectedItems.length === 1 && selectedItems[0].is_dir);
     if (!ok || busyMessage) return;
+    setBulkRenameForm(null);
     setBulkRenamePaths(selectedItems.map((i) => i.path)); // in the panel's sort order: numbering follows it
     setBulkRenameFolders(selectedItems.filter((i) => i.is_dir).length);
   };
@@ -964,16 +1002,122 @@ export function App() {
       .catch((err) => alert(`Undo failed: ${err}`));
   };
 
+  // Asks first; resolves false when the user says no
+  const deleteItems = async (items: FileItem[]): Promise<boolean> => {
+    const msg =
+      items.length === 1 ? `Move '${items[0].name}' to Recycle Bin?` : `Move these ${items.length} items to Recycle Bin?`;
+    if (!confirm(msg)) return false;
+    await invoke('delete_items', { paths: items.map((i) => i.path) });
+    fetchDirectory(currentPath);
+    return true;
+  };
   const deleteSelection = () => {
     if (selectedItems.length === 0) return;
-    const msg =
-      selectedItems.length === 1
-        ? `Move '${selectedItems[0].name}' to Recycle Bin?`
-        : `Move these ${selectedItems.length} items to Recycle Bin?`;
-    if (!confirm(msg)) return;
-    invoke('delete_items', { paths: selectedItems.map((i) => i.path) })
-      .then(() => fetchDirectory(currentPath))
-      .catch((err) => alert(err));
+    deleteItems(selectedItems).catch((err) => alert(err));
+  };
+
+  // --- AI Assistant: the app's state and actions it may use (see assistant.ts). Rebuilt on every render and
+  // read through a ref, so each tool call sees the state left by the one before it.
+  const assistantHostRef = useRef<AssistantHost | null>(null);
+  assistantHostRef.current = {
+    currentPath,
+    items: sortedItems,
+    selected: selectedItems,
+    sortLevels,
+    groups,
+    colPrefs,
+    viewMode,
+    theme,
+    panels: { preview: showPreview, filePanel: showFilePanel, terminal: showTerminal },
+    searchQuery,
+    includeSubfolders,
+    commandGroups,
+    globalVars,
+    pathVars,
+    quickAccess,
+    freqSettings,
+    canUndoBulkRename: renameHistory.length > 0,
+    hasClipboard: !!clipboard,
+    navigate: handleNavigate,
+    select: (paths) => {
+      const first = sortedItems.find((i) => paths.includes(i.path)) ?? null;
+      setSelectedItem(first);
+      setSelectedPaths(new Set(paths));
+      selectionAnchorRef.current = first?.path ?? null;
+    },
+    openItem: handleOpenFile,
+    setSort: updateSort,
+    setGroups: updateGroups,
+    setPrefs: updatePrefs,
+    setViewMode: (mode) => {
+      setViewMode(mode);
+      localStorage.setItem('boonsh_view_mode', mode);
+    },
+    setTheme: (t) => {
+      setTheme(t);
+      localStorage.setItem('boonsh_theme', t);
+    },
+    setPanels: (p) => {
+      if (p.preview !== undefined) setShowPreview(p.preview);
+      if (p.filePanel !== undefined) setShowFilePanel(p.filePanel);
+      if (p.terminal !== undefined) setShowTerminal(p.terminal);
+    },
+    setSearch: (q, sub) => {
+      setSearchQuery(q);
+      if (sub !== undefined) setIncludeSubfolders(sub);
+    },
+    rename: async (item, newName) => {
+      const to = await invoke<string>('rename_item', { oldPath: item.path, newName });
+      refreshAfterRename([to]);
+      return to;
+    },
+    createItem: async (kind, name) => {
+      const path = await invoke<string>(kind === 'folder' ? 'create_new_folder' : 'create_new_file', { parentDir: currentPath, name });
+      fetchDirectory(currentPath, [path]);
+      return path;
+    },
+    openBulkRename: (items, form, includeSub) => {
+      if (busyMessage) throw new Error('boonsh is busy with a zip job; try again when it is done.');
+      setBulkRenameForm({ form, includeSub });
+      setBulkRenamePaths(items.map((i) => i.path));
+      setBulkRenameFolders(items.filter((i) => i.is_dir).length);
+    },
+    deleteItems,
+    setClipboard: (mode, items) => setClipboard({ mode, paths: items.map((i) => i.path) }),
+    paste: async () => (await pasteItems()).length,
+    compress: compressItems,
+    extract: async (zips) => {
+      const errors: string[] = [];
+      const n = await extractZips(zips, (m) => errors.push(m));
+      if (errors.length) throw new Error(`${n} extracted. ${errors.join(' ')}`);
+      return n;
+    },
+    insertCommand: async (text) => {
+      const id = activeTabIdRef.current;
+      if (!id) throw new Error('There is no command line tab.');
+      if (atPromptRef.current[id] === false) throw new Error('A program is still running in the active command line tab; the command was not typed.');
+      setShowTerminal(true);
+      await pickCommand(text);
+      // keep it as the pending line: a folder change then clears it, sends the cd and types it again, instead of
+      // gluing the cd onto it (the user's first keystroke ends this, as for command templates)
+      pendingCmdRef.current = text;
+    },
+    assignVar: (name, paths) => assignPathVar(name, paths),
+    addQuickAccess: (path) => {
+      if (quickAccess.length >= QA_MAX) return `Quick Access already has the maximum of ${QA_MAX} items. Remove one first.`;
+      if (quickAccess.some((q) => samePath(q.path, path))) return 'That folder is already in Quick Access.';
+      const label = path.replace(/\\+$/, '').split('\\').pop() || path;
+      saveQuickAccess([...quickAccess, { label, path, icon_type: 'folder' }]);
+      return '';
+    },
+    removeQuickAccess: (path) => {
+      if (!quickAccess.some((q) => samePath(q.path, path))) return false;
+      handleRemoveQuickAccess(path);
+      return true;
+    },
+    setFreqSettings: updateFreqSettings,
+    openSettings,
+    undoBulkRename: () => undoLastBulkRename(true),
   };
 
   // Keyboard Shortcuts (Ctrl+P, Ctrl+Shift+F, F5, Del, Ctrl+A/X/C/V).
@@ -998,6 +1142,10 @@ export function App() {
       fetchDirectory(currentPath);
     } else if (inTextField) {
       return;
+    } else if ((e.target as HTMLElement | null)?.closest?.('.assistant-panel')) {
+      return; // the AI Assistant's text: Ctrl+A / Ctrl+C work on the text there (the panel handles them)
+    } else if (ctrlOnly && key === 'c' && (window.getSelection()?.toString() ?? '') !== '') {
+      return; // text is selected (e.g. in the AI Assistant): copy the text, not the files
     } else if (e.key === 'Delete') {
       e.preventDefault();
       deleteSelection();
@@ -1049,6 +1197,11 @@ export function App() {
       if (mouseX > 100 && mouseX < bounds.width * 0.4) {
         setTreeWidthPx(mouseX);
       }
+    } else if (isDraggingAi) {
+      const h = bounds.bottom - e.clientY - 24; // subtract status bar
+      if (h > 140 && h < bounds.height - 180) {
+        setAssistantHeightPx(h);
+      }
     } else if (isDraggingH) {
       const mouseY = bounds.bottom - e.clientY - 24; // subtract status bar
       if (mouseY > 100 && mouseY < bounds.height - 150) {
@@ -1061,6 +1214,7 @@ export function App() {
     setIsDraggingV(false);
     setIsDraggingTree(false);
     setIsDraggingH(false);
+    setIsDraggingAi(false);
   };
 
   const formatTotalSize = (bytes: number) => {
@@ -1107,6 +1261,8 @@ export function App() {
         onToggleFilePanel={() => setShowFilePanel(!showFilePanel)}
         showTerminal={showTerminal}
         onToggleTerminal={() => setShowTerminal(!showTerminal)}
+        showAssistant={showAssistant}
+        onToggleAssistant={() => toggleAssistant()}
         theme={theme}
         onToggleTheme={() => {
           const next = theme === 'dark' ? 'light' : 'dark';
@@ -1156,6 +1312,8 @@ export function App() {
         <BulkRenameDialog
           paths={bulkRenamePaths}
           folderCount={bulkRenameFolders}
+          initialForm={bulkRenameForm?.form}
+          initialIncludeSub={bulkRenameForm?.includeSub}
           onClose={() => setBulkRenamePaths(null)}
           onApplied={handleBulkRenamed}
         />
@@ -1178,7 +1336,7 @@ export function App() {
       {/* Main Workspace Split Body */}
       <div className="workspace-body">
         {/* Left Panel Column (Quick Access Bar + Folder Tree + Optional Middle File Panel + Optional Preview) */}
-        <div className="left-column" style={{ width: !showTerminal ? '100%' : showFilePanel ? `${leftWidthPct}%` : `${treeWidthPx}px` }}>
+        <div className="left-column" style={{ width: !rightShown ? '100%' : showFilePanel ? `${leftWidthPct}%` : `${treeWidthPx}px` }}>
           {/* Quick Access Top Bar */}
           <QuickAccessBar
             items={quickAccess}
@@ -1305,7 +1463,7 @@ export function App() {
         </div>
 
         {/* Vertical Split Handle (between Left Panel and Right Terminal) */}
-        {showTerminal && (
+        {rightShown && (
           <div
             className={`split-handle-v ${isDraggingV ? 'dragging' : ''}`}
             onMouseDown={() => setIsDraggingV(true)}
@@ -1313,7 +1471,8 @@ export function App() {
         )}
 
         {/* Right Panel Column (Dedicated Interactive PowerShell Terminal) */}
-        <div className="right-column" style={showTerminal ? undefined : { display: 'none' }}>
+        <div className="right-column" style={rightShown ? undefined : { display: 'none' }}>
+          <div style={{ flex: '1 1 0%', minHeight: 0, display: showTerminal ? 'flex' : 'none', flexDirection: 'column' }}>
           <TerminalPanel
             currentPath={currentPath}
             theme={theme}
@@ -1342,6 +1501,28 @@ export function App() {
             hotkeysOn={!showSettings}
             onOpenSettings={() => openSettings()}
           />
+          </div>
+
+          {/* AI Assistant, under the command line panel */}
+          {showAssistant && showTerminal && (
+            <div
+              className={`split-handle-h ${isDraggingAi ? 'dragging' : ''}`}
+              onMouseDown={() => setIsDraggingAi(true)}
+              title="Drag to resize the AI Assistant panel"
+            />
+          )}
+          {/* hidden, never unmounted: closing the panel keeps the conversation until the user starts a new one */}
+          <div
+            style={
+              !showAssistant
+                ? { display: 'none' }
+                : showTerminal
+                ? { height: assistantHeightPx, flexShrink: 0, minHeight: 0 }
+                : { flex: '1 1 0%', minHeight: 0 }
+            }
+          >
+            <AssistantPanel getHost={() => assistantHostRef.current!} onClose={() => toggleAssistant(false)} />
+          </div>
         </div>
       </div>
 

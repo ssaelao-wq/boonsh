@@ -10,6 +10,7 @@ export const COMPONENTS: { name: string; license: string }[] = [
   { name: 'Tauri (app framework)', license: 'MIT or Apache-2.0' },
   { name: 'React', license: 'MIT' },
   { name: 'marked (shows the manual)', license: 'MIT' },
+  { name: 'Anthropic TypeScript SDK (AI Assistant)', license: 'MIT' },
   { name: 'xterm.js (terminal)', license: 'MIT' },
   { name: 'Lucide icons', license: 'ISC' },
   { name: 'portable-pty (PowerShell terminal)', license: 'MIT' },

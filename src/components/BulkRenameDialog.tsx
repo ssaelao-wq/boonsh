@@ -29,6 +29,8 @@ interface BulkRenameDialogProps {
   folderCount: number; // how many of them are folders (the Include sub-folders option needs at least one)
   onClose: () => void;
   onApplied: (r: { renamed: number; ops: RenameOp[]; newPaths: string[] }) => void;
+  initialForm?: RulesForm; // rules filled in by the AI Assistant (shown, then previewed; Rename is still the user's click)
+  initialIncludeSub?: boolean;
 }
 
 const ROW_H = 26;
@@ -45,11 +47,11 @@ const RECIPES: { goal: string; find: string; replace: string }[] = [
 
 const RULE_KINDS: RuleKind[] = ['find', 'case', 'insert_remove', 'numbering', 'extension', 'template'];
 
-export const BulkRenameDialog: React.FC<BulkRenameDialogProps> = ({ paths, folderCount, onClose, onApplied }) => {
-  const [form, setForm] = useState<RulesForm>(defaultForm);
+export const BulkRenameDialog: React.FC<BulkRenameDialogProps> = ({ paths, folderCount, onClose, onApplied, initialForm, initialIncludeSub }) => {
+  const [form, setForm] = useState<RulesForm>(() => initialForm ?? defaultForm());
   // Also rename what is inside the selected folders, at any depth. Off by default; not saved in presets because
   // it depends on what is selected.
-  const [includeSub, setIncludeSub] = useState<boolean>(false);
+  const [includeSub, setIncludeSub] = useState<boolean>(!!initialIncludeSub && folderCount > 0);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [stale, setStale] = useState<boolean>(false); // rules changed since the preview was made
   const [previewing, setPreviewing] = useState<boolean>(false);
@@ -190,6 +192,14 @@ export const BulkRenameDialog: React.FC<BulkRenameDialogProps> = ({ paths, folde
         if (seq === seqRef.current) setPreviewing(false);
       });
   };
+
+  // Rules from the AI Assistant: show their preview at once (the user still reviews it and clicks Rename)
+  const autoPreviewRef = useRef(false);
+  useEffect(() => {
+    if (!initialForm || autoPreviewRef.current) return;
+    autoPreviewRef.current = true;
+    runPreview();
+  }, []);
 
   const rows = preview?.rows ?? [];
   const selectable = rows.filter((r) => !r.skipped); // skipped rows can't be ticked

@@ -20,11 +20,12 @@ import {
   Trash2,
   HelpCircle,
   Terminal,
+  Sparkles,
 } from 'lucide-react';
 import { ViewMode } from '../types';
 
 // Cheat sheet for the search query language (parsed in src-tauri/src/search.rs)
-const SEARCH_EXAMPLES: [string, string][] = [
+export const SEARCH_EXAMPLES: [string, string][] = [
   ['report', 'Name contains "report" (wildcards: *.md, rep*t)'],
   ['"my file"', 'Quotes keep words with spaces together'],
   ['filename:^inv.*\\.pdf$', 'Name matches a regular expression'],
@@ -68,6 +69,8 @@ interface HeaderBarProps {
   onToggleFilePanel: () => void;
   showTerminal: boolean;
   onToggleTerminal: () => void;
+  showAssistant: boolean;
+  onToggleAssistant: () => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   onNavigate: (path: string) => void;
@@ -100,6 +103,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onToggleFilePanel,
   showTerminal,
   onToggleTerminal,
+  showAssistant,
+  onToggleAssistant,
   theme,
   onToggleTheme,
   onNavigate,
@@ -131,6 +136,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   useEffect(() => {
     setPathInput(currentPath);
   }, [currentPath]);
+
+  // A query set from outside (the AI Assistant) opens the search box so the user sees it
+  useEffect(() => {
+    if (searchQuery && !showSearchInput) setShowSearchInput(true);
+  }, [searchQuery]);
 
   const handleToggleSearch = () => {
     if (showSearchInput && searchQuery) {
@@ -425,6 +435,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title={`Switch Theme (Current: ${theme === 'dark' ? 'Black Theme' : 'White Theme'})`}
         >
           {theme === 'dark' ? <Sun size={14} style={{ color: '#f59e0b' }} /> : <Moon size={14} style={{ color: '#818cf8' }} />}
+        </button>
+
+        {/* Show / hide the AI Assistant panel (under the command line) */}
+        <button
+          className={showAssistant ? 'active' : ''}
+          onClick={onToggleAssistant}
+          title={showAssistant ? 'Hide the AI Assistant' : 'Show the AI Assistant'}
+        >
+          <Sparkles size={14} style={{ color: '#a855f7' }} />
         </button>
       </div>
     </div>

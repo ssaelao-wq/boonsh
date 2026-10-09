@@ -455,3 +455,40 @@ export function saveRenameHistory(history: RenameBatch[]) {
     // Storage unavailable: undo still works until the app is closed
   }
 }
+
+// ---------------- rules written by the AI Assistant ----------------
+
+const DTO_FIELD: Record<string, string> = {
+  match_case: 'matchCase',
+  all_matches: 'allMatches',
+  apply_to: 'applyTo',
+  insert_where: 'insertWhere',
+  remove_where: 'removeWhere',
+  restart_per_folder: 'restart',
+  only_ext: 'only',
+};
+
+/**
+ * Rules in the engine's wire shape (RuleDto, snake_case, numbers as numbers) turned into the dialog's form.
+ * Used for rules the AI Assistant writes: unknown kinds and fields are dropped, missing fields get the dialog's
+ * starting values, so the user always sees a valid form to check before Preview / Rename.
+ */
+export function dtoToForm(raw: { rules?: unknown; on_collision?: unknown }): RulesForm {
+  const list: RuleForm[] = [];
+  for (const r of Array.isArray(raw.rules) ? raw.rules : []) {
+    if (!r || typeof r !== 'object' || !KINDS.includes((r as any).kind)) continue;
+    const kind = (r as any).kind as RuleKind;
+    const base = newRule(kind) as unknown as Record<string, unknown>;
+    const patch: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
+      const key = DTO_FIELD[k] ?? k;
+      if (key === 'kind' || key === 'id' || key === 'on' || !(key in base) || v === null || v === undefined) continue;
+      // the form keeps numbers as text (the user may clear a field while typing)
+      patch[key] = typeof base[key] === 'string' && typeof v === 'number' ? String(v) : v;
+      if (typeof patch[key] !== typeof base[key]) delete patch[key];
+    }
+    list.push(newRule(kind, patch));
+  }
+  const policy = ['skip', 'block', 'number'].includes(raw.on_collision as string) ? (raw.on_collision as CollisionPolicy) : 'skip';
+  return { rules: (list.length ? list : [newRule('find')]).slice(0, MAX_RULES), onCollision: policy };
+}

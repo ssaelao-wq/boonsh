@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.8**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.9**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -23,6 +23,7 @@ This document describes everything boonsh can do, how to use it, and where its l
 13. [Appearance and saved settings](#13-appearance-and-saved-settings)
 14. [Limits and known issues](#14-limits-and-known-issues)
 15. [Keeping this document current](#15-keeping-this-document-current)
+16. [AI Assistant](#16-ai-assistant)
 
 ---
 
@@ -37,7 +38,8 @@ This document describes everything boonsh can do, how to use it, and where its l
 | Folder tree     |  File panel                  |  PowerShell terminal           |
 |                 |  (details / tiles / thumbs)  |                                |
 +-----------------+------------------------------+                                |
-| Preview drawer (hidden until you open it)      |                                |
+| Preview drawer (hidden until you open it)      +--------------------------------+
+|                                                |  AI Assistant (when shown)     |
 +------------------------------------------------+--------------------------------+
 | Status bar: counts, total size, selection, shell                                |
 +---------------------------------------------------------------------------------+
@@ -45,12 +47,12 @@ This document describes everything boonsh can do, how to use it, and where its l
 
 - The app starts **maximized**. The window never scrolls; each panel scrolls on its own.
 - The **window title** shows `boonsh - <path>` of the selected file, or of the current folder when nothing is selected.
-- **Resizing:** drag the thin bars between panels. The bar between the left side and the terminal moves from 15% to 85% of the width. The bar between the folder tree and the file panel moves the tree width (from 100 px up to 40% of the window). The bar above the preview drawer sets its height. Panel sizes are not saved between runs.
+- **Resizing:** drag the thin bars between panels. The bar between the left side and the terminal moves from 15% to 85% of the width. The bar between the folder tree and the file panel moves the tree width (from 100 px up to 40% of the window). The bar above the preview drawer sets its height, and the bar above the AI Assistant sets its height. Panel sizes are not saved between runs.
 - The **header bar** holds, from left to right:
   - Up, Refresh | Cut, Copy, Paste, Delete
   - the path bar
   - Search (and the `?` help button when search is open)
-  - Details, Tiles and Thumbnails views | file panel toggle, Preview (Eye), terminal show/hide | Settings (gear) | Theme (sun or moon)
+  - Details, Tiles and Thumbnails views | file panel toggle, Preview (Eye), terminal show/hide | Settings (gear) | Theme (sun or moon), AI Assistant show/hide (sparkles, the last icon on the right; see section 16)
 
 ## 2. Starting the app
 
@@ -1042,6 +1044,9 @@ The thin bar at the bottom shows, from left to right:
 | Bulk rename presets you saved (up to 30) | Yes |
 | Sort levels, the columns shown and their order, the date options, the grouping | Yes |
 | Frequently Accessed: the visit counts, on / off and the number of folders | Yes |
+| AI Assistant: shown or hidden | Yes |
+| AI Assistant: the API key | Yes, in Windows Credential Manager (not in a file) |
+| AI Assistant: the conversation | While boonsh is open, also when the panel is hidden (cleared by the eraser button or when boonsh closes) |
 | Panel sizes, column widths, preview open or closed, search box and Subfolders switch | No (reset on each start) |
 
 ## 14. Limits and known issues
@@ -1056,6 +1061,7 @@ The thin bar at the bottom shows, from left to right:
 - **Bulk rename:** up to 20,000 items and 30 rules at a time. The extension is the text after the last dot, so for `archive.tar.gz` the extension is `gz` and the name part is `archive.tar`. A very long list of undo steps may not be kept after a restart (the stored history is limited to about 2 MB, oldest batches first). Undo can't help if the files were changed outside boonsh in the meantime; those parts are skipped and reported.
 - Folder-size totals skip folders you can't read, and count real size, not size on disk.
 - Switching between normal and Administrator mode restarts the app. If Windows can't relaunch it as a normal user directly, it falls back to a method that can't pass the folder, so the app opens in the default folder.
+- **AI Assistant:** needs an internet connection and your own API key from Anthropic (Claude), OpenAI or Google Gemini (each request is billed to that key). Other services are not supported. It only acts on the folder that is open and only on boonsh features; it does not read the contents of files.
 - The "1:1" image button toggles an enlarged view, which is not guaranteed to be the image's exact pixel size.
 
 **Known issues**
@@ -1064,3 +1070,49 @@ The thin bar at the bottom shows, from left to right:
 ## 15. Keeping this document current
 
 Update this file whenever a feature is added, changed or removed, and change the version number at the top when the version changes. Record what changed in `RELEASE.md` too.
+
+## 16. AI Assistant
+
+The **AI Assistant** is a chat panel under the command line panel. Tell it in plain words what you want done in boonsh, and it does it for you on the folder that is open: *"sort by size, largest first"*, *"group by month"*, *"show only the PDF files"*, *"rename these photos to Trip_001, Trip_002..."*, *"write a command that lists the 10 biggest files here"*.
+
+**Showing it.** Click the **sparkles icon** at the top right of the window (the last icon of the header bar). The panel opens under the command line; drag the bar above it to change its height. Click the icon again, or the **x** in the panel header, to hide it. Hiding only hides it: the conversation is still there when you show the panel again. When the command line panel is hidden, the assistant takes the whole right side. boonsh remembers whether the panel was open.
+
+**Your API key.** The assistant works with **your own API key** from any of three services: **Anthropic (Claude)**, **OpenAI** or **Google Gemini**.
+1. Click the **key button** in the panel header and paste the key.
+2. The list in front of the key says which service it is for. **Auto-detect** recognises the key by its beginning: `sk-ant-` is Anthropic, `AIza` is Gemini, any other `sk-` is OpenAI. If it guesses wrong, or the key looks different, choose the service yourself.
+3. Click **Check**. boonsh asks the service for the models the key may use (this costs nothing) and proposes the **cheapest chat model**, marked *(cheapest)*: a Claude **Haiku** model, OpenAI's newest **nano** model (else *mini*), or Gemini's newest **Flash-Lite** model (else *Flash*). The tasks are simple, so a bigger model is not needed. You can pick another model from the list.
+4. Click **Save**. The key, its service and the model are kept in **Windows Credential Manager** for your Windows account.
+
+The panel header shows the model in use. The key button is red while no key is saved and amber when one is. Open the key form again to change the model (the **Saved** line), to replace the key with another one (any service), or to **Remove key**. A new key or model starts a new conversation. The **Get a key** links open the key pages of the three services in your browser. Each request is billed by the service to the key's account.
+
+**Asking.** Type in the box at the bottom and press **Enter** (**Shift+Enter** for a new line), or click one of the examples shown in an empty panel. Each step the assistant takes is listed as a short line with a check mark (or a red warning when it failed), followed by its answer. **Stop** (the square button) ends a request that is still running. Every message has its **date and time** under it (each action line shows its time as a tooltip). The **eraser button** starts a new conversation (after you confirm). The assistant remembers the conversation until then, so you can follow up (*"now only the jpg files"*), and the panel keeps the last **500 lines** to scroll back through (older lines are dropped from the screen, not from what the assistant remembers).
+
+**Search the conversation.** The **magnifier button** in the panel header opens a search box. It shows only the messages and action lines that contain the text (ignoring upper / lower case, dates and times included), marks the matches in yellow and shows how many were found (*2 of 14*). **Esc** or the **x** closes the search and shows everything again.
+
+**Copying.** The text in the panel can be selected with the mouse and copied with **Ctrl+C**. Click in the conversation and press **Ctrl+A** to select all of it. Right-click in the conversation for **Copy** (the selected text), **Copy message** (the message under the pointer), **Copy conversation** (every line with its date and time; while searching, only the lines found) and **Select all**.
+
+Each request also tells it the current folder, the selection, the sort, the grouping, the columns, the view and which panels are open. It sees file names and sizes when it needs them, never the contents of files.
+
+**What it can do**
+
+| Area | Examples |
+| --- | --- |
+| Folders | open a folder (absolute, or relative such as `..` or `Projects\2026`), open a file in its program |
+| Selection | select by names or a wildcard (`*.pdf`), select all, clear the selection |
+| Sorting, grouping, columns | sort levels, Group by (dates by year / month / week / day or relative, type, size ...), show or hide columns, folders first |
+| View | Details / Tiles / Thumbnails, dark / light theme, show or hide the preview, the file panel and the command line |
+| Search | writes a query in boonsh's search language and puts it in the search box (see section 7) |
+| Files | rename one item, new folder or file, copy / cut / paste, compress to zip, extract zips, delete to the Recycle Bin |
+| Bulk rename | opens the Bulk Rename dialog with the rules filled in and the preview already made |
+| Command line | types a command at the prompt of the active tab, **without running it** |
+| Settings | Global Var values, Quick Access, Frequently Accessed (on / off, how many), opens a Settings section |
+| Help | answers how-to questions about boonsh from this manual |
+
+**Safety**
+- A **command** is only typed at the prompt; it never presses Enter. Read it, then press Enter yourself. If you change folder before running it, boonsh clears the line, sends the `cd` and types the command again, as it does for commands with `{SELEC}`. Nothing is typed while a program is running in the tab.
+- **Delete** always asks you to confirm first, and the items go to the Recycle Bin.
+- **Bulk rename** only opens the dialog with its preview: you check the new names and click **Rename** yourself (and Ctrl+Z undoes it as usual).
+- The assistant only answers about boonsh, your files and folders, and command line commands. Questions about anything else (songs, movies, celebrities, K-pop, weather, news ...) get the reply *"Sorry, I can only help with boonsh: files and folders, sorting, grouping, renaming, search, command line commands and settings."*
+- File names are treated as data: text inside a file name cannot give the assistant instructions.
+
+**Problems.** *"... rejected the API key"* opens the key form: save a valid key. *"Could not reach ..."* means there is no internet connection. *"Too many requests or the quota is used up"* means the service's rate limit or the account's credit was reached. *"The key works, but it has no chat model the assistant can use"* means the key's account has no suitable model. A failed request leaves the conversation as it was, so you can simply ask again.

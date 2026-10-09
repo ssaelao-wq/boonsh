@@ -41,7 +41,7 @@ interface SettingsPanelProps {
   onQaReset: () => void;
 }
 
-type Section = 'commands' | 'vars' | 'consts' | 'columns' | 'frequent' | 'quickaccess' | 'manual' | 'about';
+export type Section = 'commands' | 'vars' | 'consts' | 'columns' | 'frequent' | 'quickaccess' | 'manual' | 'about';
 
 interface VarDraft {
   name: string;

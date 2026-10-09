@@ -6,6 +6,19 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.9.9 (2026-10-09)
+
+### Added
+
+- **AI Assistant panel** under the command line panel, shown or hidden with the new sparkles icon at the top right (remembered between runs; the bar above it sets its height). Ask in plain words and it acts on the open folder: open folders, select, sort, group, columns, view and theme, search, rename, new folder or file, copy / cut / paste, zip, delete (always confirmed), Bulk Rename (opens the dialog with the rules and the preview ready; you click Rename), Global Var values, Quick Access, Frequently Accessed, Settings sections, and how-to answers from the manual. It can type a command at the prompt of the active tab **without running it**. It answers only about boonsh, files and the command line, and turns down other topics (songs, movies, K-pop, weather, news ...).
+- **AI API key** button in the panel header: works with your own key from **Anthropic (Claude), OpenAI or Google Gemini** (the service is recognised from the key, or chosen in a list). Check lists the key's models and proposes the cheapest chat model (Claude Haiku, OpenAI nano / mini, Gemini Flash-Lite / Flash); another can be chosen. The key, service and model are kept in Windows Credential Manager. Requests are billed to the key's account.
+- AI Assistant conversation: hiding the panel keeps it (only the eraser button starts a new one, after a confirmation; the last 500 lines are kept on screen), a **date and time under every message**, **search** in the conversation (magnifier button: shows only the matching lines, matches marked), and **copying**: select text with the mouse and Ctrl+C, Ctrl+A in the conversation, and a right-click menu with Copy, Copy message, Copy conversation and Select all.
+
+### Fixed
+
+- White theme: the small numbered circles beside the column names (sort order, and the order of the ticked date parts in Group by) were black on black. They are now a black circle with white digits in the white theme and a white circle with black digits in the black theme.
+- Ctrl+C with text selected outside a text box now copies that text instead of the selected files.
+
 ## 0.9.8 (2026-10-07)
 
 ### Changed

@@ -2560,3 +2560,271 @@ textarea.search-floating:focus {
   font-size: 12px;
   color: var(--text-dim);
 }
+
+/* ---------------- AI Assistant panel (under the command line) ---------------- */
+.assistant-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-color);
+  min-height: 0;
+}
+.assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.assistant-header button {
+  padding: 3px 5px;
+  display: flex;
+  align-items: center;
+}
+.assistant-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+.app-container span.assistant-model {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.assistant-key-form {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-panel-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.assistant-key-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+.app-container div.assistant-key-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.assistant-key-note a {
+  color: #a855f7;
+}
+.assistant-key-form input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 4px 6px;
+  background: var(--bg-main);
+  color: var(--text-main);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  outline: none;
+}
+.app-container div.assistant-key-error {
+  font-size: 11px;
+  color: #ef4444;
+}
+.assistant-messages {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.app-container div.assistant-empty {
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 12px;
+}
+.assistant-example {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  text-align: left;
+}
+.app-container div.assistant-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+.assistant-msg {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  padding: 5px 9px;
+  border-radius: 8px;
+  max-width: 92%;
+  user-select: text;
+}
+.app-container .assistant-msg.user {
+  align-self: flex-end;
+  background: #7e22ce;
+  color: #ffffff;
+}
+.assistant-msg.assistant {
+  align-self: flex-start;
+  background: var(--bg-panel-secondary);
+}
+.app-container .assistant-msg.error {
+  align-self: flex-start;
+  color: #f59e0b;
+  background: transparent;
+  padding: 0 2px;
+}
+.app-container.light-theme .assistant-msg.error {
+  color: #b45309;
+}
+.app-container div.assistant-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 11px;
+  color: #22c55e;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.app-container .assistant-action span {
+  color: var(--text-muted);
+}
+.app-container .assistant-action svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.app-container div.assistant-action.failed {
+  color: #ef4444;
+}
+.app-container div.assistant-thinking {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.assistant-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.assistant-input-row textarea {
+  flex: 1;
+  resize: none;
+  font-family: var(--font-family);
+  font-size: 12px;
+  padding: 5px 7px;
+  background: var(--bg-main);
+  color: var(--text-main);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  outline: none;
+}
+.assistant-input-row textarea:focus {
+  border-color: #a855f7;
+}
+.assistant-input-row button {
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+}
+.assistant-key-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.assistant-key-row select {
+  font-size: 11px;
+  padding: 3px 4px;
+  background: var(--bg-main);
+  color: var(--text-main);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  max-width: 100%;
+}
+.app-container div.assistant-key-links {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.assistant-key-links a {
+  color: #a855f7;
+}
+
+/* AI Assistant: selectable text, a time line under each message, search in the conversation */
+.assistant-messages,
+.assistant-messages * {
+  user-select: text;
+}
+.assistant-messages:focus {
+  outline: none;
+}
+.assistant-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.assistant-entry.user {
+  align-items: flex-end;
+}
+.assistant-entry .assistant-msg {
+  max-width: 92%;
+}
+.app-container div.assistant-time {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  padding: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+.assistant-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.assistant-search input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 3px 6px;
+  background: var(--bg-main);
+  color: var(--text-main);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  outline: none;
+}
+.assistant-search button {
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+}
+.app-container span.assistant-search-count {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.assistant-messages mark {
+  background: #facc15;
+  color: #000000;
+  border-radius: 2px;
+}
+
+/* Sort / group order numbers: black circle with white digits in the white theme, white with black in the black
+   theme. The .app-container prefix beats the light theme's catch-all span colour. */
+.app-container span.sort-rank,
+.app-container span.group-order {
+  color: var(--bg-main);
+  background: var(--accent);
+}
