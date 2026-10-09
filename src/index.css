@@ -2646,11 +2646,75 @@ textarea.search-floating:focus {
   gap: 5px;
   font-size: 12px;
 }
-.assistant-example {
+/* Quick prompts: one scrolling line of chips above the input box */
+.assistant-prompts {
+  display: flex;
+  gap: 5px;
+  padding: 5px 8px 0;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+}
+.assistant-prompt {
   font-size: 11px;
-  padding: 3px 8px;
+  padding: 2px 9px;
   border-radius: 10px;
-  text-align: left;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  border: 1px solid var(--border-light);
+  background: var(--bg-panel-secondary);
+  color: var(--text-main);
+  cursor: pointer;
+}
+.assistant-prompt:hover:not(:disabled) {
+  border-color: #a855f7;
+}
+.assistant-prompt:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.assistant-prompt.add {
+  display: flex;
+  align-items: center;
+  padding: 2px 6px;
+}
+/* Command line text waiting to go with the next message */
+.app-container div.assistant-attached {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 8px 0;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px dashed #10b981;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.assistant-attached span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assistant-attached button {
+  padding: 1px 3px;
+  display: flex;
+}
+/* The command line text inside a sent message */
+.app-container pre.assistant-terminal {
+  margin: 0 0 5px;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 140px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.35);
+  color: #e4e4e7;
+  border-radius: 4px;
 }
 .app-container div.assistant-hint {
   font-size: 10px;
@@ -2758,6 +2822,98 @@ textarea.search-floating:focus {
 }
 .assistant-key-links a {
   color: #a855f7;
+}
+/* Tokens and cost of the conversation, in the header */
+.app-container span.assistant-usage {
+  font-size: 10px;
+  color: #10b981;
+  white-space: nowrap;
+  cursor: default;
+}
+.app-container.light-theme span.assistant-usage {
+  color: #047857;
+}
+.assistant-key-row input.assistant-price {
+  width: 60px;
+  font-size: 11px;
+  padding: 3px 5px;
+  background: var(--bg-main);
+  color: var(--text-main);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+}
+.app-container span.assistant-price-note {
+  color: var(--text-dim);
+}
+.assistant-price-note a {
+  color: #a855f7;
+}
+/* Saved conversations */
+.assistant-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  max-height: 60%;
+  min-height: 0;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.assistant-keep {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.assistant-history-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+.app-container div.assistant-history-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+}
+.assistant-history-row:last-child {
+  border-bottom: none;
+}
+.assistant-history-row:hover {
+  background: var(--bg-panel-secondary);
+}
+.app-container div.assistant-history-row.current {
+  border-left: 3px solid #a855f7;
+}
+.assistant-history-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-container div.assistant-history-meta {
+  grid-column: 1;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.assistant-history-row button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  padding: 3px 5px;
+  display: flex;
+}
+.assistant-history-clear {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 3px 8px;
 }
 
 /* AI Assistant: selectable text, a time line under each message, search in the conversation */

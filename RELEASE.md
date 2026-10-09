@@ -6,6 +6,16 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.10.0 (2026-10-09)
+
+### Added
+- **Auto refresh:** the open folder updates by itself when another program adds, changes, renames or deletes a file in it, with no need for F5 or leaving the folder and coming back. Selection and scroll position stay; a burst of changes is a single update.
+- **AI Assistant: ask about the command line.** Select text in the command line panel, right-click and choose **Explain with AI** (sends it at once: what it means, why an error happened, and a corrected command typed at the prompt) or **Ask AI about this...** (attaches it to your own question). The text shows in a box inside your message.
+- **AI Assistant: quick prompts.** One-click requests in a line above the input box. Add with **+** (the text in the box) or **Save as quick prompt** on one of your messages; right-click a prompt to edit it first or remove it. Kept between runs.
+- **AI Assistant: saved conversations (opt-in).** A clock button lists saved conversations. With **Keep conversations on this computer** ticked, each conversation is saved as you go (up to 100, in the user profile), the latest one reopens when boonsh starts, and any saved one can be opened again or deleted. The assistant gets an opened conversation's earlier messages as context, so follow-ups work after a restart or a model change.
+- **AI Assistant: tokens and cost.** The panel header shows the tokens the conversation used and its approximate cost; each request shows its own under its last message, with a breakdown on hover. Prices are built in for some models (October 2026 price lists) and can be set for any model in the key form.
+- **AI Assistant: Up / Down history.** Up and Down in the input box bring back earlier requests (the last 50, kept between runs), like a command line.
+
 ## 0.9.9 (2026-10-09)
 
 ### Added

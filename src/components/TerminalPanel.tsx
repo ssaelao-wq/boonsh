@@ -18,6 +18,8 @@ import {
   Plus,
   Pencil,
   Palette,
+  Sparkles,
+  MessageSquare,
 } from 'lucide-react';
 import { useMenuPosition } from '../useMenuPosition';
 import { CommandGroup, CommandItem, GroupIcon } from '../commands';
@@ -55,6 +57,7 @@ interface TerminalPanelProps {
   constVars: ConstVar[];
   pathVars: PathVars;
   onClearPathVar: (name: PathVarName) => void;
+  onAskAi: (text: string, send: boolean) => void; // selected text to the AI Assistant (send = explain it now)
 }
 
 /** One tab's terminal: its xterm, the element it lives in, and its prompt (OSC) handler. */
@@ -109,6 +112,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   constVars,
   pathVars,
   onClearPathVar,
+  onAskAi,
 }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -945,6 +949,26 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               <ClipboardPaste size={13} style={{ color: '#8b5cf6' }} />
               <span>Paste</span>
             </div>
+            <div className="context-menu-divider" />
+            {([
+              ['Explain with AI', Sparkles, true],
+              ['Ask AI about this...', MessageSquare, false],
+            ] as const).map(([label, Icon, send]) => (
+              <div
+                key={label}
+                className="context-menu-item"
+                style={termMenu.hasSel ? undefined : { opacity: 0.4, pointerEvents: 'none' }}
+                title={termMenu.hasSel ? undefined : 'Select some text first (an error, a command and its output)'}
+                onClick={() => {
+                  const text = xtermRef.current?.getSelection() ?? '';
+                  setTermMenu(null);
+                  if (text.trim()) onAskAi(text, send);
+                }}
+              >
+                <Icon size={13} style={{ color: '#a855f7' }} />
+                <span>{label}</span>
+              </div>
+            ))}
           </div>
         </>
       )}

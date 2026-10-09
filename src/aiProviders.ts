@@ -150,10 +150,27 @@ export interface ToolOutput {
   content: string;
   isError: boolean;
 }
+/** Tokens one request used, as the service reported them. input = input not served from the cache. */
+export interface Usage {
+  input: number;
+  output: number; // includes thinking / reasoning tokens (billed as output)
+  cacheRead: number;
+  cacheWrite: number; // Anthropic only
+}
+export const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+export const addUsage = (a: Usage, b: Usage): Usage => ({
+  input: a.input + b.input,
+  output: a.output + b.output,
+  cacheRead: a.cacheRead + b.cacheRead,
+  cacheWrite: a.cacheWrite + b.cacheWrite,
+});
+const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+
 export interface StepResult {
   texts: string[];
   calls: ToolCall[];
   stop: 'done' | 'tools' | 'refusal' | 'max_tokens' | 'again';
+  usage: Usage;
 }
 
 /**
@@ -214,7 +231,9 @@ class AnthropicSession implements ChatSession {
     const calls = res.content.flatMap((b) => (b.type === 'tool_use' ? [{ id: b.id, name: b.name, input: b.input }] : []));
     const stop =
       res.stop_reason === 'refusal' ? 'refusal' : res.stop_reason === 'max_tokens' ? 'max_tokens' : res.stop_reason === 'pause_turn' ? 'again' : res.stop_reason === 'tool_use' && calls.length ? 'tools' : 'done';
-    return { texts, calls, stop };
+    const u = res.usage;
+    const usage = { input: n(u?.input_tokens), output: n(u?.output_tokens), cacheRead: n(u?.cache_read_input_tokens), cacheWrite: n(u?.cache_creation_input_tokens) };
+    return { texts, calls, stop, usage };
   }
   addResults(results: ToolOutput[]) {
     this.turn.push({
@@ -279,7 +298,10 @@ class OpenAISession implements ChatSession {
     if (m.refusal) texts.push(String(m.refusal));
     const fr = choice.finish_reason;
     const stop = fr === 'content_filter' || m.refusal ? 'refusal' : fr === 'length' ? 'max_tokens' : calls.length ? 'tools' : 'done';
-    return { texts, calls, stop };
+    // prompt_tokens includes the cached part; completion_tokens includes reasoning
+    const cached = n(j.usage?.prompt_tokens_details?.cached_tokens);
+    const usage = { input: Math.max(0, n(j.usage?.prompt_tokens) - cached), output: n(j.usage?.completion_tokens), cacheRead: cached, cacheWrite: 0 };
+    return { texts, calls, stop, usage };
   }
   addResults(results: ToolOutput[]) {
     for (const r of results) this.turn.push({ role: 'tool', tool_call_id: r.call.id, content: r.content });
@@ -328,8 +350,12 @@ class GeminiSession implements ChatSession {
       },
       'gemini'
     );
+    // promptTokenCount includes the cached part; thinking is counted apart from the answer but billed as output
+    const um = j.usageMetadata ?? {};
+    const cached = n(um.cachedContentTokenCount);
+    const usage = { input: Math.max(0, n(um.promptTokenCount) - cached), output: n(um.candidatesTokenCount) + n(um.thoughtsTokenCount), cacheRead: cached, cacheWrite: 0 };
     const cand = j.candidates?.[0];
-    if (!cand || j.promptFeedback?.blockReason) return { texts: [], calls: [], stop: 'refusal' };
+    if (!cand || j.promptFeedback?.blockReason) return { texts: [], calls: [], stop: 'refusal', usage };
     const content = cand.content ?? { role: 'model', parts: [] };
     const parts: any[] = content.parts ?? [];
     this.turn.push({ role: 'model', parts });
@@ -339,7 +365,7 @@ class GeminiSession implements ChatSession {
       .map((p) => ({ id: p.functionCall.id ?? `boonsh-call-${++this.seq}`, name: p.functionCall.name, input: p.functionCall.args ?? {} }));
     const fr = cand.finishReason;
     const stop = ['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII'].includes(fr) ? 'refusal' : fr === 'MAX_TOKENS' ? 'max_tokens' : calls.length ? 'tools' : 'done';
-    return { texts, calls, stop };
+    return { texts, calls, stop, usage };
   }
   addResults(results: ToolOutput[]) {
     this.turn.push({

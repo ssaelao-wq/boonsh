@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.9.9**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.0**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -96,6 +96,14 @@ A short list of the folders you open most, so you can jump back to them in one c
 - **Only at the prompt:** the `cd` is sent only while the terminal sits at its prompt. While you run a program in it (Claude, vim, `npm run dev`, a long command ...) boonsh does **not** type into it; the file panel still moves, and when the program ends and the prompt returns, the terminal is moved to the folder the file panel is in. boonsh knows a program is running from the moment you press Enter until the next prompt appears.
 
 ## 4. The file panel
+
+### Auto refresh
+The open folder updates by itself when another program changes it: a file saved from an app, a download that finishes, a file deleted or renamed in Explorer or from the terminal. It shows within about half a second. Your selection, the focused file and the scroll position stay as they were; a selected file that was deleted simply drops out of the selection.
+
+- Only the open folder is watched, not its sub-folders (a change deep inside a sub-folder does not reload the list; the folder's own size and date do not change either).
+- Many changes at once (a program copying hundreds of files) arrive as one update. A file that keeps growing (a long download) is updated at most every 2 seconds.
+- Search results are not refreshed automatically, since they are not the folder's listing. Edit the search text to run it again, or clear it to see the folder as it is now.
+- **Refresh** (F5) still works, for example for a network folder that does not report its changes.
 
 ### View modes (header icons, remembered between runs)
 | View | What it shows |
@@ -837,7 +845,7 @@ Open it with the **Eye icon** or **Ctrl+P**. It appears below the file panel and
 
 The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, else `cmd`. It uses a fixed-width font (Cascadia Code) at 12 px, remembers 5,000 lines of scrollback, follows the dark or light theme, and the prompt is short: `<username> >` (or `admin >` in admin mode). The button at the top-right of the terminal header shows **User: <name>** (with **(Admin)** in an Administrator tab); click it to switch that tab's login.
 
-- **Copy / cut / paste:** select text with the mouse. **Ctrl+C** copies it (with nothing selected, Ctrl+C still interrupts the running command). **Ctrl+V** pastes the clipboard at the prompt. **Ctrl+X** with a selection copies it (output text cannot be removed, so cut = copy; with no selection it goes to the shell). Right-click in the terminal for **Cut**, **Copy** and **Paste** (Cut and Copy are greyed out with no selection).
+- **Copy / cut / paste:** select text with the mouse. **Ctrl+C** copies it (with nothing selected, Ctrl+C still interrupts the running command). **Ctrl+V** pastes the clipboard at the prompt. **Ctrl+X** with a selection copies it (output text cannot be removed, so cut = copy; with no selection it goes to the shell). Right-click in the terminal for **Cut**, **Copy** and **Paste** (Cut and Copy are greyed out with no selection), and for **Explain with AI** / **Ask AI about this...**, which send the selected text to the AI Assistant (see section 16, *Ask about the command line*).
 - **Tabs:** the terminal can hold several command lines at once, one per tab, in a tab bar above the terminal header.
   - There is **always at least one command line**. It opens when boonsh starts. The **tab bar is always shown**, also with one tab. Every tab is named after your user name; use **Rename Tab** to tell them apart.
   - **New tab:** the **+** at the end of the tab bar, or right-click the terminal header (the bar with the Commands button) and choose **New Tab**. The new tab opens in the folder the file panel shows and becomes the active tab.
@@ -1085,13 +1093,40 @@ The **AI Assistant** is a chat panel under the command line panel. Tell it in pl
 
 The panel header shows the model in use. The key button is red while no key is saved and amber when one is. Open the key form again to change the model (the **Saved** line), to replace the key with another one (any service), or to **Remove key**. A new key or model starts a new conversation. The **Get a key** links open the key pages of the three services in your browser. Each request is billed by the service to the key's account.
 
-**Asking.** Type in the box at the bottom and press **Enter** (**Shift+Enter** for a new line), or click one of the examples shown in an empty panel. Each step the assistant takes is listed as a short line with a check mark (or a red warning when it failed), followed by its answer. **Stop** (the square button) ends a request that is still running. Every message has its **date and time** under it (each action line shows its time as a tooltip). The **eraser button** starts a new conversation (after you confirm). The assistant remembers the conversation until then, so you can follow up (*"now only the jpg files"*), and the panel keeps the last **500 lines** to scroll back through (older lines are dropped from the screen, not from what the assistant remembers).
+**Asking.** Type in the box at the bottom and press **Enter** (**Shift+Enter** for a new line), or click a quick prompt (below). Each step the assistant takes is listed as a short line with a check mark (or a red warning when it failed), followed by its answer. **Stop** (the square button) ends a request that is still running. Every message has its **date and time** under it (each action line shows its time as a tooltip). The **eraser button** starts a new conversation (after you confirm). The assistant remembers the conversation until then, so you can follow up (*"now only the jpg files"*), and the panel keeps the last **500 lines** to scroll back through (older lines are dropped from the screen, not from what the assistant remembers).
+
+**Quick prompts.** The line of buttons above the box holds requests you use often. Click one to send it at once. It starts with a few examples (*Sort by date modified, newest first*, *Group by type* ...).
+- **Add:** type the request in the box and click **+** at the end of the line, or right-click one of your messages in the conversation and choose **Save as quick prompt**.
+- **Right-click a quick prompt** for **Put in the box (to edit first)** or **Remove quick prompt**.
+- Up to 20; the line scrolls sideways when they do not fit. They are kept between runs (removing them all keeps the line empty).
+
+**Earlier requests (Up / Down).** In the box, **Up** brings back what you sent before, newest first, and **Down** goes forward again; past the newest, the text you had started typing comes back. In a box with several lines, Up works on the first line and Down on the last (elsewhere they move the cursor as usual). The last 50 requests are kept between runs. Quick prompts you clicked are not added.
+
+**Ask about the command line.** Select text in the command line panel (an error, or a command with its output), right-click it and choose:
+- **Explain with AI**: opens the assistant and sends the text at once, asking what it means. For an error it explains what went wrong and, when a command would fix it, types the corrected command at the prompt (not run, as always).
+- **Ask AI about this...**: opens the assistant with the text attached (a green dashed line above the box says so) and puts the cursor in the box for your own question, for example *"how do I run this as administrator?"*. Enter with an empty box asks for an explanation. The **x** on that line drops the attached text.
+
+The text appears in your message in a small box. Only the last 6,000 characters of a long selection are sent. The selected text goes to the AI service, so do not select passwords or other secrets. Text from the command line is treated as data, like file names: instructions written inside it are not followed.
+
+**Saved conversations (off until you turn it on).** The **clock button** in the panel header opens the list of saved conversations.
+- Tick **Keep conversations on this computer** to save them. Each conversation is then saved as you go, and when boonsh starts it reopens the latest one, so you can carry on where you stopped. The eraser starts a new conversation and the previous one stays in the list.
+- The list shows each conversation's first request, when it last changed, how many messages it has and what it used (tokens, and the cost when known), newest first. Click one to open it (not while the assistant is working); the open one is marked with a purple bar. The trash button deletes one; **Delete all saved conversations** deletes them all (the one on screen stays open).
+- The assistant gets an opened conversation's earlier messages and actions as context with your next request, so a follow-up like *"now the other way round"* works after a restart. It knows those actions are already done. The same happens after you change the key or the model.
+- Unticking it stops saving and asks whether to delete the saved conversations too (Cancel keeps them; you can still open or delete them in the list).
+- They are saved in your Windows user profile (`%APPDATA%\com.boonsh.app\ai-chats`, one file per conversation) as plain text: what you asked, the answers, file names and any command line text you sent. Up to 100 are kept; the oldest go first. With the option off nothing is written.
+
+**Tokens and cost.** The services count **tokens** (pieces of words) and bill by them. boonsh shows:
+- in the panel header, the tokens of the open conversation and, when the model's price is known, about what it cost (*12k tokens · ~$0.0021*);
+- after the time under the last message of each request, what that request used (one request can take several steps when the assistant uses tools).
+Point at either for the details: input, output (thinking included), input read from the service's cache (about 10% of the input price) and, for Claude, input written to the cache (125%).
+
+The token counts come from the service and are exact. The **cost is an estimate**: boonsh knows the prices of a few models from public price lists (October 2026): Claude Haiku 4.5, GPT-5 nano / mini, GPT-5.4 nano / mini, GPT-4.1 nano / mini, Gemini 2.5 Flash-Lite / Flash and Gemini 3.1 Flash-Lite. For any other model, or when a price changes, enter the price yourself: open the key form, fill in **Price per 1M tokens, USD** (input and output, as on the service's price page; the **price list** link opens it) and click **Set price**. **Built-in price** / **Clear price** removes your own price again. Without a price only the tokens are shown. Taxes, free tiers and discounts are not included: the service's bill is the real amount.
 
 **Search the conversation.** The **magnifier button** in the panel header opens a search box. It shows only the messages and action lines that contain the text (ignoring upper / lower case, dates and times included), marks the matches in yellow and shows how many were found (*2 of 14*). **Esc** or the **x** closes the search and shows everything again.
 
 **Copying.** The text in the panel can be selected with the mouse and copied with **Ctrl+C**. Click in the conversation and press **Ctrl+A** to select all of it. Right-click in the conversation for **Copy** (the selected text), **Copy message** (the message under the pointer), **Copy conversation** (every line with its date and time; while searching, only the lines found) and **Select all**.
 
-Each request also tells it the current folder, the selection, the sort, the grouping, the columns, the view and which panels are open. It sees file names and sizes when it needs them, never the contents of files.
+Each request also tells it the current folder, the selection, the sort, the grouping, the columns, the view and which panels are open. It sees file names and sizes when it needs them, never the contents of files. It sees command line text only when you send it with **Explain with AI** / **Ask AI about this...**.
 
 **What it can do**
 

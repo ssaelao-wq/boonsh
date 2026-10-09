@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { listen } from '@tauri-apps/api/event';
 import { HeaderBar } from './components/HeaderBar';
 import { QuickAccessBar } from './components/QuickAccessBar';
 import { FolderTree } from './components/FolderTree';
@@ -117,6 +118,12 @@ export function App() {
   const toggleAssistant = (on = !showAssistant) => {
     setShowAssistant(on);
     localStorage.setItem('boonsh_ai_panel', on ? '1' : '0');
+  };
+  // "Ask AI" in the command line's right-click menu: show the panel and hand it the selected text
+  const [askAiRequest, setAskAiRequest] = useState<{ id: number; text: string; send: boolean } | null>(null);
+  const askAi = (text: string, send: boolean) => {
+    toggleAssistant(true);
+    setAskAiRequest((prev) => ({ id: (prev?.id ?? 0) + 1, text, send }));
   };
   const [assistantHeightPx, setAssistantHeightPx] = useState<number>(300);
   const [isDraggingAi, setIsDraggingAi] = useState<boolean>(false);
@@ -760,6 +767,60 @@ export function App() {
     }, 250);
     return () => clearTimeout(timer);
   }, [searchQuery, includeSubfolders, searchRefreshTick, searchInputKey]);
+
+  // Auto refresh (dir_watch.rs): another program added, changed or removed something in the open folder. Reload
+  // the list quietly: selection, focus and scroll stay, unchanged items keep their objects (so the preview and the
+  // details columns are not redone). Skipped while a search is shown: its results are not this folder's listing.
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
+  const reloadQuietly = () => {
+    const path = currentPathRef.current;
+    if (!path || searchQueryRef.current.trim()) return;
+    invoke<FileListResult>('list_directory', { targetPath: path })
+      .then((res) => {
+        if (normalizePath(res.current_path) !== normalizePath(currentPathRef.current) || searchQueryRef.current.trim()) return;
+        const same = (a: FileItem, b: FileItem) =>
+          a.name === b.name && a.size === b.size && a.modified_timestamp === b.modified_timestamp && a.is_hidden === b.is_hidden;
+        const byPath = new Map(res.items.map((i) => [i.path, i]));
+        setRawItems((prev) => {
+          const old = new Map(prev.map((i) => [i.path, i]));
+          let changed = prev.length !== res.items.length;
+          const next = res.items.map((i) => {
+            const o = old.get(i.path);
+            if (o && same(o, i)) return o;
+            changed = true;
+            return i;
+          });
+          return changed ? next : prev;
+        });
+        setTotalFiles(res.total_files);
+        setTotalFolders(res.total_folders);
+        setTotalSize(res.total_size);
+        setSelectedPaths((prev) => {
+          const kept = [...prev].filter((p) => byPath.has(p));
+          return kept.length === prev.size ? prev : new Set(kept);
+        });
+        setSelectedItem((prev) => {
+          const now = prev ? byPath.get(prev.path) : undefined;
+          if (!prev || !now) return null;
+          return same(prev, now) ? prev : now;
+        });
+      })
+      .catch(() => {}); // the folder itself is gone: leave the list as it is (F5 or navigation shows the error)
+  };
+  const reloadQuietlyRef = useRef(reloadQuietly);
+  reloadQuietlyRef.current = reloadQuietly;
+  useEffect(() => {
+    invoke('watch_directory', { path: currentPath || null }).catch(() => {});
+  }, [currentPath]);
+  useEffect(() => {
+    const unlisten = listen<{ path: string }>('dir-changed', (e) => {
+      if (normalizePath(e.payload.path) === normalizePath(currentPathRef.current)) reloadQuietlyRef.current();
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
 
   // Sort Items logic (see columns.ts): folders first (optional), each sort level in turn, then the name
   const layout = useMemo(
@@ -1497,6 +1558,7 @@ export function App() {
             constVars={constVars}
             pathVars={pathVars}
             onClearPathVar={(name) => assignPathVar(name, [])}
+            onAskAi={askAi}
             commandGroups={commandGroups}
             hotkeysOn={!showSettings}
             onOpenSettings={() => openSettings()}
@@ -1521,7 +1583,7 @@ export function App() {
                 : { flex: '1 1 0%', minHeight: 0 }
             }
           >
-            <AssistantPanel getHost={() => assistantHostRef.current!} onClose={() => toggleAssistant(false)} />
+            <AssistantPanel getHost={() => assistantHostRef.current!} onClose={() => toggleAssistant(false)} askRequest={askAiRequest} />
           </div>
         </div>
       </div>

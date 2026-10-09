@@ -1,4 +1,6 @@
+mod ai_chats;
 mod bulk_rename;
+mod dir_watch;
 mod file_props;
 mod fs_ops;
 mod localtime;
@@ -6,7 +8,9 @@ mod pty;
 mod search;
 mod secrets;
 
+use ai_chats::*;
 use bulk_rename::*;
+use dir_watch::*;
 use file_props::*;
 use fs_ops::*;
 use pty::*;
@@ -72,6 +76,12 @@ pub fn run() {
             ai_key_get,
             ai_key_set,
             ai_key_delete,
+            watch_directory,
+            ai_chats_list,
+            ai_chat_load,
+            ai_chat_save,
+            ai_chat_delete,
+            ai_chats_delete_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running boonsh tauri application");
