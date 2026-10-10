@@ -90,6 +90,44 @@ pub struct PtyFailedPayload {
     pub message: String,
 }
 
+/// PowerShell setup added to every PowerShell tab (one line, no double quotes: it travels as a command-line
+/// argument). `__boonsh_call` writes a request to a UTF-8 temp file and runs `boonsh.exe --basket <request>
+/// <answer>` (basket.rs `run_cli`), so names in any language survive the console code page.
+/// - Basket commands: `basket`, `basket-add`, `basket-remove`, `basket-list`, `basket-new`.
+/// - Enter (PSReadLine): a line with `{NAME}` or `{BASKET:name}` is first filled in by boonsh (cmdvars.rs), the
+///   same way as a command picked from the Commands menu; on an error (a basket not found ...) the message is
+///   shown and the line stays for editing. Lines without placeholders run as before.
+const BASKET_FUNCTIONS: &str = concat!(
+    "function __boonsh_call($req) { $req.cwd = (Get-Location).ProviderPath; $q = [IO.Path]::GetTempFileName(); $a = $q + '.answer'; ",
+    "[IO.File]::WriteAllText($q, (ConvertTo-Json -InputObject $req -Depth 4 -Compress), (New-Object Text.UTF8Encoding $false)); ",
+    "$null = Start-Process -FilePath $env:BOONSH_EXE -ArgumentList @('--basket', ([string][char]34 + $q + [char]34), ([string][char]34 + $a + [char]34)) -Wait -PassThru -NoNewWindow; ",
+    "Remove-Item -LiteralPath $q -Force -ErrorAction SilentlyContinue; if (-not (Test-Path -LiteralPath $a)) { return $null }; ",
+    "$r = [IO.File]::ReadAllText($a, [Text.Encoding]::UTF8) | ConvertFrom-Json; Remove-Item -LiteralPath $a -Force -ErrorAction SilentlyContinue; $r }; ",
+    "function __boonsh_basket($req) { $r = __boonsh_call $req; if (-not $r) { Write-Error 'boonsh did not answer the basket command.'; return }; ",
+    "if ($r.error) { Write-Error $r.error; return }; if ($r.message) { Write-Host $r.message }; $r }; ",
+    "if (Get-Command Set-PSReadLineKeyHandler -ErrorAction SilentlyContinue) { Set-PSReadLineKeyHandler -Key Enter -BriefDescription 'boonsh-placeholders' -ScriptBlock { ",
+    "$l = $null; $c = $null; [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$l, [ref]$c); ",
+    "if ($l -match '\\{[A-Za-z_][A-Za-z0-9_-]*\\}|\\{BASKET:[^{}]+\\}') { $r = __boonsh_call @{op='expand'; line=$l}; ",
+    "$e = if (-not $r) { 'the placeholders could not be filled in.' } elseif ($r.error) { $r.error } else { $null }; ",
+    "if ($e) { [Console]::WriteLine(); [Console]::WriteLine('boonsh: ' + $e); [Microsoft.PowerShell.PSConsoleReadLine]::InvokePrompt(); return }; ",
+    "if ($r.text -ne $l) { [Microsoft.PowerShell.PSConsoleReadLine]::Replace(0, $l.Length, $r.text) } }; ",
+    "[Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine() } }; ",
+    "function basket { param([Parameter(Mandatory=$true, Position=0)][string]$Name) ",
+    "$r = __boonsh_basket @{op='items'; basket=$Name}; if ($r) { foreach ($p in @($r.items)) { if ($p) { Get-Item -LiteralPath $p -Force } } } }; ",
+    "function basket-add { param([Parameter(Mandatory=$true, Position=0)][string]$Name, [Parameter(Position=1, ValueFromRemainingArguments=$true)][string[]]$Path, [Parameter(ValueFromPipeline=$true)]$InputObject) ",
+    "begin { $all = New-Object System.Collections.Generic.List[string] } ",
+    "process { if ($null -ne $InputObject) { if ($InputObject -is [IO.FileSystemInfo]) { $all.Add($InputObject.FullName) } else { $all.Add([string]$InputObject) } } } ",
+    "end { foreach ($p in @($Path)) { if ($p) { $all.Add($p) } }; if ($all.Count -eq 0) { Write-Error 'Name the files or folders to add, or pipe them in.'; return }; ",
+    "$null = __boonsh_basket @{op='add'; basket=$Name; paths=@($all)} } }; ",
+    "function basket-remove { param([Parameter(Mandatory=$true, Position=0)][string]$Name, [Parameter(Position=1, ValueFromRemainingArguments=$true)][string[]]$Path, [Parameter(ValueFromPipeline=$true)]$InputObject) ",
+    "begin { $all = New-Object System.Collections.Generic.List[string] } ",
+    "process { if ($null -ne $InputObject) { if ($InputObject -is [IO.FileSystemInfo]) { $all.Add($InputObject.FullName) } else { $all.Add([string]$InputObject) } } } ",
+    "end { foreach ($p in @($Path)) { if ($p) { $all.Add($p) } }; if ($all.Count -eq 0) { Write-Error 'Name the links to remove (wildcards work), or pipe them in.'; return }; ",
+    "$null = __boonsh_basket @{op='remove'; basket=$Name; paths=@($all)} } }; ",
+    "function basket-list { $r = __boonsh_basket @{op='list'}; if ($r -and $r.baskets) { @($r.baskets) | Select-Object @{n='Basket';e={$_.name}}, @{n='Links';e={$_.links}}, @{n='Path';e={$_.path}} } }; ",
+    "function basket-new { param([Parameter(Mandatory=$true, Position=0)][string]$Name) $null = __boonsh_basket @{op='new'; basket=$Name} }",
+);
+
 /// Opens a pseudo console and starts the shell in it. Returns it with the output reader and the shell's name.
 fn open_local(cols: u16, rows: u16, cwd: Option<String>) -> Result<(LocalPty, Box<dyn Read + Send>, &'static str), String> {
     let pty_system = NativePtySystem::default();
@@ -116,16 +154,21 @@ fn open_local(cols: u16, rows: u16, cwd: Option<String>) -> Result<(LocalPty, Bo
 
     let mut cmd = CommandBuilder::new(shell_cmd);
     cmd.env("TERM", "xterm-256color");
+    // the basket commands below run this same program with --basket
+    if let Ok(exe) = std::env::current_exe() {
+        cmd.env("BOONSH_EXE", exe.to_string_lossy().to_string());
+    }
+    // the Global Var / CONST values for placeholders typed at the prompt (cmdvars.rs)
+    cmd.env("BOONSH_VARS", crate::cmdvars::vars_file().to_string_lossy().to_string());
 
     // Each prompt emits an invisible OSC 9;9 sequence (ESC ] 9;9;<path> BEL/ST) carrying the
     // shell's current directory; TerminalPanel parses it to sync the file panel after `cd`.
     if shell_cmd.contains("pwsh") || shell_cmd.contains("powershell") {
-        cmd.args([
-            "-NoLogo",
-            "-NoExit",
-            "-Command",
-            "function prompt { $l = $executionContext.SessionState.Path.CurrentLocation; $o = ''; if ($l.Provider.Name -eq 'FileSystem') { $o = [char]27 + ']9;9;' + $l.ProviderPath + [char]7 }; if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { $o + 'admin > ' } else { $o + $env:USERNAME + ' > ' } }",
-        ]);
+        let setup = format!(
+            "function prompt {{ $l = $executionContext.SessionState.Path.CurrentLocation; $o = ''; if ($l.Provider.Name -eq 'FileSystem') {{ $o = [char]27 + ']9;9;' + $l.ProviderPath + [char]7 }}; if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {{ $o + 'admin > ' }} else {{ $o + $env:USERNAME + ' > ' }} }}; {}",
+            BASKET_FUNCTIONS
+        );
+        cmd.args(["-NoLogo", "-NoExit", "-Command", &setup]);
     } else {
         cmd.args(["/k", "prompt $E]9;9;$P$E\\%USERNAME% $G"]);
     }
@@ -259,12 +302,13 @@ fn spawn_remote(app: AppHandle, id: String, cols: u16, rows: u16, cwd: Option<St
         _ => default_start_dir(),
     };
     let args = format!(
-        "--pty-helper {} {} {} {} {}",
+        "--pty-helper {} {} {} {} {} {}",
         port,
         secret,
         cols,
         rows,
-        crate::fs_ops::quote_path_arg(&cwd_text)
+        crate::fs_ops::quote_path_arg(&cwd_text),
+        crate::fs_ops::quote_path_arg(&crate::cmdvars::vars_file().to_string_lossy())
     );
     let launcher = crate::fs_ops::launch_helper(admin, &args)?;
 
@@ -430,7 +474,7 @@ pub fn pty_close(state: State<'_, PtyState>, id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Entry point of `boonsh.exe --pty-helper <port> <secret> <cols> <rows> <cwd>`: runs one shell for the app that
+/// Entry point of `boonsh.exe --pty-helper <port> <secret> <cols> <rows> <cwd> [<vars file>]`: runs one shell for the app that
 /// started it and relays between that shell and the app's connection. Returns the process exit code.
 pub fn run_helper(args: &[String]) -> i32 {
     // A debug build is a console program, so Windows gives the helper a console window (the release build has
@@ -452,6 +496,10 @@ pub fn run_helper(args: &[String]) -> i32 {
         return 2;
     };
     let cwd = args.get(4).cloned();
+    // the app's session file of Global Var values, so this tab's typed placeholders use them too
+    if let Some(vars) = args.get(5) {
+        crate::cmdvars::set_vars_file(vars);
+    }
 
     let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) else {
         return 1;

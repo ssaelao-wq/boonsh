@@ -10,6 +10,8 @@ export interface FileItem {
   created_timestamp: number;
   ext: string;
   is_hidden: boolean;
+  links?: number; // a .basket file: how many links it holds
+  state?: 'gone' | 'new'; // inside a basket: nothing at the linked path / not linked yet (see basket.rs)
 }
 
 export interface QuickAccessItem {

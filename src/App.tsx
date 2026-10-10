@@ -28,7 +28,6 @@ import {
   PathVars,
   PathVarName,
   EMPTY_PATH_VARS,
-  expandTemplate,
   hasPlaceholder,
 } from './pathVars';
 import {
@@ -50,6 +49,7 @@ import {
   saveRenameHistory,
 } from './bulkRename';
 import { tabColor } from './tabColors';
+import { addMessage, basketName, isBasket, parentDir } from './basket';
 import { FileItem, QuickAccessItem, FileListResult, ViewMode, ItemDetails, TermTab } from './types';
 import {
   FrequentStats,
@@ -88,13 +88,27 @@ export function App() {
   currentPathRef.current = currentPath;
   const [parentPath, setParentPath] = useState<string | null>(null);
   const [rawItems, setRawItems] = useState<FileItem[]>([]);
+  // The latest real listing of a folder (never search results): the folder tree takes that folder's sub-folders
+  // from it, so a folder renamed, added or deleted there shows in the tree too.
+  const [treeListing, setTreeListing] = useState<{ path: string; items: FileItem[] } | null>(null);
   const [quickAccess, setQuickAccess] = useState<QuickAccessItem[]>([]);
   // selectedItem = focused item (preview, title, status); selectedPaths = full multi-selection
   const [selectedItem, setSelectedItem] = useState<FileItem | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const selectionAnchorRef = useRef<string | null>(null); // Shift+Click range start
-  // In-app file clipboard for Ctrl+X / Ctrl+C / Ctrl+V
-  const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'cut'; paths: string[] } | null>(null);
+  // In-app file clipboard for Ctrl+X / Ctrl+C / Ctrl+V. `basket`: copied inside that basket, so a paste into a
+  // folder takes only its linked items (basket.rs paste_out) and a cut there moves the links along.
+  const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'cut'; paths: string[]; basket?: string } | null>(null);
+  // An open basket (basket.rs): the file panel lists its links instead of the folder. `trail` = the linked folders
+  // opened inside it (empty = its top level). The current folder stays the basket's own folder, so the command
+  // line stays there too (a basket is not a folder on disk).
+  const [basketView, setBasketViewState] = useState<{ path: string; trail: string[] } | null>(null);
+  const basketViewRef = useRef(basketView);
+  const setBasketView = (v: { path: string; trail: string[] } | null) => {
+    basketViewRef.current = v;
+    setBasketViewState(v);
+  };
+  const [basketCounts, setBasketCounts] = useState<{ links: number; gone: number; new: number } | null>(null);
   const [totalFiles, setTotalFiles] = useState<number>(0);
   const [totalFolders, setTotalFolders] = useState<number>(0);
   const [totalSize, setTotalSize] = useState<number>(0);
@@ -151,6 +165,10 @@ export function App() {
   const constVarsRef = useRef(constVars);
   constVarsRef.current = constVars;
   const consts = () => constMap(constVarsRef.current);
+  // The command line tabs fill in placeholders typed at the prompt from these values (cmdvars.rs session file)
+  useEffect(() => {
+    invoke('write_vars_file', { vars: pathVars, consts: constMap(constVars) }).catch(() => {});
+  }, [pathVars, constVars]);
   // Command template (with {SELEC}/{DEST}) sitting untouched at the prompt. While it is set, the typed line can be
   // rewritten when a variable or the folder changes. The terminal clears it as soon as the user types.
   const pendingCmdRef = useRef<string | null>(null);
@@ -163,9 +181,21 @@ export function App() {
     await ptyWrite(text);
   };
 
+  // A command template as it is typed: baskets ({BASKET:name}, or a Global Var holding a basket, become the
+  // basket's linked items), Global Vars and CONSTs. The rules are in src-tauri/src/cmdvars.rs, shared with
+  // placeholders the user types at a PowerShell prompt. Throws when a basket is not found.
+  const expandCommand = (template: string, vars = pathVarsRef.current, base = currentPathRef.current) =>
+    invoke<string>('expand_command', { text: template, cwd: base, vars, consts: consts() });
+
   // Type a command template at the prompt, expanded against the current folder.
   const pickCommand = async (template: string) => {
-    const text = expandTemplate(template, pathVarsRef.current, currentPathRef.current, consts());
+    let text: string;
+    try {
+      text = await expandCommand(template);
+    } catch (err) {
+      alert(String(err));
+      return;
+    }
     const replace = pendingCmdRef.current !== null;
     pendingCmdRef.current = hasPlaceholder(template, varNames()) ? template : null;
     if (replace) await rewritePromptLine(text);
@@ -177,7 +207,9 @@ export function App() {
     setPathVars(next);
     const template = pendingCmdRef.current;
     if (template !== null) {
-      rewritePromptLine(expandTemplate(template, next, currentPathRef.current, consts())).catch(() => {});
+      expandCommand(template, next)
+        .then(rewritePromptLine)
+        .catch(() => {});
     }
   };
 
@@ -444,9 +476,15 @@ export function App() {
     return invoke<FileListResult>('list_directory', { targetPath: targetPath || null })
       .then((res) => {
         lastRequestedPathRef.current = res.current_path;
+        if (basketViewRef.current) {
+          // a folder listing replaces an open basket (navigation, refresh of the folder ...)
+          setBasketView(null);
+          setBasketCounts(null);
+        }
         setCurrentPath(res.current_path);
         setParentPath(res.parent_path);
         setRawItems(res.items);
+        setTreeListing({ path: res.current_path, items: res.items });
         setTotalFiles(res.total_files);
         setTotalFolders(res.total_folders);
         setTotalSize(res.total_size);
@@ -669,14 +707,22 @@ export function App() {
   }, []);
 
   // Bi-directional navigation: Navigate GUI & send cd command to the active tab's PowerShell
-  const handleNavigate = (path: string): Promise<boolean> => {
-    const loaded = fetchDirectory(path);
+  // selectPaths: select these after opening (Open file location from a basket)
+  const handleNavigate = (path: string, selectPaths?: string[]): Promise<boolean> => {
     const id = activeTabIdRef.current;
-    if (!id) return loaded;
+    // The shell follows only once the folder has opened: a folder that was renamed or deleted meanwhile (an old
+    // name in the folder tree) would otherwise just give a "path does not exist" error at the prompt.
+    return fetchDirectory(path, selectPaths).then((ok) => {
+      if (ok && id && activeTabIdRef.current === id) shellFollow(id, path);
+      return ok;
+    });
+  };
+
+  const shellFollow = (id: string, path: string) => {
     updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, cwd: path } : t)));
     if (atPromptRef.current[id] === false) {
       heldCdRef.current[id] = path;
-      return loaded;
+      return;
     }
     heldCdRef.current[id] = null;
     // A command still waiting at the prompt is cleared first (else the cd would be glued onto it) and typed
@@ -684,13 +730,12 @@ export function App() {
     const template = pendingCmdRef.current;
     if (template === null) {
       ptyWrite(`cd "${path}"\r`).catch(() => {});
-      return loaded;
+      return;
     }
     (async () => {
       await rewritePromptLine(`cd "${path}"\r`);
-      await ptyWrite(expandTemplate(template, pathVarsRef.current, path, consts()));
+      await ptyWrite(await expandCommand(template, pathVarsRef.current, path));
     })().catch(() => {});
-    return loaded;
   };
 
   // Shell -> GUI: a tab's prompt reported its cwd (e.g. after a typed `cd`).
@@ -717,10 +762,162 @@ export function App() {
   };
 
   const handleOpenFile = (file: FileItem) => {
+    if (file.state) return; // a gone or new item in a basket: nothing to open until the user decides
+    if (isBasket(file)) {
+      openBasket(file.path);
+      return;
+    }
     selectSingle(file);
     invoke('open_in_default_app', { path: file.path }).catch((err) => {
       console.error('Failed to open file in default app:', err);
     });
+  };
+
+  // ---- Baskets (basket.rs / basket.ts) ----
+  // Open a basket: its own folder becomes the current folder (so the command line is there), then its links show.
+  const openBasket = async (path: string) => {
+    const dir = parentDir(path);
+    if (normalizePath(dir) !== normalizePath(currentPathRef.current)) {
+      if (!(await handleNavigate(dir))) return;
+    }
+    setSearchQuery('');
+    setBasketView({ path, trail: [] });
+  };
+  // A linked folder inside the open basket (still in basket mode), or a real folder outside one
+  const openDirectory = (path: string) => {
+    const bv = basketViewRef.current;
+    if (bv) setBasketView({ ...bv, trail: [...bv.trail, path] });
+    else handleNavigate(path);
+  };
+  const leaveBasket = () => {
+    setBasketView(null);
+    setBasketCounts(null);
+    fetchDirectory(currentPathRef.current);
+  };
+  // Up: one linked folder back, then out of the basket into its folder
+  const basketUp = () => {
+    const bv = basketViewRef.current;
+    if (!bv) return;
+    if (bv.trail.length > 0) setBasketView({ ...bv, trail: bv.trail.slice(0, -1) });
+    else leaveBasket();
+  };
+
+  // Show the open basket (or the linked folder opened inside it). quiet = keep the selection (auto refresh).
+  const loadBasket = async (v = basketViewRef.current, selectPaths?: string[], quiet = false) => {
+    if (!v) return;
+    try {
+      const res = await invoke<{ items: FileItem[]; links: number; gone: number; new: number }>('basket_view', {
+        basket: v.path,
+        folder: v.trail[v.trail.length - 1] ?? null,
+      });
+      if (basketViewRef.current !== v) return; // the user moved on meanwhile
+      setRawItems(res.items);
+      setBasketCounts({ links: res.links, gone: res.gone, new: res.new });
+      const byPath = new Map(res.items.map((i) => [i.path, i]));
+      const wanted = (selectPaths ?? []).filter((p) => byPath.has(p));
+      if (wanted.length > 0) {
+        setSelectedItem(byPath.get(wanted[0]) ?? null);
+        setSelectedPaths(new Set(wanted));
+        selectionAnchorRef.current = wanted[0];
+      } else if (quiet) {
+        setSelectedPaths((prev) => {
+          const kept = [...prev].filter((p) => byPath.has(p));
+          return kept.length === prev.size ? prev : new Set(kept);
+        });
+        setSelectedItem((prev) => (prev ? byPath.get(prev.path) ?? null : null));
+      } else {
+        selectSingle(res.items.find((i) => !i.state) ?? null);
+      }
+    } catch (err) {
+      // the basket file itself is gone or unreadable: back to its folder
+      if (basketViewRef.current === v) {
+        leaveBasket();
+        if (!quiet) alert(String(err));
+      }
+    }
+  };
+  const refreshView = () => {
+    if (basketViewRef.current) {
+      if (searchQueryRef.current.trim()) setSearchRefreshTick((t) => t + 1);
+      else loadBasket();
+    } else fetchDirectory(currentPathRef.current);
+  };
+
+  const loadBasketRef = useRef(loadBasket);
+  loadBasketRef.current = loadBasket;
+
+  const basketToast = (message: string) => setRenameToast({ message, undoable: false });
+
+  // Add links to a basket (paste, drag and drop, Link). A cut is cancelled: nothing moves into a basket.
+  const addToBasket = async (basket: string, paths: string[]) => {
+    try {
+      const r = await invoke<{ added: number; already: number; refused: string[] }>('basket_add', { basket, paths });
+      if (r.refused.length) alert(addMessage(r));
+      else basketToast(`${basketName(basket)}: ${addMessage(r)}`);
+    } catch (err) {
+      alert(String(err));
+    }
+    if (clipboard?.mode === 'cut') setClipboard(null);
+    if (basketViewRef.current) loadBasket(undefined, undefined, true);
+    else reloadQuietly(); // the basket's link count
+  };
+  const pasteIntoBasket = (basket: string) => {
+    if (clipboard) addToBasket(basket, clipboard.paths);
+  };
+
+  const basketCall = async (cmd: string, args: Record<string, unknown>, selectPaths?: string[]) => {
+    const bv = basketViewRef.current;
+    if (!bv) return;
+    try {
+      await invoke(cmd, { basket: bv.path, ...args });
+    } catch (err) {
+      alert(String(err));
+    }
+    loadBasket(bv, selectPaths, true);
+  };
+  // Remove links (Delete key, Clear): the files stay where they are
+  const removeFromBasket = (items: FileItem[]) => {
+    if (items.length) basketCall('basket_remove', { paths: items.map((i) => i.path) });
+  };
+  const linkInBasket = (items: FileItem[]) => {
+    if (items.length) basketCall('basket_add', { paths: items.map((i) => i.path) }, items.map((i) => i.path));
+  };
+  // The real files go to the Recycle Bin (only their linked parts), and their links go
+  const deleteBasketFiles = (items: FileItem[]) => {
+    const linked = items.filter((i) => !i.state);
+    if (!linked.length) return;
+    const places = [...new Set(linked.map((i) => parentDir(i.path)))];
+    const where = places.slice(0, 3).join(', ') + (places.length > 3 ? ` and ${places.length - 3} more` : '');
+    const what = linked.length === 1 ? `'${linked[0].name}'` : `${linked.length} items`;
+    if (!confirm(`Move ${what} from ${where} to the Recycle Bin?\n\nThese are the real files, not only the links.`)) return;
+    basketCall('basket_delete_files', { paths: linked.map((i) => i.path) });
+  };
+  // Point a gone link at where the item is now (the user picks it)
+  const relinkInBasket = async (item: FileItem) => {
+    const picked = await invoke<string | null>(item.is_dir ? 'pick_folder' : 'pick_file', {
+      title: `Where is ${item.name} now?`,
+      ...(item.is_dir ? {} : { filter: 'All files (*.*)|*.*' }),
+    }).catch((err) => {
+      alert(String(err));
+      return null;
+    });
+    if (picked) basketCall('basket_relink', { oldPath: item.path, newPath: picked }, [picked]);
+  };
+  const createBasket = () => {
+    const dir = currentPathRef.current;
+    if (!dir) return;
+    invoke<string>('basket_create', { parentDir: dir })
+      .then((path) => fetchDirectory(dir, [path]).then(() => setRenameTrigger((t) => t + 1)))
+      .catch((err) => alert(String(err)));
+  };
+  // Single rename from the file panel: in a basket the link follows the item
+  const handleRenamed = (from: string, to: string) => {
+    const bv = basketViewRef.current;
+    if (bv) {
+      invoke('basket_update_paths', { basket: bv.path, pairs: [[from, to]] })
+        .catch((err) => alert(String(err)))
+        .finally(() => loadBasket(bv, [to], true));
+    } else refreshAfterRename([to]);
   };
 
   // Search / filter (query language in src-tauri/src/search.rs). Debounced; only the latest request's
@@ -732,25 +929,41 @@ export function App() {
   const searchSeqRef = useRef(0);
   // input:<places> reads the current folder (relative places) and Global Var values; re-run the search when they change
   const searchInputKey = /input:/i.test(searchQuery) ? JSON.stringify([currentPath, pathVars]) : '';
+  // An open basket (and the level inside it) is listed and searched instead of the folder
+  const basketKey = basketView ? [basketView.path, ...basketView.trail].join('|') : '';
+  const prevBasketKeyRef = useRef(basketKey);
   useEffect(() => {
     const seq = ++searchSeqRef.current;
     const q = searchQuery.trim();
+    // leaving a basket loads the folder itself (leaveBasket / navigation), so that change alone loads nothing here
+    const basketChanged = prevBasketKeyRef.current !== basketKey;
+    prevBasketKeyRef.current = basketKey;
+    const bv = basketViewRef.current;
     if (!currentPath) return;
     if (q.length === 0) {
       setSearchError('');
       setSearchNotice('');
       setSearching(false);
-      fetchDirectory(currentPath);
+      if (bv) loadBasket(bv);
+      else if (!basketChanged) fetchDirectory(currentPath);
       return;
     }
     const timer = setTimeout(() => {
       setSearching(true);
-      invoke<{ items: FileItem[]; notice: string }>('search_files', {
-        dir: currentPath,
-        query: q,
-        includeSubfolders,
-        vars: pathVarsRef.current,
-      })
+      const request = bv
+        ? invoke<FileItem[]>('basket_search', {
+            basket: bv.path,
+            folder: bv.trail[bv.trail.length - 1] ?? null,
+            query: q,
+            includeSubfolders,
+          }).then((items) => ({ items, notice: '' }))
+        : invoke<{ items: FileItem[]; notice: string }>('search_files', {
+            dir: currentPath,
+            query: q,
+            includeSubfolders,
+            vars: pathVarsRef.current,
+          });
+      request
         .then((res) => {
           if (seq !== searchSeqRef.current) return;
           setSearchError('');
@@ -766,7 +979,7 @@ export function App() {
         });
     }, 250);
     return () => clearTimeout(timer);
-  }, [searchQuery, includeSubfolders, searchRefreshTick, searchInputKey]);
+  }, [searchQuery, includeSubfolders, searchRefreshTick, searchInputKey, basketKey]);
 
   // Auto refresh (dir_watch.rs): another program added, changed or removed something in the open folder. Reload
   // the list quietly: selection, focus and scroll stay, unchanged items keep their objects (so the preview and the
@@ -776,6 +989,10 @@ export function App() {
   const reloadQuietly = () => {
     const path = currentPathRef.current;
     if (!path || searchQueryRef.current.trim()) return;
+    if (basketViewRef.current) {
+      loadBasket(undefined, undefined, true); // e.g. a basket-add command changed the basket file
+      return;
+    }
     invoke<FileListResult>('list_directory', { targetPath: path })
       .then((res) => {
         if (normalizePath(res.current_path) !== normalizePath(currentPathRef.current) || searchQueryRef.current.trim()) return;
@@ -793,6 +1010,7 @@ export function App() {
           });
           return changed ? next : prev;
         });
+        setTreeListing({ path: res.current_path, items: res.items });
         setTotalFiles(res.total_files);
         setTotalFolders(res.total_folders);
         setTotalSize(res.total_size);
@@ -849,7 +1067,11 @@ export function App() {
   }, [rawItems, showType, appByExt]);
   // The user may change a default app in Windows while boonsh is open: look again when the window comes back
   useEffect(() => {
-    const onFocus = () => setAppByExt({});
+    const onFocus = () => {
+      setAppByExt({});
+      // linked items may have been moved or added elsewhere meanwhile: check the open basket again
+      if (basketViewRef.current && !searchQueryRef.current.trim()) loadBasketRef.current(undefined, undefined, true);
+    };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, []);
@@ -932,16 +1154,25 @@ export function App() {
 
   // --- Cut / Copy / Paste / Delete on the selection ---
   const clipboardSelection = (mode: 'copy' | 'cut') => {
-    if (selectedItems.length === 0) return;
-    setClipboard({ mode, paths: selectedItems.map((i) => i.path) });
+    // in a basket only linked items can be copied (a gone or new one is not part of any action)
+    const items = basketView ? selectedItems.filter((i) => !i.state) : selectedItems;
+    if (items.length === 0) return;
+    setClipboard({ mode, paths: items.map((i) => i.path), basket: basketView?.path });
   };
 
-  // Paste into the current folder; resolves with the new paths (the AI Assistant uses it too)
+  // Paste into the current folder; resolves with the new paths (the AI Assistant uses it too). In an open basket
+  // a paste adds links instead.
   const pasteItems = async (): Promise<string[]> => {
     if (!clipboard || !currentPath) return [];
+    if (basketViewRef.current) {
+      await addToBasket(basketViewRef.current.path, clipboard.paths);
+      return [];
+    }
     const dest = currentPath;
     try {
-      const newPaths = await invoke<string[]>('paste_items', { paths: clipboard.paths, destDir: dest, mode: clipboard.mode });
+      const newPaths = clipboard.basket
+        ? await invoke<string[]>('basket_paste_out', { basket: clipboard.basket, paths: clipboard.paths, destDir: dest, mode: clipboard.mode })
+        : await invoke<string[]>('paste_items', { paths: clipboard.paths, destDir: dest, mode: clipboard.mode });
       if (clipboard.mode === 'cut') setClipboard(null); // moved items can't be pasted again
       fetchDirectory(dest, newPaths);
       return newPaths;
@@ -974,6 +1205,18 @@ export function App() {
   };
   const compressSelection = () => {
     if (selectedItems.length === 0 || !currentPath || busyMessage) return;
+    const bv = basketViewRef.current;
+    if (bv) {
+      // only the linked items, in one zip named after the basket, next to it
+      const linked = selectedItems.filter((i) => !i.state);
+      if (!linked.length) return;
+      setBusyMessage(`Compressing ${linked.length} item(s)...`);
+      invoke<string>('basket_zip', { basket: bv.path, paths: linked.map((i) => i.path), destDir: currentPath })
+        .then((zip) => basketToast(`Saved ${zip.split('\\').pop()} next to the basket.`))
+        .catch((err) => alert(`Compress failed: ${err}`))
+        .finally(() => setBusyMessage(''));
+      return;
+    }
     compressItems(selectedItems).catch((err) => alert(`Compress failed: ${err}`));
   };
 
@@ -1017,25 +1260,37 @@ export function App() {
   // After a rename or undo: reload what's on screen (the search again if one is active)
   const refreshAfterRename = (selectPaths?: string[]) => {
     if (searchQuery.trim()) setSearchRefreshTick((t) => t + 1);
+    else if (basketViewRef.current) loadBasket(basketViewRef.current, selectPaths, true);
     else fetchDirectory(currentPath, selectPaths);
+  };
+  // Renames made while a basket is open: its links follow them (the single renames in order, temporary names
+  // included, so folder and content renames line up)
+  const followRenames = async (ops: RenameOp[]) => {
+    const bv = basketViewRef.current;
+    if (!bv || ops.length === 0) return;
+    await invoke('basket_update_paths', { basket: bv.path, pairs: ops.map((o) => [o.from, o.to]) }).catch((err) =>
+      alert(String(err))
+    );
   };
 
   const openBulkRename = () => {
     // 2 or more items, or one folder (to rename what is inside it, with "Include sub-folders")
-    const ok = selectedItems.length >= 2 || (selectedItems.length === 1 && selectedItems[0].is_dir);
+    const items = basketView ? selectedItems.filter((i) => !i.state) : selectedItems;
+    const ok = items.length >= 2 || (items.length === 1 && items[0].is_dir);
     if (!ok || busyMessage) return;
     setBulkRenameForm(null);
-    setBulkRenamePaths(selectedItems.map((i) => i.path)); // in the panel's sort order: numbering follows it
-    setBulkRenameFolders(selectedItems.filter((i) => i.is_dir).length);
+    setBulkRenamePaths(items.map((i) => i.path)); // in the panel's sort order: numbering follows it
+    setBulkRenameFolders(items.filter((i) => i.is_dir).length);
   };
 
-  const handleBulkRenamed = (r: { renamed: number; ops: RenameOp[]; newPaths: string[] }) => {
+  const handleBulkRenamed = async (r: { renamed: number; ops: RenameOp[]; newPaths: string[] }) => {
     const batch: RenameBatch = { id: String(Date.now()), time: Date.now(), count: r.renamed, ops: r.ops };
     const history = [batch, ...renameHistory].slice(0, MAX_BATCHES);
     setRenameHistory(history);
     saveRenameHistory(history);
     setBulkRenamePaths(null);
     setRenameToast({ message: `Renamed ${r.renamed} item${r.renamed === 1 ? '' : 's'}.`, undoable: true });
+    await followRenames(r.ops);
     refreshAfterRename(r.newPaths);
   };
 
@@ -1045,10 +1300,12 @@ export function App() {
     if (askFirst && !confirm(`Undo the last bulk rename (${batch.count} items)?`)) return;
     setRenameToast(null);
     invoke<UndoResult>('bulk_rename_undo', { ops: batch.ops })
-      .then((res) => {
+      .then(async (res) => {
         const rest = renameHistory.slice(1);
         setRenameHistory(rest);
         saveRenameHistory(rest);
+        // undo replays the batch backwards with the ends swapped; an open basket's links follow it the same way
+        await followRenames([...batch.ops].reverse().map((o) => ({ from: o.to, to: o.from })));
         refreshAfterRename();
         if (res.failed.length > 0) {
           const lines = res.failed.slice(0, 5).map((f) => `${f.to}: ${f.error}`);
@@ -1074,7 +1331,9 @@ export function App() {
   };
   const deleteSelection = () => {
     if (selectedItems.length === 0) return;
-    deleteItems(selectedItems).catch((err) => alert(err));
+    // in a basket, Delete removes the links only (the files stay; nothing to confirm)
+    if (basketView) removeFromBasket(selectedItems);
+    else deleteItems(selectedItems).catch((err) => alert(err));
   };
 
   // --- AI Assistant: the app's state and actions it may use (see assistant.ts). Rebuilt on every render and
@@ -1200,7 +1459,7 @@ export function App() {
       setShowPreview((v) => !v);
     } else if (e.key === 'F5') {
       e.preventDefault();
-      fetchDirectory(currentPath);
+      refreshView();
     } else if (inTextField) {
       return;
     } else if ((e.target as HTMLElement | null)?.closest?.('.assistant-panel')) {
@@ -1213,8 +1472,9 @@ export function App() {
     } else if (e.key === 'F2') {
       e.preventDefault();
       // One item: the Rename box (same as right-click, Rename). Two or more: Bulk Rename.
-      if (selectedItems.length === 1) setRenameTrigger((t) => t + 1);
-      else openBulkRename();
+      if (selectedItems.length === 1) {
+        if (!selectedItems[0].state) setRenameTrigger((t) => t + 1); // gone / new basket items cannot be renamed
+      } else openBulkRename();
     } else if (ctrlOnly && key === 'z' && renameHistory.length > 0) {
       e.preventDefault();
       undoLastBulkRename(true);
@@ -1330,8 +1590,21 @@ export function App() {
           setTheme(next);
           localStorage.setItem('boonsh_theme', next);
         }}
-        onNavigate={handleNavigate}
-        onRefresh={() => fetchDirectory(currentPath)}
+        onNavigate={(p) => handleNavigate(p)}
+        basketTrail={
+          basketView
+            ? [
+                { label: basketName(basketView.path), title: basketView.path, onClick: () => setBasketView({ ...basketView, trail: [] }) },
+                ...basketView.trail.map((f, k) => ({
+                  label: f.split('\\').pop() || f,
+                  title: f,
+                  onClick: () => setBasketView({ ...basketView, trail: basketView.trail.slice(0, k + 1) }),
+                })),
+              ]
+            : null
+        }
+        onUp={basketView ? basketUp : undefined}
+        onRefresh={refreshView}
         showSettings={showSettings}
         onOpenSettings={() => openSettings()}
         selectionCount={selectedItems.length}
@@ -1430,8 +1703,11 @@ export function App() {
               <FolderTree
                 currentPath={currentPath}
                 onNavigate={handleNavigate}
+                onOpenBasket={openBasket}
+                openBasketPath={basketView?.path ?? null}
+                listing={treeListing}
                 onAddQuickAccess={handleAddQuickAccess}
-                onRefresh={() => fetchDirectory(currentPath)}
+                onRefresh={refreshView}
               />
               </div>
             </div>
@@ -1466,8 +1742,18 @@ export function App() {
                 onCompress={compressSelection}
                 onExtract={extractSelectedZips}
                 onClearSelection={() => selectSingle(null)}
-                onOpenDirectory={handleNavigate}
+                onOpenDirectory={openDirectory}
                 onOpenFile={handleOpenFile}
+                basketMode={basketView ? { atTop: basketView.trail.length === 0 } : null}
+                onCreateBasket={createBasket}
+                onPasteIntoBasket={pasteIntoBasket}
+                onDropOnBasket={addToBasket}
+                onRenamed={handleRenamed}
+                onOpenLocation={(item) => handleNavigate(parentDir(item.path), [item.path])}
+                onBasketDeleteFiles={() => deleteBasketFiles(selectedItems)}
+                onBasketLink={linkInBasket}
+                onBasketClear={removeFromBasket}
+                onBasketRelink={relinkInBasket}
                 viewMode={viewMode}
                 colPrefs={colPrefs}
                 sortLevels={sortLevels}
@@ -1494,7 +1780,7 @@ export function App() {
                 onOpenColumnSettings={() => openSettings('columns')}
                 onAddQuickAccess={handleAddQuickAccess}
                 currentPath={currentPath}
-                onRefresh={() => fetchDirectory(currentPath)}
+                onRefresh={refreshView}
                 globalVars={globalVars}
                 pathVars={pathVars}
                 onAssignPathVar={assignPathVar}
@@ -1553,6 +1839,9 @@ export function App() {
             onShellCwdChange={handleShellCwdChange}
             onPromptState={(id, atPrompt) => { atPromptRef.current[id] = atPrompt; }}
             onPickCommand={pickCommand}
+            baskets={(treeListing && normalizePath(treeListing.path) === normalizePath(currentPath) ? treeListing.items : [])
+              .filter(isBasket)
+              .map((i) => basketName(i.name))}
             onUserInput={() => { pendingCmdRef.current = null; }}
             globalVars={globalVars}
             constVars={constVars}
@@ -1598,6 +1887,7 @@ export function App() {
         selectionSizeFormatted={formatSelectedSize()}
         busyMessage={busyMessage}
         shellEngine={shellEngine}
+        basketCounts={basketView && !searchQuery.trim() ? basketCounts : null}
       />
     </div>
   );

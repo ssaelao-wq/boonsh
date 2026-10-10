@@ -10,6 +10,7 @@ interface StatusBarProps {
   selectionSizeFormatted: string;
   busyMessage: string;
   shellEngine: string;
+  basketCounts?: { links: number; gone: number; new: number } | null; // shown instead of the folder totals in a basket
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
@@ -21,13 +22,24 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   selectionSizeFormatted,
   busyMessage,
   shellEngine,
+  basketCounts,
 }) => {
   return (
     <div className="status-bar">
       <div className="status-bar-left">
-        <span className="status-count">{totalFolders} folders, {totalFiles} files</span>
-        <span className="status-divider">|</span>
-        <span className="status-count">Total Size: {totalSizeFormatted}</span>
+        {basketCounts ? (
+          <span className="status-count">
+            Basket: {basketCounts.links} link{basketCounts.links === 1 ? '' : 's'}
+            {basketCounts.gone > 0 && ` · ${basketCounts.gone} gone`}
+            {basketCounts.new > 0 && ` · ${basketCounts.new} new`}
+          </span>
+        ) : (
+          <>
+            <span className="status-count">{totalFolders} folders, {totalFiles} files</span>
+            <span className="status-divider">|</span>
+            <span className="status-count">Total Size: {totalSizeFormatted}</span>
+          </>
+        )}
         {busyMessage && (
           <>
             <span className="status-divider">|</span>

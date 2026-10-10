@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.0**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.1**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -24,6 +24,7 @@ This document describes everything boonsh can do, how to use it, and where its l
 14. [Limits and known issues](#14-limits-and-known-issues)
 15. [Keeping this document current](#15-keeping-this-document-current)
 16. [AI Assistant](#16-ai-assistant)
+17. [Baskets](#17-baskets)
 
 ---
 
@@ -68,8 +69,9 @@ This document describes everything boonsh can do, how to use it, and where its l
 - **Path bar:** shows the current path as clickable pieces (`C:\ > Users > ...`). Click any piece to jump there. Click the empty part or the pencil icon to **type a path**: Enter goes there, Esc cancels.
 
 ### Folder tree
-- Shows **This PC** with all your drives. Click the arrow to expand a folder, or click the name to open it and expand it.
+- Shows **This PC** with all your drives, each in its own icon color (the same as in Quick Access). Baskets show under their folder with a violet basket icon; a click opens one (section 17). Click the arrow to expand a folder, or click the name to open it and expand it.
 - The tree follows you: when you open a folder elsewhere, the tree expands to it and scrolls it into view.
+- It stays current for the open folder: a sub-folder renamed, added or deleted there (in boonsh, in the terminal or by another program) changes in the tree too. A folder elsewhere in the tree that was renamed or deleted since it was shown is reloaded when you click it: nothing opens, its parent's list is refreshed and the terminal gets no `cd` to a folder that no longer exists. When you open a folder that was made after the tree listed its parent (from the path bar, a `cd` in the terminal, Quick Access), that list is reloaded too, so the tree still finds and highlights it.
 - Right-click a folder: New (Folder, Text Document, Shortcut), Open, Add to Quick Access, Refresh. Right-clicking also opens that folder.
 
 ### Frequently Accessed (above the Folder Tree)
@@ -85,6 +87,7 @@ A short list of the folders you open most, so you can jump back to them in one c
 
 ### Quick Access (chips above the folders)
 - One click opens the folder. At first it shows **Home, Desktop, Downloads, Documents and the C: drive**.
+- Each drive letter has its own icon color (C: blue, D: pink, E: teal, F: red, and so on), the same in Quick Access and the folder tree. The dark theme uses brighter shades and the light theme deeper ones, so they are easy to see on both.
 - **Choose what is shown:** Settings (gear), **Quick Access**: tick the items you want, untick the ones you don't (section 10).
 - **Add:** right-click a folder (in the file panel or the tree) and choose *Add to Quick Access*. Right-click empty space in the file panel to add the **current** folder. 
 - **Remove:** right-click a chip and choose *Remove from Quick Access* (or untick it in Settings).
@@ -108,7 +111,7 @@ The open folder updates by itself when another program changes it: a file saved 
 ### View modes (header icons, remembered between runs)
 | View | What it shows |
 | --- | --- |
-| **Details** | A table with Name, Date Modified, Type and Size. |
+| **Details** | A table with Name, Date Modified, Type and Size. Folders have a filled yellow icon in every view; folder and file icons are drawn with a hairline (one screen pixel, whatever the Windows display scaling). When the Name column is too narrow, the end of the name is cut with "..." and the icon stays; point at the name to see all of it. |
 | **Tiles** | An icon with name, type, size and date. |
 | **Thumbnails** | Large cards. Image files show a real thumbnail; other files show an icon. |
 
@@ -437,8 +440,8 @@ A preset is a saved list of rules, in their order with all their settings, plus 
 
 | Entry | Notes |
 | --- | --- |
-| New | **First entry.** Folder, Text Document, Shortcut. |
-| Open | Second entry. Opens a folder, or a file in its default app. |
+| New | **First entry.** Folder, Text Document, Shortcut, Basket (see [section 17](#17-baskets)). |
+| Open | Second entry. Opens a folder, a basket, or a file in its default app. |
 | Open with | Files only. A submenu with up to **3 programs you used most for this file type** (hover for the full path; a type you have never opened this way, such as `.zip`, shows only Choose App...), then **Choose App...**, which opens a dialog with two lists: the programs Windows has registered for this file type (the ones Explorer's *Open with* offers), then **Other programs** (everything else Windows or an installer has registered, such as Notepad++); click one to open the file with it, or **Browse...** to pick any `.exe`. Microsoft Store apps are started through their app alias. Opening a file through either one counts as a use, so the list fills as you work; each file type keeps its own counts. A program that no longer exists is shown in an error and dropped from the list. The list is saved in this app (`boonsh_open_with`) and is not the same as Windows' own *Open with* list. |
 | Add to Quick Access | For folders. For files it adds the current folder instead. |
 | Cut, Copy | Show the number of items when more than one is selected. |
@@ -456,6 +459,8 @@ A preset is a saved list of rules, in their order with all their settings, plus 
 **On a group line** (when grouping is on): Select (one entry for each level of the line), Collapse / Open this group, Collapse all groups, Expand all groups, Ungroup all.
 
 **On empty space in the file panel:** New, Add Current Folder to Quick Access, Paste, Assign to Global Var (stores the current folder), Refresh.
+
+**On a basket:** also **Paste as links into this basket**. **Inside an opened basket** the menus change: no New and no Quick Access; Paste becomes **Paste as links**; **Open file location**; Del becomes **Remove from basket**, plus **Delete files (Recycle Bin)...**; a gone item offers only **Clear** and **Relink...**, a new item only **Link** and **Clear** (see [section 17](#17-baskets)).
 
 **On a folder in the folder tree:** Open, New, Add to Quick Access, Refresh. **On a Quick Access chip:** Remove from Quick Access.
 
@@ -881,12 +886,14 @@ Two variables link the file panel and the terminal. They exist only while boonsh
 2. Write a command that uses them in Settings, for example `resize-images --width 800 {SELEC} {DEST}/file2.jpg` or `ren {SELEC} {DEST}`.
 3. Pick it from the Commands menu. The text is typed at the prompt with the values filled in. A variable with no value stays as `{SELEC}` / `{DEST}`, so you see exactly what would run.
 
+**Typing them yourself.** In a PowerShell tab you can also type a placeholder straight into the command line, for example `copy {SELEC} {DEST}` or `copy {BASKET:TestBasket} d:\`, and press **Enter**: boonsh fills in the values first (the same way as from the Commands menu), the line on screen changes to the filled-in command, and then it runs. Only names that are a Global Var with a value, a CONST, or `BASKET:` are filled in; anything else in `{ }` (a PowerShell script block such as `{ $_.Name }`, or a name that is not a variable) is left for PowerShell. When a basket is not found, boonsh shows a message under the line and nothing runs; fix the line and press Enter again. This does not work in a `cmd` tab.
+
 How values are written:
 - A path **inside the current folder** is relative (`.\AITutor\server.js`, or `.` for the folder itself). Any other path is absolute (`D:\somboon-data\Dev\AITutor\server.js`). The same text is shown in the right-click menu.
 - Several selected items become several separate paths. Paths with spaces or special characters are quoted (`".\my folder\a.txt"`); in `{DEST}/x.jpg` the whole word is quoted. If you put your own quotes around a variable, boonsh does not add more.
 - While the command is **still waiting at the prompt** (you have not typed in the terminal), assigning a variable, clearing one, or opening another folder in the file panel **rewrites that line**: it is cleared (Esc) and typed again with the new values and paths relative to the new folder. Once you type anything in the terminal, boonsh leaves the line alone.
 - The buttons in the terminal's top bar have colored icons: **Commands** (amber book), **Global Var** (cyan) and **CONST Global Var** (purple lock; see section 10). The same colors mark the sections in Settings.
-- The terminal's top bar has a **Global Var** button next to Commands. Click it to see every variable with its full value (relative to the current folder where possible) and an X to clear it. Only variables that have a value are listed, and the button is hidden while none is set. Hover a path for its absolute form.
+- The terminal's top bar has a **Global Var** button next to Commands. Click it to see every variable with its full value (relative to the current folder where possible) and an X to clear it. Only variables that have a value are listed. Below them it lists the **baskets in the current folder** (click one to type it as `{BASKET:name}`, see section 17). The button is hidden while no variable is set and the folder has no basket. Hover a path for its absolute form.
 
 **Create your own variables.** In Settings (gear), **Global Var**, you can add more variables, rename or delete them (see section 10). Every variable you create appears in the right-click **Assign to Global Var** submenu, in the terminal's **Global Var** button, and can be used as `{NAME}` in your commands and in the search (`input:{NAME}`, see section 7).
 
@@ -903,7 +910,7 @@ Click the **gear icon** (next to the Eye icon). The left bar has eight sections,
 
 ### Global Var
 Manage the variables that commands can use as `{NAME}`.
-- **Add variable**: a **Name** (letters, digits and `_`, up to 30 characters, saved in capitals, no duplicates), what right-click **Assign stores** (*only the item you right-clicked*, or *every selected item*) and an optional description.
+- **Add variable**: a **Name** (letters, digits, `_` and `-`, up to 30 characters, saved in capitals, no duplicates), what right-click **Assign stores** (*only the item you right-clicked*, or *every selected item*) and an optional description.
 - **Edit** (pencil or double-click) can **rename** a variable. The value is kept, and `{OLD}` is replaced by `{NEW}` in your command texts and usage examples.
 - **Delete** (trash) removes it and its value. Commands that still mention it keep the text `{NAME}` as typed.
 - Each row shows the variable's current value or *Not set*. Reset variables brings back just `{SELEC}` and `{DEST}`.
@@ -912,7 +919,7 @@ Manage the variables that commands can use as `{NAME}`.
 
 ### CONST Global Var
 Constants: a name with a **fixed value** that commands can use as `{NAME}`, for example `{IP}` = `202.283.242.97`. The section sits below **Global Var**.
-- **Add constant**: a **Name** (letters, digits and `_`, up to 30 characters, saved in capitals), a **Value** (the text that is typed in place of `{NAME}`; required, one line) and an optional **Description**, for example *This is the IP of XYZ server*. A name cannot be used twice, and cannot be the name of a Global Var either.
+- **Add constant**: a **Name** (letters, digits, `_` and `-`, up to 30 characters, saved in capitals), a **Value** (the text that is typed in place of `{NAME}`; required, one line) and an optional **Description**, for example *This is the IP of XYZ server*. A name cannot be used twice, and cannot be the name of a Global Var either.
 - Each row shows `{IP} = 202.283.242.97` and the description. **Edit** (pencil or double-click) can change the value, the description and the **name**; a rename replaces `{OLD}` by `{NEW}` in your command texts and usage examples.
 - **Delete** (trash) removes it after you confirm. Commands that still mention it keep the text `{NAME}` as typed. There is no Reset button here: a constant stays until you delete it, also after you close boonsh.
 - Use it like any variable: write `ping {IP}` as the **Terminal text** of a command (Settings, Commands). When you pick the command, the value is typed in as written: it is not quoted and not turned into a relative path. In a larger word it works too (`ssh admin@{IP}`). A `{NAME}` that is not defined stays as typed.
@@ -1014,10 +1021,10 @@ Click the **trash icon** on its row and confirm. This works on the built-in comm
 | --- | --- |
 | Ctrl+A | Select all items in the folder |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / Cut / Paste files |
-| Del | Delete the selection (to the Recycle Bin) |
+| Del | Delete the selection (to the Recycle Bin); inside a basket it removes the links only |
 | F2 | Rename: opens the Rename box for one selected item, or Bulk Rename for 2 or more |
 | Ctrl+Z | Undo the last bulk rename (asks first) |
-| F5 | Refresh the folder |
+| F5 | Refresh the folder (or the open basket) |
 | Ctrl+P | Show or hide the preview drawer |
 | Ctrl+Shift+F | Show or hide the file panel (leaves the folder tree and terminal) |
 | Home, End, Left, Right, PageUp, PageDown | Move between images (when an image is previewed) |
@@ -1031,7 +1038,7 @@ The file keys (Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+Z, F2, Del) are ignored whil
 ## 12. Status bar
 
 The thin bar at the bottom shows, from left to right:
-- The number of **folders and files** in the current folder and their **total size** (files directly inside the folder).
+- The number of **folders and files** in the current folder and their **total size** (files directly inside the folder). In an open basket: `Basket: 12 links · 1 gone · 2 new`.
 - A progress note while a zip task runs (for example "Compressing 3 item(s)...").
 - On the right, the **selection** (the name and size of one item, or "N items" and their total size) and the active **shell**.
 
@@ -1151,3 +1158,97 @@ Each request also tells it the current folder, the selection, the sort, the grou
 - File names are treated as data: text inside a file name cannot give the assistant instructions.
 
 **Problems.** *"... rejected the API key"* opens the key form: save a valid key. *"Could not reach ..."* means there is no internet connection. *"Too many requests or the quota is used up"* means the service's rate limit or the account's credit was reached. *"The key works, but it has no chat model the assistant can use"* means the key's account has no suitable model. A failed request leaves the conversation as it was, so you can simply ask again.
+
+## 17. Baskets
+
+A **basket** sits in a folder like a sub-folder, but it holds **links** to files and folders from anywhere instead of the files themselves. Gather files from many places into one basket, then act on all of them at once (copy, move, zip, rename, delete) or use them in a command line. "Basket" is the general word, like "Folder"; every basket has its own name, and a folder can hold any number of them.
+
+- A basket stays until you delete it. The files and folders it links to stay where they are; nothing is copied.
+- **boonsh never changes a link by guessing.** When something changes outside boonsh it shows you what changed and waits for you (see *Gone and new items*).
+
+### How a basket looks
+- **In the file panel:** a violet basket icon, its name (without `.basket`), Type **Basket**, and in the Size column the number of links (*12 links*).
+- **In the folder tree:** under its folder, with the basket icon. A click opens it.
+- **Opened:** the path bar shows the folder, then the basket icon and its name (`... › Home › Tax 2026`), and deeper `› Reports` when you open a linked folder inside it. The **Location** column is always shown, since every item lives somewhere else. The status bar shows `Basket: 12 links · 1 gone · 2 new`.
+- In Windows Explorer a basket is a small file named `<name>.basket`. It moves with its folder, and its links still work after the basket is moved, because they are full paths.
+
+### Create, rename, delete
+- **Create:** right-click empty space in a folder, **New**, **Basket**. An empty basket named **New basket** appears (or `New basket (2)` when the name is taken) and the Rename box opens, so you can type its name straight away.
+- **Rename** with F2 or right-click, **Rename**, like any item. You type the name only; `.basket` stays.
+- **Copy, move, zip or delete** a basket from its folder like any file. Deleting a basket removes only the list; the linked files are not touched.
+- A basket cannot hold another basket.
+
+### Put links in
+- **Copy, then paste on the basket:** select files or folders (in a folder or in search results), **Copy** (Ctrl+C), right-click the basket, **Paste as links into this basket**. The files stay where they are.
+- **Inside an opened basket**, Paste (Ctrl+V, or right-click, **Paste as links**) does the same.
+- **Cut** and paste into a basket also only adds links: nothing moves, and the cut is cancelled.
+- **Drag and drop** files from the file panel onto a basket (it gets a dashed outline).
+- An item that is already in the basket, also as part of a linked folder, is not added twice; a message says how many links were added. A basket cannot be added to a basket.
+
+### Inside a basket
+Double-click a basket (or click it in the folder tree) to open it. **Up** goes back one linked folder, then out of the basket into its folder. Opening any other folder also leaves the basket. The terminal stays in the basket's folder (a basket is not a folder on disk, so there is nothing to `cd` into).
+
+**Gone and new items.** Every change made outside boonsh is shown, never fixed for you:
+
+| Item | How it looks | Right-click |
+| --- | --- | --- |
+| **Gone**: nothing is at the linked path any more (moved or deleted by another program, Explorer or the command line) | Grey italic name, **out** arrow icon, cannot be opened | **Clear** removes the link. **Relink...** (only at the top of the basket) lets you pick where it is now. |
+| **New**: appeared inside a linked folder after you linked it | Grey italic name, **in** arrow icon, cannot be opened | **Link** adds it (it turns normal). **Clear** hides it for good (it stays where it is). |
+
+A gone item turns normal again by itself when it comes back to the same path. Gone and new items are **never** part of any action, command or variable.
+
+**Linked folders.** When you link a folder, boonsh remembers everything inside it, at any depth (up to 20,000 items; a bigger folder is refused with a hint to link smaller folders inside it). Double-click it to look inside; every difference from what was linked shows as new or gone.
+
+**Actions.** They work on the **real** files and folders, and only on **linked** items:
+
+| Action | In a basket |
+| --- | --- |
+| Open, Open with, Preview | As usual. |
+| **Open file location** | Goes to the real folder of the item and selects it. |
+| **Del / Remove from basket** | Removes the link. The file stays. No question asked (nothing is lost). |
+| **Delete files (Recycle Bin)...** | Sends the real items to the Recycle Bin and removes their links. It asks first and names where the files are. |
+| Copy, then paste in a folder | Copies the real items. A linked folder with new or cleared items inside is copied with **only its linked items**, keeping its sub-folders. |
+| Copy, then paste in another basket | Adds links there. |
+| Cut, then paste in a folder | Moves the real items (only the linked ones), and this basket's links follow them. |
+| Rename, Bulk Rename (and its Ctrl+Z) | Renames the real items, and this basket's links follow them. |
+| Compress to ZIP | One zip of the linked items, named after the basket and saved next to it (`Tax 2026.zip`). Linked folders keep their structure, with only linked items. |
+| New (folder, file, shortcut, basket) | Not offered: a basket holds only links. |
+| Search box | Searches the basket's items (inside linked folders too); every search filter works, and only linked items are found. |
+| Sort, group, columns, views | As in a folder. |
+
+Other baskets that link the same file are not changed by these actions: there the link shows as gone, and **Relink...** fixes it. An open basket is checked again when it opens, on F5 or Refresh, when boonsh comes back to the front, and when the basket file changes (for example by `basket-add`).
+
+### Baskets in the command line
+**With a Global Var.** Right-click a basket, **Assign to Global Var**, and pick a variable (create one in Settings, Global Var, for example `BASKET-01`; names may contain `-`). Like every Global Var value it is cleared when boonsh closes; the basket itself stays. In a command, the variable becomes the **linked items** of the basket as a PowerShell list:
+
+`Copy-Item {BASKET-01} -Destination D:\Send` becomes `Copy-Item "D:\Work\invoice.pdf", "C:\Users\me\Downloads\contract.docx" -Destination D:\Send`
+
+A linked folder with no new, gone or cleared items is written as the folder; a folder with differences is written as its linked items one by one (unlinked items are never included). Paths inside the current folder are written relative (`.\x`), like every Global Var. A variable can hold a basket together with other paths; both are written.
+
+**By name, without a variable.** `{BASKET:Tax 2026}` is the basket with that name in the **current folder** (name case does not matter); `{BASKET:C:\somboon\report\Tax 2026}` is an exact basket anywhere. It becomes the linked items in the same way. It is only a reference, nothing is saved. A name that is not found shows a message and nothing runs. The terminal's **Global Var** button lists the baskets of the current folder under **Baskets in this folder**; a click types `{BASKET:name}` filled in.
+
+**Only some of the items.** Add `\` and a name after the reference, as if the basket were a folder:
+
+| You type | It becomes |
+| --- | --- |
+| `copy {BASKET:TestBasket}\testfile.txt d:\` | only that file, from wherever it is (`copy "D:\Work\testfile.txt" d:\`) |
+| `copy {BASKET:TestBasket}\Reports\q1.txt d:\` | a file inside a linked folder |
+| `copy {BASKET:TestBasket}\*.pdf d:\` | every linked item that matches (`*` and `?` work in any part) |
+| `copy "{BASKET:TestBasket}\my file.txt" d:\` | a name with spaces: quotes around the whole reference |
+| `copy {BASKET-01}\testfile.txt d:\` | the same through a Global Var that holds a basket |
+
+The first part is the name of a link at the top of the basket, the next parts go inside a linked folder; names ignore case. If two links have the same name (`report.pdf` from two folders), both are used, as with a wildcard; copying both into one folder makes the second replace the first, so check the filled-in line before you press Enter again. Only linked items are found: a gone, new or cleared item, or a name that is not in the basket, gives a `boonsh:` message and nothing runs.
+
+Both work **typed straight into a PowerShell command line** (press Enter: boonsh fills them in, see section 9, *Typing them yourself*), from a command in the Commands menu, and from the Global Var button. A command line holds about 32,000 characters, so a basket with hundreds of links is refused in a placeholder, with a hint to use a pipe command instead.
+
+**Pipe commands.** Every PowerShell tab has these commands. They read and write the same basket files, so the file panel updates when they change a basket. A basket name means the basket in the current folder; a full path works anywhere.
+
+| Command | Does |
+| --- | --- |
+| `basket "Tax 2026"` | Outputs the linked items as file and folder objects for a pipe: `basket "Tax 2026" \| Copy-Item -Destination D:\Send` |
+| `basket-add "Tax 2026" <paths>` | Adds links; also from a pipe: `Get-ChildItem *.pdf -Recurse \| basket-add "Tax 2026"` |
+| `basket-remove "Tax 2026" <paths or wildcard>` | Removes links (the files stay): `basket-remove "Tax 2026" *draft*` |
+| `basket-list` | The baskets in the current folder with their number of links |
+| `basket-new "Tax 2026"` | Creates an empty basket in the current folder |
+
+They have no length limit and work with names in any language. They are not available in a `cmd` tab.

@@ -6,6 +6,21 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.10.1 (2026-10-10)
+
+- **Baskets.** A new kind of item: **New → Basket** makes a basket in a folder; it holds links to files and folders from anywhere (copy, then paste on the basket, or drag onto it). Open it like a folder: actions (copy, move, zip, rename, bulk rename, delete files) work on the real items, Delete only removes the link. Nothing is changed by guessing: an item moved away outside boonsh shows grey as **gone** (Clear / Relink), an item that appeared in a linked folder shows grey as **new** (Link / Clear), and neither is ever part of an action. In commands, `{BASKET:name}` or a Global Var assigned to a basket becomes its linked items; PowerShell tabs get `basket`, `basket-add`, `basket-remove`, `basket-list` and `basket-new` for pipes. The search box searches inside an open basket. See the manual, section 17.
+- **Placeholders typed at the prompt.** In a PowerShell tab, `{SELEC}`, `{DEST}`, your own Global Vars, CONSTs and `{BASKET:name}` typed by hand are filled in when you press Enter (before, only commands picked from the Commands menu were); the line shows the filled-in command, and an unknown basket gives a message instead of a PowerShell error. Script blocks and unknown names are left alone.
+- **Pick items in a basket by name.** `{BASKET:TestBasket}\testfile.txt` uses only that file, `{BASKET:TestBasket}\Reports\q1.txt` a file inside a linked folder, `{BASKET:TestBasket}\*.pdf` every match; also through a Global Var (`{BASKET-01}\testfile.txt`) and with quotes for names with spaces. Two links with the same name give both. A name that is not linked gives a message.
+- **Global Var names may contain `-`** (for example `BASKET-01`).
+- **The path bar shows its end.** A long path scrolls to the open folder (or basket) instead of its start.
+- **Fix: the folder tree lost the open folder** when it was made after the tree had listed its parent (path bar, terminal `cd`). That list is now reloaded.
+
+- **Drive colors.** Each drive letter has its own icon color (C: blue, D: pink, E: teal, F: red, ...), the same in Quick Access and the folder tree. Drives were all grey before. Brighter shades on the dark theme, deeper ones on the light theme, so they are easy to see on both.
+- **Yellow folders in the file panel.** Folder icons are filled yellow in every view, so folders are easier to tell from files. The outline is a deeper amber on the light theme so they stay clear on white. Folder and file icons in the file panel are drawn with a hairline: one physical screen pixel at every size and display scaling.
+
+- **Fix: the folder tree kept old folder names.** A sub-folder renamed (or added, or deleted) in the open folder now changes in the tree at once. Clicking a tree folder that no longer exists reloads its parent's list instead of doing nothing, and the terminal no longer gets a `cd` to it ("path does not exist").
+- **Fix: long file names hid their icon.** In the Details view a narrow Name column now cuts the end of the name with "..." and keeps the icon; the full name shows on hover.
+
 ## 0.10.0 (2026-10-09)
 
 ### Added

@@ -1,5 +1,7 @@
 mod ai_chats;
+mod basket;
 mod bulk_rename;
+mod cmdvars;
 mod dir_watch;
 mod file_props;
 mod fs_ops;
@@ -9,26 +11,30 @@ mod search;
 mod secrets;
 
 use ai_chats::*;
+use basket::*;
 use bulk_rename::*;
+use cmdvars::{expand_command, write_vars_file};
 use dir_watch::*;
 use file_props::*;
 use fs_ops::*;
 use pty::*;
 use secrets::*;
 
-/// `boonsh.exe --pty-helper ...` is a command line helper process (see pty.rs), not the app: it runs the helper
-/// and returns its exit code. `None` for a normal start.
+/// `boonsh.exe --pty-helper ...` is a command line helper process (see pty.rs) and `boonsh.exe --basket ...` a
+/// basket command from a terminal tab, not the app: they run and return an exit code. `None` for a normal start.
 pub fn try_run_helper() -> Option<i32> {
     let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(String::as_str) == Some("--pty-helper") {
-        Some(pty::run_helper(&args[2..]))
-    } else {
-        None
+    match args.get(1).map(String::as_str) {
+        Some("--pty-helper") => Some(pty::run_helper(&args[2..])),
+        // the PowerShell basket commands of the command line tabs (see basket.rs and pty.rs)
+        Some("--basket") => Some(basket::run_cli(&args[2..])),
+        _ => None,
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    cmdvars::remove_stale_vars_files();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(PtyState::default())
@@ -82,7 +88,26 @@ pub fn run() {
             ai_chat_save,
             ai_chat_delete,
             ai_chats_delete_all,
+            basket_create,
+            basket_view,
+            basket_expand,
+            basket_add,
+            basket_remove,
+            basket_relink,
+            basket_update_paths,
+            basket_paste_out,
+            basket_zip,
+            basket_delete_files,
+            basket_search,
+            pick_folder,
+            expand_command,
+            write_vars_file,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running boonsh tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running boonsh tauri application")
+        .run(|_, event| {
+            if let tauri::RunEvent::Exit = event {
+                cmdvars::remove_vars_file(); // the session's Global Var values (cmdvars.rs)
+            }
+        });
 }

@@ -194,7 +194,11 @@ export function sortRemove(levels: SortLevel[], col: ColumnId): SortLevel[] {
 // ---------------------------------------------------------------- comparing
 
 /** Used for sorting: stable, so the order does not change when the default apps arrive. */
-export const typeLabel = (i: FileItem) => (i.is_dir ? 'File Folder' : i.ext.toUpperCase() || 'File');
+// A .basket file (basket.ts) shows as a Basket, sized by its number of links. Checked here without importing
+// basket.ts so this module stays pure.
+const isBasketItem = (i: FileItem) => !i.is_dir && i.ext.toLowerCase() === 'basket';
+
+export const typeLabel = (i: FileItem) => (i.is_dir ? 'File Folder' : isBasketItem(i) ? 'Basket' : i.ext.toUpperCase() || 'File');
 
 /**
  * What the Type column shows: "MP4 (VLC media player)", or "ENV File (-)" when nothing opens that type.
@@ -202,6 +206,7 @@ export const typeLabel = (i: FileItem) => (i.is_dir ? 'File Folder' : i.ext.toUp
  */
 export function typeText(i: FileItem, apps?: Record<string, string>): string {
   if (i.is_dir) return 'File Folder';
+  if (isBasketItem(i)) return 'Basket';
   const ext = i.ext.toLowerCase();
   if (!ext) return 'File (-)';
   const app = apps?.[ext];
@@ -230,6 +235,7 @@ export function cellText(col: ColumnId, i: FileItem, p: ColumnPrefs, d?: ItemDet
     case 'ext':
       return typeText(i, apps);
     case 'size':
+      if (isBasketItem(i) && i.links !== undefined) return `${i.links} link${i.links === 1 ? '' : 's'}`;
       return i.size_formatted;
     case 'location':
       return parentOf(i.path);

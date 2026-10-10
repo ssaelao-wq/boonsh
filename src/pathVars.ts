@@ -30,39 +30,7 @@ export function quotePath(p: string): string {
   return `"${p.replace(/[`$]/g, '`$&')}"`;
 }
 
-const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
-
-// Whitespace-separated tokens of a template, keeping quoted spans together, with their whitespace.
-function splitTokens(text: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  let quote = '';
-  let wasSpace: boolean | null = null;
-  for (const ch of text) {
-    if (!quote && /\s/.test(ch)) {
-      if (wasSpace === false) {
-        out.push(cur);
-        cur = '';
-      }
-      cur += ch;
-      wasSpace = true;
-      continue;
-    }
-    if (wasSpace === true) {
-      out.push(cur);
-      cur = '';
-    }
-    wasSpace = false;
-    if (quote) {
-      if (ch === quote) quote = '';
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    }
-    cur += ch;
-  }
-  if (cur) out.push(cur);
-  return out;
-}
+const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_-]*)\}/g;
 
 // True when the text mentions one of the defined variables (set or not).
 export function hasPlaceholder(text: string, names: string[]): boolean {
@@ -71,44 +39,7 @@ export function hasPlaceholder(text: string, names: string[]): boolean {
   return false;
 }
 
-// Expand {NAME} variables that have a value; unset or unknown ones stay as typed so the user can see them.
-// A token that is exactly {SELEC} becomes one quoted path per selected item. A path embedded in a larger
-// token ("{DEST}/a.jpg") is substituted, then the whole token is quoted if it needs it. If the user already
-// wrote quotes around the token, values are inserted as-is.
-// CONST variables (`consts`, NAME -> text) are filled in as written, never quoted or made relative.
-export function expandTemplate(
-  template: string,
-  vars: PathVars,
-  base: string,
-  consts: Record<string, string> = {}
-): string {
-  const constOf = (name: string): string | undefined => consts[name.toUpperCase()];
-  const valueOf = (name: string) => (vars[name.toUpperCase()] ?? []).map((p) => displayPath(p, base));
-
-  return splitTokens(template)
-    .map((tok) => {
-      if (!tok.includes('{')) return tok;
-      const exact = tok.match(/^\{([A-Za-z_][A-Za-z0-9_]*)\}$/);
-      if (exact) {
-        const c = constOf(exact[1]);
-        if (c !== undefined) return c;
-        const vals = valueOf(exact[1]);
-        return vals.length ? vals.map(quotePath).join(' ') : tok;
-      }
-      let changed = false;
-      let out = tok.replace(PLACEHOLDER, (m, name) => {
-        const c = constOf(name);
-        if (c !== undefined) return c;
-        const vals = valueOf(name);
-        if (!vals.length) return m;
-        changed = true;
-        return vals.join(' ');
-      });
-      if (changed && !/["']/.test(out) && !SAFE.test(out)) out = quotePath(out);
-      return out;
-    })
-    .join('');
-}
+// Filling the variables into a command (and the quoting rules) is done in Rust: src-tauri/src/cmdvars.rs.
 
 // Right-click menu text: "." for the current folder, otherwise the shown path; "+N more" for several items.
 export function summarizeValue(paths: string[], base: string): string {

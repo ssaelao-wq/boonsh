@@ -14,16 +14,28 @@ import {
   Link,
   ExternalLink,
   RefreshCw,
+  ShoppingBasket,
 } from 'lucide-react';
 import { FileItem, FileListResult, QuickAccessItem } from '../types';
 import { useMenuPosition } from '../useMenuPosition';
+import { driveColor } from '../driveColors';
+import { basketName, isBasket } from '../basket';
+
+type Listing = { path: string; items: FileItem[] } | null;
+
+const cleanOf = (p: string) => p.toLowerCase().replace(/\\+$/, '');
 
 interface FolderTreeNodeProps {
   name: string;
   path: string;
   currentPath: string;
-  onNavigate: (path: string) => void;
+  listing: Listing;
+  onNavigate: (path: string) => Promise<boolean> | void;
+  onOpenBasket: (path: string) => void;
+  openBasketPath: string | null;
   onContextMenu: (e: React.MouseEvent, path: string, name: string) => void;
+  // this folder could not be opened (renamed or deleted elsewhere): the parent reloads its list
+  onGone?: () => void;
   depth?: number;
   isDrive?: boolean;
 }
@@ -32,8 +44,12 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   name,
   path,
   currentPath,
+  listing,
   onNavigate,
+  onOpenBasket,
+  openBasketPath,
   onContextMenu,
+  onGone,
   depth = 0,
   isDrive = false,
 }) => {
@@ -41,14 +57,18 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   const [children, setChildren] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const cleanPath = path.toLowerCase().replace(/\\+$/, '');
-  const cleanCurrent = currentPath.toLowerCase().replace(/\\+$/, '');
+  const cleanPath = cleanOf(path);
+  const cleanCurrent = cleanOf(currentPath);
   const isSelected = cleanCurrent === cleanPath;
 
   // Auto-expand if currentPath is inside this folder; collapse if user clicked higher or outside folder
   useEffect(() => {
     if (cleanCurrent === cleanPath || cleanCurrent.startsWith(cleanPath + '\\')) {
-      if (!isExpanded && children.length === 0) {
+      // the open folder is below this one, but this list (loaded earlier) does not have the way down: a folder
+      // made since then (path bar, terminal cd, another program). Load the list again.
+      const below = cleanCurrent !== cleanPath;
+      const missing = below && !children.some((c) => cleanCurrent === cleanOf(c.path) || cleanCurrent.startsWith(cleanOf(c.path) + '\\'));
+      if ((!isExpanded && children.length === 0) || missing) {
         fetchSubfolders();
       }
       setIsExpanded(true);
@@ -61,12 +81,21 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
     setLoading(true);
     invoke<FileListResult>('list_directory', { targetPath: path })
       .then((res) => {
-        const subdirs = res.items.filter((item) => item.is_dir);
-        setChildren(subdirs);
+        setChildren(res.items.filter((item) => item.is_dir || isBasket(item)));
       })
       .catch((err) => console.error('Tree load error:', err))
       .finally(() => setLoading(false));
   };
+
+  // The file panel listed this folder (opened, refreshed, or changed on disk): take its sub-folders from that
+  // listing, so a renamed, new or deleted folder shows here without collapsing and reopening the tree.
+  useEffect(() => {
+    if (!listing || cleanOf(listing.path) !== cleanPath) return;
+    const subdirs = listing.items.filter((item) => item.is_dir || isBasket(item));
+    setChildren((prev) =>
+      prev.length === subdirs.length && prev.every((c, i) => c.path === subdirs[i].path) ? prev : subdirs
+    );
+  }, [listing]);
 
   const handleToggleExpand = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -77,7 +106,9 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   };
 
   const handleFolderClick = () => {
-    onNavigate(path);
+    Promise.resolve(onNavigate(path)).then((ok) => {
+      if (ok === false) onGone?.();
+    });
     if (!isExpanded) {
       if (children.length === 0) fetchSubfolders();
       setIsExpanded(true);
@@ -102,7 +133,7 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
         </span>
 
         {isDrive ? (
-          <HardDrive size={13} style={{ color: 'var(--text-main)' }} />
+          <HardDrive size={13} style={{ color: driveColor(path) }} />
         ) : isExpanded ? (
           <FolderOpen size={13} style={{ color: 'var(--text-main)' }} />
         ) : (
@@ -125,17 +156,36 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
               Loading...
             </div>
           ) : (
-            children.map((child) => (
-              <FolderTreeNode
-                key={child.path}
-                name={child.name}
-                path={child.path}
-                currentPath={currentPath}
-                onNavigate={onNavigate}
-                onContextMenu={onContextMenu}
-                depth={depth + 1}
-              />
-            ))
+            children.map((child) =>
+              isBasket(child) ? (
+                // a basket: no children of its own; a click shows its links in the file panel
+                <div
+                  key={child.path}
+                  className={`tree-node-item ${openBasketPath && cleanOf(openBasketPath) === cleanOf(child.path) ? 'selected' : ''}`}
+                  style={{ paddingLeft: `${(depth + 1) * 12 + 6}px` }}
+                  onClick={() => onOpenBasket(child.path)}
+                  title={`Basket: ${child.path}`}
+                >
+                  <span className="tree-caret" style={{ padding: '0 2px', width: 13, display: 'inline-block' }} />
+                  <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
+                  <span className="tree-node-label">{basketName(child.name)}</span>
+                </div>
+              ) : (
+                <FolderTreeNode
+                  key={child.path}
+                  name={child.name}
+                  path={child.path}
+                  currentPath={currentPath}
+                  listing={listing}
+                  onNavigate={onNavigate}
+                  onOpenBasket={onOpenBasket}
+                  openBasketPath={openBasketPath}
+                  onContextMenu={onContextMenu}
+                  onGone={fetchSubfolders}
+                  depth={depth + 1}
+                />
+              )
+            )
           )}
         </div>
       )}
@@ -145,14 +195,20 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
 
 interface FolderTreeProps {
   currentPath: string;
-  onNavigate: (path: string) => void;
+  listing: Listing;
+  onNavigate: (path: string) => Promise<boolean> | void;
+  onOpenBasket: (path: string) => void;
+  openBasketPath: string | null;
   onAddQuickAccess?: (item: { label: string; path: string; icon_type?: string }) => void;
   onRefresh?: () => void;
 }
 
 export const FolderTree: React.FC<FolderTreeProps> = ({
   currentPath,
+  listing,
   onNavigate,
+  onOpenBasket,
+  openBasketPath,
   onAddQuickAccess,
   onRefresh,
 }) => {
@@ -295,7 +351,10 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             name={drive.label}
             path={drive.path}
             currentPath={currentPath}
+            listing={listing}
             onNavigate={onNavigate}
+            onOpenBasket={onOpenBasket}
+            openBasketPath={openBasketPath}
             onContextMenu={handleContextMenu}
             depth={1}
             isDrive={true}

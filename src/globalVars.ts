@@ -17,7 +17,7 @@ export const DEFAULT_GLOBAL_VARS: GlobalVarDef[] = [
   { id: 'var-dest', name: 'DEST', takes: 'item', description: 'Destination file / folder' },
 ];
 
-export const NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 export const MAX_NAME_LENGTH = 30;
 
 export const newVarId = () =>
@@ -33,7 +33,7 @@ export function validateVarName(name: string, defs: { id: string; name: string }
   const n = name.trim();
   if (!n) return 'Name is required.';
   if (n.length > MAX_NAME_LENGTH) return `Name can be at most ${MAX_NAME_LENGTH} characters.`;
-  if (!NAME_PATTERN.test(n)) return 'Use letters, digits and _ only, and start with a letter or _.';
+  if (!NAME_PATTERN.test(n)) return 'Use letters, digits, _ and - only, and start with a letter or _.';
   if (defs.some((d) => d.id !== ignoreId && d.name.toUpperCase() === n.toUpperCase())) {
     return `A variable named {${n.toUpperCase()}} already exists.`;
   }
@@ -83,5 +83,5 @@ export function resetGlobalVars(): GlobalVarDef[] {
 
 // Replace {OLD} with {NEW} (any letter case) in command text; used when a variable is renamed.
 export function renameInText(text: string, from: string, to: string): string {
-  return text.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, n) => (n.toUpperCase() === from.toUpperCase() ? `{${to}}` : m));
+  return text.replace(/\{([A-Za-z_][A-Za-z0-9_-]*)\}/g, (m, n) => (n.toUpperCase() === from.toUpperCase() ? `{${to}}` : m));
 }

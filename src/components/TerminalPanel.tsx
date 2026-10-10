@@ -11,6 +11,7 @@ import {
   X,
   Variable,
   Lock,
+  ShoppingBasket,
   ChevronRight,
   Scissors,
   Copy,
@@ -55,6 +56,7 @@ interface TerminalPanelProps {
   onUserInput: () => void;
   globalVars: GlobalVarDef[];
   constVars: ConstVar[];
+  baskets: string[]; // names of the baskets in the current folder ({BASKET:name} in the Global Var menu)
   pathVars: PathVars;
   onClearPathVar: (name: PathVarName) => void;
   onAskAi: (text: string, send: boolean) => void; // selected text to the AI Assistant (send = explain it now)
@@ -110,6 +112,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onUserInput,
   globalVars,
   constVars,
+  baskets,
   pathVars,
   onClearPathVar,
   onAskAi,
@@ -575,8 +578,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             <span>Commands 💡</span>
           </button>
 
-          {/* Global variables ({SELEC}, {DEST}, ...): values shown in full in a dropdown */}
-          {setVarNames.length > 0 && (
+          {/* Global variables ({SELEC}, {DEST}, ...): values shown in full in a dropdown, plus this folder's baskets */}
+          {(setVarNames.length > 0 || baskets.length > 0) && (
           <button
             onClick={() => {
               setShowVarsMenu(!showVarsMenu);
@@ -656,7 +659,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           </>
         )}
 
-        {showVarsMenu && setVarNames.length > 0 && (
+        {showVarsMenu && (setVarNames.length > 0 || baskets.length > 0) && (
           <>
             <div
               style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1040 }}
@@ -681,9 +684,35 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
                   </div>
                 );
               })}
-              <div className="terminal-vars-hint">
-                Set them with right-click in the file panel. Use them in your Commands as {'{NAME}'}.
-              </div>
+              {setVarNames.length > 0 && (
+                <div className="terminal-vars-hint">
+                  Set them with right-click in the file panel. Use them in your Commands as {'{NAME}'}.
+                </div>
+              )}
+              {baskets.length > 0 && (
+                <>
+                  <div className="terminal-vars-heading">
+                    <ShoppingBasket size={12} className="basket-icon" /> Baskets in this folder
+                  </div>
+                  {baskets.map((name) => (
+                    <div
+                      key={name}
+                      className="terminal-vars-row"
+                      style={{ cursor: 'pointer' }}
+                      title="Click to type it; the command gets the basket's linked items"
+                      onClick={() => {
+                        setShowVarsMenu(false);
+                        onPickCommand(`{BASKET:${name}}`).finally(() => xtermRef.current?.focus());
+                      }}
+                    >
+                      <span className="terminal-vars-name">{`{BASKET:${name}}`}</span>
+                    </div>
+                  ))}
+                  <div className="terminal-vars-hint">
+                    For many links use a pipe, e.g. basket "{baskets[0]}" | Copy-Item -Destination D:\Send
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}

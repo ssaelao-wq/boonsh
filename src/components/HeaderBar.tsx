@@ -21,6 +21,7 @@ import {
   HelpCircle,
   Terminal,
   Sparkles,
+  ShoppingBasket,
 } from 'lucide-react';
 import { ViewMode } from '../types';
 
@@ -74,6 +75,9 @@ interface HeaderBarProps {
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   onNavigate: (path: string) => void;
+  // an open basket: its name and the linked folders opened inside it, after the folder path (click = go there)
+  basketTrail?: { label: string; title: string; onClick: () => void }[] | null;
+  onUp?: () => void; // replaces "up to the parent folder" (in a basket: one level back, then out of it)
   onRefresh: () => void;
   showSettings: boolean;
   onOpenSettings: () => void;
@@ -108,6 +112,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   theme,
   onToggleTheme,
   onNavigate,
+  basketTrail,
+  onUp,
   onRefresh,
   showSettings,
   onOpenSettings,
@@ -132,6 +138,13 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const [isEditingPath, setIsEditingPath] = useState<boolean>(false);
   const [pathInput, setPathInput] = useState<string>(currentPath);
   const pathInputRef = useRef<HTMLInputElement>(null);
+  // A long path scrolls: keep its end (the open folder, or the open basket) in view, as Explorer does
+  const crumbsRef = useRef<HTMLDivElement>(null);
+  const trailKey = (basketTrail ?? []).map((c) => c.title).join('|');
+  useEffect(() => {
+    const el = crumbsRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [currentPath, trailKey]);
 
   useEffect(() => {
     setPathInput(currentPath);
@@ -185,10 +198,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       <div className="header-actions">
         {/* Up directory button */}
         <button
-          onClick={() => parentPath && onNavigate(parentPath)}
-          disabled={!parentPath}
-          title="Go Up Directory"
-          style={{ opacity: parentPath ? 1 : 0.4 }}
+          onClick={() => (onUp ? onUp() : parentPath && onNavigate(parentPath))}
+          disabled={!onUp && !parentPath}
+          title={onUp ? 'Up: one level back in the basket, then out of it' : 'Go Up Directory'}
+          style={{ opacity: onUp || parentPath ? 1 : 0.4 }}
         >
           <FolderUp size={16} style={{ color: '#f59e0b' }} />
         </button>
@@ -254,7 +267,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             />
           </form>
         ) : (
-          <div className="path-breadcrumbs" onClick={handleStartEditingPath} title="Click to edit path">
+          <div ref={crumbsRef} className="path-breadcrumbs" onClick={handleStartEditingPath} title="Click to edit path">
             {segments.length === 0 ? (
               <span className="breadcrumb-segment">C:\</span>
             ) : (
@@ -274,6 +287,22 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 </React.Fragment>
               ))
             )}
+            {basketTrail?.map((crumb, idx) => (
+              <React.Fragment key={`b${idx}`}>
+                <ChevronRight size={12} className="breadcrumb-separator" />
+                {idx === 0 && <ShoppingBasket size={13} className="basket-icon" style={{ marginRight: 3, flexShrink: 0 }} />}
+                <span
+                  className="breadcrumb-segment"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    crumb.onClick();
+                  }}
+                  title={idx === 0 ? `Basket: ${crumb.title}` : crumb.title}
+                >
+                  {crumb.label}
+                </span>
+              </React.Fragment>
+            ))}
             <span title="Edit path" onClick={handleStartEditingPath} style={{ display: 'inline-flex', cursor: 'pointer' }}>
               <Edit2 size={12} className="path-edit-icon" />
             </span>

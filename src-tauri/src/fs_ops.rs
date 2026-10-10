@@ -23,6 +23,12 @@ pub struct FileItem {
     pub created_timestamp: u64,
     pub ext: String,
     pub is_hidden: bool,
+    /// A `.basket` file: how many links it holds (see basket.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links: Option<u32>,
+    /// Inside a basket view: "gone" (nothing at the linked path) or "new" (in a linked folder, not linked yet).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -140,6 +146,7 @@ pub fn list_directory(target_path: Option<String>) -> Result<FileListResult, Str
             let is_hidden = name.starts_with('.');
 
             let item_path = entry.path().to_string_lossy().to_string();
+            let links = if !is_dir && ext == crate::basket::EXT { crate::basket::link_count(&entry.path()) } else { None };
 
             items.push(FileItem {
                 name,
@@ -153,6 +160,8 @@ pub fn list_directory(target_path: Option<String>) -> Result<FileListResult, Str
                 created_timestamp,
                 ext,
                 is_hidden,
+                links,
+                state: None,
             });
         }
     }
@@ -362,7 +371,7 @@ pub async fn paste_items(paths: Vec<String>, dest_dir: String, mode: String) -> 
         .map_err(|e| e.to_string())?
 }
 
-fn paste_items_blocking(paths: Vec<String>, dest_dir: String, is_move: bool) -> Result<Vec<String>, String> {
+pub(crate) fn paste_items_blocking(paths: Vec<String>, dest_dir: String, is_move: bool) -> Result<Vec<String>, String> {
     let dest = PathBuf::from(&dest_dir);
     if !dest.is_dir() {
         return Err(format!("Destination is not a folder: {}", dest_dir));
@@ -421,7 +430,7 @@ fn paste_items_blocking(paths: Vec<String>, dest_dir: String, is_move: bool) -> 
     }
 }
 
-fn unique_target(dir: &Path, name: &str, is_copy: bool) -> PathBuf {
+pub(crate) fn unique_target(dir: &Path, name: &str, is_copy: bool) -> PathBuf {
     let first = dir.join(name);
     if !first.exists() {
         return first;
@@ -447,7 +456,7 @@ fn unique_target(dir: &Path, name: &str, is_copy: bool) -> PathBuf {
     unreachable!()
 }
 
-fn copy_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+pub(crate) fn copy_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     if src.is_dir() {
         fs::create_dir_all(dst)?;
         for entry in fs::read_dir(src)? {
@@ -487,20 +496,32 @@ pub async fn compress_to_zip(paths: Vec<String>, dest_dir: String) -> Result<Str
 }
 
 fn write_zip(paths: &[String], zip_path: &Path) -> Result<(), String> {
+    // Entry names are relative to the item's parent, so a folder keeps its own name inside the zip
+    let roots: Vec<(PathBuf, PathBuf)> = paths
+        .iter()
+        .map(|p| {
+            let item = PathBuf::from(p);
+            let base = item.parent().unwrap_or(Path::new("")).to_path_buf();
+            (item, base)
+        })
+        .collect();
+    write_zip_roots(&roots, zip_path)
+}
+
+/// Zip every (item, base) pair: the item with everything inside it, entry names relative to `base`. A basket uses
+/// it to pack only the linked parts of a folder under that folder's name (see basket.rs).
+pub(crate) fn write_zip_roots(roots: &[(PathBuf, PathBuf)], zip_path: &Path) -> Result<(), String> {
     use std::io::Write as _;
     use zip::write::SimpleFileOptions;
 
     let file = fs::File::create(zip_path).map_err(|e| format!("Cannot create zip: {}", e))?;
     let mut zip = zip::ZipWriter::new(file);
 
-    for p in paths {
-        let item = PathBuf::from(p);
+    for (item, root) in roots {
         if !item.exists() {
-            return Err(format!("'{}' no longer exists", p));
+            return Err(format!("'{}' no longer exists", item.display()));
         }
-        // Entry names are relative to the item's parent, so a folder keeps its own name inside the zip
-        let root = item.parent().unwrap_or(Path::new("")).to_path_buf();
-        for entry in WalkDir::new(&item).follow_links(false) {
+        for entry in WalkDir::new(item).follow_links(false) {
             let entry = entry.map_err(|e| e.to_string())?;
             let path = entry.path();
             let rel = path.strip_prefix(&root).map_err(|e| e.to_string())?;
@@ -711,6 +732,38 @@ pub async fn pick_app() -> Result<Option<(String, String)>, String> {
 }
 
 #[tauri::command]
+pub async fn pick_folder(title: String) -> Result<Option<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            use std::os::windows::process::CommandExt;
+            use std::process::Command;
+            let script = format!(
+                "[Console]::OutputEncoding=[Text.Encoding]::UTF8;Add-Type -AssemblyName System.Windows.Forms;\
+                 $d=New-Object System.Windows.Forms.FolderBrowserDialog;$d.Description='{}';$d.ShowNewFolderButton=$false;\
+                 $o=New-Object System.Windows.Forms.Form -Property @{{TopMost=$true}};\
+                 if($d.ShowDialog($o) -eq 'OK'){{[Console]::Out.Write($d.SelectedPath)}}",
+                title.replace('\'', "''")
+            );
+            let out = Command::new("powershell")
+                .args(["-STA", "-NoProfile", "-NonInteractive", "-Command", &script])
+                .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+                .output()
+                .map_err(|e| format!("Could not open the folder dialog: {}", e))?;
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            Ok(if path.is_empty() { None } else { Some(path) })
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = title;
+        Ok(None)
+    }
+}
+
+#[tauri::command]
 pub async fn pick_file(title: String, filter: String) -> Result<Option<String>, String> {
     #[cfg(target_os = "windows")]
     {
@@ -845,10 +898,10 @@ pub async fn search_files(
     .map_err(|e| e.to_string())
 }
 
-static SEARCH_GENERATION: AtomicU64 = AtomicU64::new(0);
+pub(crate) static SEARCH_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 /// `.` and `..` resolved by hand (no \\?\ prefix, and the path need not exist yet).
-fn normalize_path(p: &Path) -> PathBuf {
+pub(crate) fn normalize_path(p: &Path) -> PathBuf {
     use std::path::Component;
     let mut out = PathBuf::new();
     for c in p.components() {
@@ -1019,7 +1072,7 @@ fn search_blocking(dir: &str, query: &search::Query, include_subfolders: bool, g
 
 /// Search every root (folders or files). `dir` is the current folder: results below it are shown as `./sub/x`,
 /// results elsewhere with their full path. At most `limit` results across all roots.
-fn search_roots(dir: &str, roots: &[PathBuf], query: &search::Query, include_subfolders: bool, generation: u64, limit: usize) -> Vec<FileItem> {
+pub(crate) fn search_roots(dir: &str, roots: &[PathBuf], query: &search::Query, include_subfolders: bool, generation: u64, limit: usize) -> Vec<FileItem> {
     let mut matches = Vec::new();
     let mut seen_paths = HashSet::new();
     let max_depth = if include_subfolders { 8 } else { 1 };
@@ -1134,7 +1187,9 @@ fn search_roots(dir: &str, roots: &[PathBuf], query: &search::Query, include_sub
                 created: format_time(created_timestamp),
                 created_timestamp,
                 is_hidden: name.starts_with('.'),
+                links: if !is_dir && ext == crate::basket::EXT { crate::basket::link_count(entry.path()) } else { None },
                 ext,
+                state: None,
             });
 
             if matches.len() >= limit {
@@ -1197,7 +1252,7 @@ pub(crate) fn matches_search_query(name: &str, query: &str) -> bool {
     name_lower.contains(&q)
 }
 
-fn format_size(size: u64, is_dir: bool) -> String {
+pub(crate) fn format_size(size: u64, is_dir: bool) -> String {
     if is_dir {
         return "--".to_string();
     }
@@ -1213,7 +1268,7 @@ fn format_size(size: u64, is_dir: bool) -> String {
 }
 
 /// Local time as YYYY-MM-DD HH:MM (same date the `filedate:` search filter matches).
-fn format_time(timestamp: u64) -> String {
+pub(crate) fn format_time(timestamp: u64) -> String {
     if timestamp == 0 {
         return "--".to_string();
     }

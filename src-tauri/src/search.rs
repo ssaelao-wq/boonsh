@@ -550,7 +550,7 @@ fn parse_input_item(item: &str) -> Result<Option<InputSpec>, String> {
     let var = text
         .strip_prefix('{')
         .and_then(|r| r.strip_suffix('}'))
-        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
     Ok(Some(match var {
         Some(name) => InputSpec::Var(name.to_uppercase()),
         None => InputSpec::Path(text),

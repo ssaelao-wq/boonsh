@@ -1842,6 +1842,33 @@ textarea.search-floating:focus {
   --status-shell: #15803d;
   --status-busy: #c2410c;
 }
+/* Drive icons (driveColors.ts, one per letter) and file panel folders: Tailwind-400 on the dark theme (5:1 or more
+   on every panel, hover and selection background), -700 on the light one (3.4:1 or more). Folders are a filled
+   yellow shape with a deeper outline, because a yellow line alone is too faint on white. */
+.app-container {
+  --drive-0: #38bdf8;
+  --drive-1: #f472b6;
+  --drive-2: #2dd4bf;
+  --drive-3: #f87171;
+  --drive-4: #818cf8;
+  --drive-5: #a3e635;
+  --drive-6: #e879f9;
+  --drive-7: #22d3ee;
+  --folder-stroke: #fcd34d;
+  --folder-fill: #f59e0b;
+}
+.app-container.light-theme {
+  --drive-0: #0369a1;
+  --drive-1: #be185d;
+  --drive-2: #0f766e;
+  --drive-3: #b91c1c;
+  --drive-4: #4338ca;
+  --drive-5: #4d7c0f;
+  --drive-6: #a21caf;
+  --drive-7: #0e7490;
+  --folder-stroke: #b45309;
+  --folder-fill: #fcd34d;
+}
 .app-container .status-bar span.status-count { color: var(--status-count); }
 .app-container .status-bar span.status-selected-item { color: var(--status-select); }
 .app-container .status-bar span.status-shell { color: var(--status-shell); }
@@ -1891,6 +1918,42 @@ textarea.search-floating:focus {
   border-top: 1px solid var(--border-color);
   margin-top: 4px;
   color: var(--text-muted);
+}
+
+/* Baskets (basket.ts): violet icon (bright on dark, deep on light); gone / new items in a basket are greyed
+   (MainFilePanel also makes their name grey italic); a basket under a drag of files is outlined. */
+.app-container {
+  --basket-color: #a78bfa;
+}
+.app-container.light-theme {
+  --basket-color: #6d28d9;
+}
+.app-container svg.basket-icon {
+  color: var(--basket-color);
+}
+.file-row.basket-gone,
+.file-row.basket-new,
+.grid-card.basket-gone,
+.grid-card.basket-new,
+.tile-card.basket-gone,
+.tile-card.basket-new {
+  opacity: 0.6;
+  cursor: default;
+}
+.file-row.drop-target td,
+.grid-card.drop-target,
+.tile-card.drop-target {
+  outline: 1px dashed var(--basket-color);
+  outline-offset: -1px;
+}
+.terminal-vars-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 2px;
+  border-top: 1px solid var(--border-color);
+  margin-top: 4px;
+  font-weight: 600;
 }
 
 /* Settings: command group dropdown and its New / Rename / Delete buttons (right panel) */

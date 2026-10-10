@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Home, HardDrive, Monitor, Download, FileText, Folder, Trash2 } from 'lucide-react';
 import { QuickAccessItem } from '../types';
 import { useMenuPosition } from '../useMenuPosition';
+import { driveColor } from '../driveColors';
 
 interface QuickAccessBarProps {
   items: QuickAccessItem[];
@@ -24,7 +25,7 @@ export const QuickAccessBar: React.FC<QuickAccessBarProps> = ({
   } | null>(null);
   const menuPos = useMenuPosition(contextMenu);
 
-  const getIcon = (type: string) => {
+  const getIcon = (type: string, path: string) => {
     switch (type) {
       case 'home':
         return <Home size={13} style={{ color: '#f97316' }} />;
@@ -35,7 +36,7 @@ export const QuickAccessBar: React.FC<QuickAccessBarProps> = ({
       case 'documents':
         return <FileText size={13} style={{ color: '#8b5cf6' }} />;
       case 'drive':
-        return <HardDrive size={13} style={{ color: '#64748b' }} />;
+        return <HardDrive size={13} style={{ color: driveColor(path) }} />;
       default:
         return <Folder size={13} style={{ color: '#f59e0b' }} />;
     }
@@ -73,7 +74,7 @@ export const QuickAccessBar: React.FC<QuickAccessBarProps> = ({
               onContextMenu={(e) => handleContextMenu(e, item)}
               title={item.path}
             >
-              {getIcon(item.icon_type)}
+              {getIcon(item.icon_type, item.path)}
               <span>{item.label}</span>
             </button>
           );

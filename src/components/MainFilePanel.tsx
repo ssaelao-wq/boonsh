@@ -30,7 +30,13 @@ import {
   Check,
   Layers,
   ChevronDown,
+  ShoppingBasket,
+  LogOut,
+  LogIn,
+  FolderOpen,
+  Unlink,
 } from 'lucide-react';
+import { isBasket, shownName } from '../basket';
 import { FileItem, ViewMode, SortOrder, ItemDetails } from '../types';
 import { BUCKETS, BUCKET_LABEL, BUCKET_EXAMPLE, GroupSpec, Bucket, Row, formatBytes, itemsInGroup, toggleBucket } from '../grouping';
 import {
@@ -96,7 +102,21 @@ interface MainFilePanelProps {
   globalVars: GlobalVarDef[];
   pathVars: PathVars;
   onAssignPathVar: (name: PathVarName, paths: string[]) => void;
+  // Baskets (basket.rs). basketMode: a basket is open (atTop = its top level, where Relink is offered)
+  basketMode: { atTop: boolean } | null;
+  onCreateBasket: () => void;
+  onPasteIntoBasket: (basket: string) => void;
+  onDropOnBasket: (basket: string, paths: string[]) => void;
+  onRenamed: (from: string, to: string) => void;
+  onOpenLocation: (item: FileItem) => void;
+  onBasketDeleteFiles: () => void;
+  onBasketLink: (items: FileItem[]) => void;
+  onBasketClear: (items: FileItem[]) => void;
+  onBasketRelink: (item: FileItem) => void;
 }
+
+// boonsh's own drag data: the dragged paths, so a drop on a basket can link them
+const DRAG_PATHS = 'application/x-boonsh-paths';
 
 const ImageThumbnail: React.FC<{
   path: string;
@@ -195,6 +215,16 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   globalVars,
   pathVars,
   onAssignPathVar,
+  basketMode,
+  onCreateBasket,
+  onPasteIntoBasket,
+  onDropOnBasket,
+  onRenamed,
+  onOpenLocation,
+  onBasketDeleteFiles,
+  onBasketLink,
+  onBasketClear,
+  onBasketRelink,
 }) => {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -271,21 +301,32 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   }, [resizing]);
 
   const getFileIcon = (item: FileItem, size = 16) => {
-    if (item.is_dir) return <Folder size={size} style={{ color: 'var(--text-main)' }} />;
+    // hairline: one physical screen pixel at every icon size (lucide's default is a thick line that grows with the
+    // icon). At 175% Windows scaling that is 0.57 CSS px; on a 100% screen it stays 1 px.
+    const thin = { size, strokeWidth: 1 / Math.max(1, window.devicePixelRatio || 1), absoluteStrokeWidth: true };
+    // inside a basket: gone (nothing at the linked path) / new (not linked yet): grey, with an out / in arrow
+    if (item.state === 'gone') return <LogOut {...thin} style={{ color: 'var(--text-dim)' }} />;
+    if (item.state === 'new') return <LogIn {...thin} style={{ color: 'var(--text-dim)' }} />;
+    if (isBasket(item)) return <ShoppingBasket {...thin} style={{ color: 'var(--basket-color)' }} />;
+    // filled yellow folders so they stand out from the files (shades per theme in index.css)
+    if (item.is_dir) return <Folder {...thin} style={{ color: 'var(--folder-stroke)', fill: 'var(--folder-fill)' }} />;
     const ext = item.ext.toLowerCase();
     if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'ico'].includes(ext)) {
-      return <FileImage size={size} style={{ color: 'var(--text-muted)' }} />;
+      return <FileImage {...thin} style={{ color: 'var(--text-muted)' }} />;
     }
     if (['rs', 'js', 'ts', 'tsx', 'py', 'ps1', 'json', 'toml', 'yaml', 'html', 'css'].includes(ext)) {
-      return <FileCode size={size} style={{ color: 'var(--text-muted)' }} />;
+      return <FileCode {...thin} style={{ color: 'var(--text-muted)' }} />;
     }
     if (['md', 'txt', 'log', 'doc', 'pdf'].includes(ext)) {
-      return <FileText size={size} style={{ color: 'var(--text-muted)' }} />;
+      return <FileText {...thin} style={{ color: 'var(--text-muted)' }} />;
     }
-    return <FileIcon size={size} style={{ color: 'var(--text-dim)' }} />;
+    return <FileIcon {...thin} style={{ color: 'var(--text-dim)' }} />;
   };
 
   const cutSet = new Set(cutPaths);
+  // extra row classes: grey gone / new basket items, a basket that is a drop target
+  const rowExtra = (item: FileItem) =>
+    `${item.state ? `basket-${item.state}` : ''} ${dropTarget === item.path ? 'drop-target' : ''}`;
 
   // Shift+Click would otherwise highlight page text between the two clicks
   const preventShiftTextSelect = (e: React.MouseEvent) => {
@@ -303,6 +344,37 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
       ? items.filter((i) => selectedPaths.has(i.path)).map((i) => i.path)
       : [item.path];
     e.dataTransfer.setData('text/plain', paths.map((p) => `"${p}"`).join(' '));
+    e.dataTransfer.setData(DRAG_PATHS, JSON.stringify(paths));
+  };
+
+  // A basket in the list takes dropped items as links
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const basketDropProps = (item: FileItem) =>
+    isBasket(item)
+      ? {
+          onDragOver: (e: React.DragEvent) => {
+            if (!e.dataTransfer.types.includes(DRAG_PATHS)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'link';
+            if (dropTarget !== item.path) setDropTarget(item.path);
+          },
+          onDragLeave: () => setDropTarget(null),
+          onDrop: (e: React.DragEvent) => {
+            setDropTarget(null);
+            const raw = e.dataTransfer.getData(DRAG_PATHS);
+            if (!raw) return;
+            e.preventDefault();
+            const paths = (JSON.parse(raw) as string[]).filter((p) => p !== item.path);
+            if (paths.length) onDropOnBasket(item.path, paths);
+          },
+        }
+      : {};
+
+  // Double-click / Enter: a gone or new basket item opens nothing; a folder opens (inside a basket: its linked view)
+  const openItem = (item: FileItem) => {
+    if (item.state) return;
+    if (item.is_dir) onOpenDirectory(item.path);
+    else onOpenFile(item);
   };
 
   // Helper for generating unique filenames
@@ -349,11 +421,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   // Actions
   const handleOpenItem = (item: FileItem) => {
     setContextMenu(null);
-    if (item.is_dir) {
-      onOpenDirectory(item.path);
-    } else {
-      onOpenFile(item);
-    }
+    openItem(item);
   };
 
   // Open with: start the file in a chosen program and count the use (the menu lists the most used ones)
@@ -468,11 +536,10 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
 
   const handleOpenRenameModal = (item: FileItem) => {
     setContextMenu(null);
-    setShowRenameModal({
-      item,
-      // The real file name: in search results `item.name` is a display path like "./sub/file.txt"
-      newName: item.path.split(/[\\/]/).filter(Boolean).pop() ?? item.name,
-    });
+    // The real file name: in search results `item.name` is a display path like "./sub/file.txt". A basket is
+    // renamed without its .basket, which stays.
+    const real = item.path.split(/[\\/]/).filter(Boolean).pop() ?? item.name;
+    setShowRenameModal({ item, newName: isBasket(item) ? real.replace(/\.basket$/i, '') : real });
   };
 
   // F2 with exactly one item selected (App bumps renameTrigger) opens the same box as right-click, Rename
@@ -485,13 +552,12 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   const handleRenameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!showRenameModal) return;
-    invoke<string>('rename_item', {
-      oldPath: showRenameModal.item.path,
-      newName: showRenameModal.newName,
-    })
-      .then(() => {
+    const { item, newName } = showRenameModal;
+    const name = isBasket(item) && !/\.basket$/i.test(newName.trim()) ? `${newName.trim()}.basket` : newName;
+    invoke<string>('rename_item', { oldPath: item.path, newName: name })
+      .then((to) => {
         setShowRenameModal(null);
-        onRefresh?.();
+        onRenamed(item.path, to);
       })
       .catch((err) => alert(err));
   };
@@ -531,7 +597,10 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   }, [showGroupSub]);
   const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; index: number } | null>(null);
   const groupPos = useMenuPosition(groupMenu);
-  const columns = visibleColumns(colPrefs);
+  // in a basket every item lives somewhere else, so its Location is always shown
+  const columns = basketMode
+    ? visibleColumns(colPrefs.visible.includes('location') ? colPrefs : { ...colPrefs, visible: [...colPrefs.visible, 'location'] })
+    : visibleColumns(colPrefs);
   const SORT_TIP =
     'Click: sort by this column (click again to reverse)\nShift+Click: add as the next sort level (1, 2, 3 ...)\nRight-click: more sort options';
   const runHeader = (action: () => void) => () => {
@@ -556,16 +625,15 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
             return (
               <div
                 key={item.path}
-                className={`grid-card ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''}`}
+                className={`grid-card ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''} ${rowExtra(item)}`}
+                {...basketDropProps(item)}
                 onClick={(e) => onItemClick(item, e)}
                 onMouseDown={preventShiftTextSelect}
-                onDoubleClick={() =>
-                  item.is_dir ? onOpenDirectory(item.path) : onOpenFile(item)
-                }
+                onDoubleClick={() => openItem(item)}
                 onContextMenu={(e) => handleItemContextMenu(e, item)}
                 draggable
                 onDragStart={(e) => handleDragStart(e, item)}
-                title={item.name}
+                title={shownName(item)}
               >
                 <div className="grid-card-thumb">
                   {isImage ? (
@@ -578,7 +646,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     getFileIcon(item, 36)
                   )}
                 </div>
-                <div className="grid-card-name">{item.name}</div>
+                <div className="grid-card-name">{shownName(item)}</div>
               </div>
             );
           })}
@@ -589,32 +657,33 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
             const isSelected = selectedPaths.has(item.path);
             const fileTypeStr = item.is_dir
               ? 'File Folder'
+              : isBasket(item)
+              ? 'Basket'
               : item.ext
               ? `${item.ext.toUpperCase()} File`
               : 'File';
             return (
               <div
                 key={item.path}
-                className={`tile-card ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''}`}
+                className={`tile-card ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''} ${rowExtra(item)}`}
+                {...basketDropProps(item)}
                 onClick={(e) => onItemClick(item, e)}
                 onMouseDown={preventShiftTextSelect}
-                onDoubleClick={() =>
-                  item.is_dir ? onOpenDirectory(item.path) : onOpenFile(item)
-                }
+                onDoubleClick={() => openItem(item)}
                 onContextMenu={(e) => handleItemContextMenu(e, item)}
                 draggable
                 onDragStart={(e) => handleDragStart(e, item)}
               >
                 <div className="tile-icon">{getFileIcon(item, 28)}</div>
                 <div className="tile-info">
-                  <div className="tile-name" title={item.name}>
-                    {item.name}
+                  <div className="tile-name" title={shownName(item)}>
+                    {shownName(item)}
                   </div>
                   <div className="tile-detail">
                     <span className="tile-type">{fileTypeStr}</span>
                     <span className="tile-sep">•</span>
                     <span className="tile-size">
-                      {item.is_dir ? '—' : item.size_formatted}
+                      {item.is_dir ? '—' : isBasket(item) && item.links !== undefined ? `${item.links} link${item.links === 1 ? '' : 's'}` : item.size_formatted}
                     </span>
                   </div>
                   <div className="tile-date">{item.modified}</div>
@@ -712,12 +781,11 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 return (
                   <tr
                     key={item.path}
-                    className={`file-row ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''}`}
+                    className={`file-row ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''} ${rowExtra(item)}`}
+                    {...basketDropProps(item)}
                     onClick={(e) => onItemClick(item, e)}
                 onMouseDown={preventShiftTextSelect}
-                    onDoubleClick={() =>
-                      item.is_dir ? onOpenDirectory(item.path) : onOpenFile(item)
-                    }
+                    onDoubleClick={() => openItem(item)}
                     onContextMenu={(e) => handleItemContextMenu(e, item)}
                     draggable
                     onDragStart={(e) => handleDragStart(e, item)}
@@ -725,9 +793,29 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     {columns.map((col) =>
                       col.id === 'name' ? (
                         <td key="name">
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {getFileIcon(item)}
-                            <span style={{ fontWeight: 400, color: 'var(--text-main)' }}>{item.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            {/* a narrow column cuts the end of the name (with "..."), never the icon */}
+                            <span style={{ display: 'flex', flexShrink: 0 }}>{getFileIcon(item)}</span>
+                            <span
+                              style={{
+                                fontWeight: 400,
+                                color: item.state ? 'var(--text-dim)' : 'var(--text-main)',
+                                fontStyle: item.state ? 'italic' : undefined,
+                                minWidth: 0,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={
+                                item.state === 'gone'
+                                  ? `Not found at ${item.path} (moved or deleted). Right-click: Clear${basketMode?.atTop ? ' or Relink...' : ''}`
+                                  : item.state === 'new'
+                                    ? 'New in this linked folder, not linked yet. Right-click: Link or Clear'
+                                    : shownName(item)
+                              }
+                            >
+                              {shownName(item)}
+                            </span>
                           </div>
                         </td>
                       ) : (
@@ -959,7 +1047,52 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
             }}
           />
           <div className="context-menu" ref={menuPos.ref} style={menuPos.style}>
-            {/* New Submenu Trigger */}
+            {contextMenu.item?.state ? (
+              // A gone or new item in a basket: only the user's decision about its link
+              (() => {
+                const it = contextMenu.item!;
+                const chosen = items.filter((i) => selectedPaths.has(i.path) && i.state === it.state);
+                const targets = chosen.length ? chosen : [it];
+                const many = targets.length > 1 ? ` (${targets.length} items)` : '';
+                return (
+                  <>
+                    <div className="context-menu-hint">
+                      {it.state === 'gone'
+                        ? `Not found at its linked place (moved or deleted).`
+                        : 'New in this linked folder; not linked yet.'}
+                    </div>
+                    {it.state === 'new' && (
+                      <div className="context-menu-item" onClick={runMenuAction(() => onBasketLink(targets))}>
+                        <Link size={13} style={{ color: 'var(--text-muted)' }} />
+                        <span>Link{many}</span>
+                      </div>
+                    )}
+                    {it.state === 'gone' && basketMode?.atTop && targets.length === 1 && (
+                      <div className="context-menu-item" onClick={runMenuAction(() => onBasketRelink(it))}>
+                        <FolderSearch size={13} style={{ color: 'var(--text-muted)' }} />
+                        <span>Relink...</span>
+                      </div>
+                    )}
+                    <div
+                      className="context-menu-item"
+                      onClick={runMenuAction(() => onBasketClear(targets))}
+                      title={it.state === 'gone' ? 'Remove the link' : 'Hide it; it stays where it is and is not shown again'}
+                    >
+                      <Unlink size={13} style={{ color: 'var(--text-muted)' }} />
+                      <span>Clear{many}</span>
+                    </div>
+                    <div className="context-menu-divider" />
+                    <div className="context-menu-item" onClick={runMenuAction(() => onRefresh?.())}>
+                      <RefreshCw size={13} style={{ color: 'var(--text-muted)' }} />
+                      <span>Refresh</span>
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+            <>
+            {/* New Submenu Trigger (a basket holds only links: nothing new is made inside one) */}
+            {!basketMode && (
             <div
               className="context-menu-item"
               onMouseEnter={() => {
@@ -994,9 +1127,18 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     <Link size={13} style={{ color: 'var(--text-muted)' }} />
                     <span>Shortcut</span>
                   </div>
+                  <div
+                    className="context-menu-item"
+                    onClick={runMenuAction(onCreateBasket)}
+                    title="A basket holds links to files and folders from anywhere"
+                  >
+                    <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
+                    <span>Basket</span>
+                  </div>
                 </div>
               )}
             </div>
+            )}
 
             {contextMenu.item && (
               <div
@@ -1013,7 +1155,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               </div>
             )}
 
-            {contextMenu.item && !contextMenu.item.is_dir && (
+            {contextMenu.item && !contextMenu.item.is_dir && !isBasket(contextMenu.item) && (
               <div
                 className="context-menu-item"
                 onMouseEnter={() => {
@@ -1052,16 +1194,27 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               </div>
             )}
 
-            <div className="context-menu-divider" />
+            {basketMode && contextMenu.item && (
+              <div className="context-menu-item" onClick={runMenuAction(() => onOpenLocation(contextMenu.item!))}>
+                <FolderOpen size={13} style={{ color: 'var(--text-muted)' }} />
+                <span>Open file location</span>
+              </div>
+            )}
 
-            <div className="context-menu-item" onClick={handleAddQA}>
-              <BookmarkPlus size={13} style={{ color: 'var(--text-muted)' }} />
-              <span>
-                {contextMenu.item && contextMenu.item.is_dir
-                  ? 'Add to Quick Access'
-                  : 'Add Current Folder to Quick Access'}
-              </span>
-            </div>
+            {!basketMode && (
+              <>
+                <div className="context-menu-divider" />
+
+                <div className="context-menu-item" onClick={handleAddQA}>
+                  <BookmarkPlus size={13} style={{ color: 'var(--text-muted)' }} />
+                  <span>
+                    {contextMenu.item && contextMenu.item.is_dir
+                      ? 'Add to Quick Access'
+                      : 'Add Current Folder to Quick Access'}
+                  </span>
+                </div>
+              </>
+            )}
 
             <div className="context-menu-divider" />
 
@@ -1084,11 +1237,21 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               onClick={canPaste ? runMenuAction(onPaste) : undefined}
             >
               <ClipboardPaste size={13} style={{ color: 'var(--text-muted)' }} />
-              <span>Paste</span>
+              <span>{basketMode ? 'Paste as links' : 'Paste'}</span>
               <span className="context-menu-shortcut">Ctrl+V</span>
             </div>
+            {!basketMode && contextMenu.item && isBasket(contextMenu.item) && (
+              <div
+                className={`context-menu-item ${canPaste ? '' : 'disabled'}`}
+                onClick={canPaste ? runMenuAction(() => onPasteIntoBasket(contextMenu.item!.path)) : undefined}
+                title="Add the copied items to this basket as links (the files stay where they are)"
+              >
+                <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
+                <span>Paste as links into this basket</span>
+              </div>
+            )}
 
-            {globalVars.length > 0 && (
+            {globalVars.length > 0 && !(basketMode && !contextMenu.item) && (
               <>
                 <div className="context-menu-divider" />
                 <div
@@ -1115,7 +1278,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                         // the clicked one. On empty space both take the current folder.
                         const target = contextMenu.item
                           ? v.takes === 'selection'
-                            ? items.filter((i) => selectedPaths.has(i.path)).map((i) => i.path)
+                            ? items.filter((i) => selectedPaths.has(i.path) && !i.state).map((i) => i.path)
                             : [contextMenu.item.path]
                           : currentPath
                             ? [currentPath]
@@ -1151,7 +1314,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                   <FileArchive size={13} style={{ color: 'var(--text-muted)' }} />
                   <span>Compress to ZIP{selectionCount > 1 ? ` (${selectionCount} items)` : ''}</span>
                 </div>
-                {zipSelectionCount > 0 && (
+                {zipSelectionCount > 0 && !basketMode && (
                   <div
                     className={`context-menu-item ${isBusy ? 'disabled' : ''}`}
                     onClick={isBusy ? undefined : runMenuAction(onExtract)}
@@ -1190,11 +1353,33 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     <span className="context-menu-shortcut">F2</span>
                   </div>
                 )}
-                <div className="context-menu-item" onClick={runMenuAction(onDeleteSelection)}>
-                  <Trash2 size={13} style={{ color: 'var(--text-muted)' }} />
-                  <span>Delete{selectionCount > 1 ? ` (${selectionCount} items)` : ''}</span>
-                  <span className="context-menu-shortcut">Del</span>
-                </div>
+                {basketMode ? (
+                  <>
+                    <div
+                      className="context-menu-item"
+                      onClick={runMenuAction(onDeleteSelection)}
+                      title="Remove the link from the basket; the file stays where it is"
+                    >
+                      <Unlink size={13} style={{ color: 'var(--text-muted)' }} />
+                      <span>Remove from basket{selectionCount > 1 ? ` (${selectionCount} items)` : ''}</span>
+                      <span className="context-menu-shortcut">Del</span>
+                    </div>
+                    <div
+                      className="context-menu-item"
+                      onClick={runMenuAction(onBasketDeleteFiles)}
+                      title="Move the real files to the Recycle Bin (only the linked items) and remove their links"
+                    >
+                      <Trash2 size={13} style={{ color: 'var(--text-muted)' }} />
+                      <span>Delete files (Recycle Bin)...</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="context-menu-item" onClick={runMenuAction(onDeleteSelection)}>
+                    <Trash2 size={13} style={{ color: 'var(--text-muted)' }} />
+                    <span>Delete{selectionCount > 1 ? ` (${selectionCount} items)` : ''}</span>
+                    <span className="context-menu-shortcut">Del</span>
+                  </div>
+                )}
               </>
             )}
 
@@ -1210,6 +1395,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               <RefreshCw size={13} style={{ color: 'var(--text-muted)' }} />
               <span>Refresh</span>
             </div>
+            </>
+            )}
           </div>
         </>
       )}
@@ -1232,7 +1419,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                   // Like Explorer: select the name, not the extension, so typing replaces just the name
                   const v = e.target.value;
                   const dot = v.lastIndexOf('.');
-                  e.target.setSelectionRange(0, !showRenameModal.item.is_dir && dot > 0 ? dot : v.length);
+                  const wholeName = showRenameModal.item.is_dir || isBasket(showRenameModal.item);
+                  e.target.setSelectionRange(0, !wholeName && dot > 0 ? dot : v.length);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') setShowRenameModal(null);

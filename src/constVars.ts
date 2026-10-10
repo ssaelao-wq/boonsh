@@ -27,7 +27,7 @@ export function loadConstVars(): ConstVar[] {
     for (const v of saved) {
       if (!v || typeof v.name !== 'string' || typeof v.value !== 'string') continue;
       const name = v.name.toUpperCase();
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || seen.has(name)) continue;
+      if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name) || seen.has(name)) continue;
       seen.add(name);
       out.push({
         id: typeof v.id === 'string' ? v.id : newConstId(),
