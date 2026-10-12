@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal as XTerm } from '@xterm/xterm';
+import { Terminal as XTerm, IMarker } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { invoke } from '@tauri-apps/api/core';
@@ -27,6 +27,7 @@ import {
   FileDown,
   ChevronUp,
   ChevronDown,
+  History as HistoryIcon,
 } from 'lucide-react';
 import { useMenuPosition } from '../useMenuPosition';
 import { CommandGroup, CommandItem, GroupIcon } from '../commands';
@@ -60,6 +61,7 @@ interface TerminalPanelProps {
   commandGroups: CommandGroup[];
   onOpenSettings: () => void;
   onPickCommand: (template: string) => Promise<void>;
+  onPickHistory: (command: string) => Promise<void>; // History Commands: put an earlier command on the prompt line
   hotkeysOn: boolean; // false while a dialog (Settings) is open
   onUserInput: () => void;
   globalVars: GlobalVarDef[];
@@ -77,7 +79,75 @@ interface Session {
   search: SearchAddon; // Find Text
   el: HTMLDivElement;
   osc: { dispose: () => void };
+  atPrompt: boolean; // the shell's prompt is showing (set by its OSC 9 report, cleared by Enter)
+  // A command sent with Enter (marker = its line), read once the shell has drawn it and moved past it (readPending)
+  pending: { marker: IMarker; timer: number; atEnter: string; settle?: number; seen?: string } | null;
+  history: string[]; // History Commands: this screen's last HISTORY_KEEP commands, newest last
 }
+
+const HISTORY_KEEP = 20;
+
+// History Commands. Enter is pressed before the shell has echoed everything typed (fast typing, a paste, a busy
+// shell), so the command is read from the screen when the shell has finished with the line: the cursor moved
+// below it, a full-screen program took over or the next prompt came (all of which ConPTY can report a little
+// before the last of the line is drawn, hence SETTLE_MS more), or after 5 s at the latest. `now` reads at once
+// (the next Enter). If the line is gone by then (cls clears it in the same output), the text seen when it was
+// done is used, else the text on it when Enter was pressed.
+const SETTLE_MS = 250;
+const readPending = (s: Session, now = false) => {
+  const p = s.pending;
+  if (!p) return;
+  const read = () => (!p.marker.isDisposed && p.marker.line >= 0 ? promptLine(s.term, p.marker.line) : '');
+  if (!now) {
+    if (p.settle) return;
+    p.seen = read();
+    p.settle = window.setTimeout(() => readPending(s, true), SETTLE_MS);
+    return;
+  }
+  const cmd = read() || p.seen || p.atEnter;
+  dropPending(s); // disposes the marker, so after the read
+  // a repeat (ignoring upper / lower case) moves to the end, written as it was typed this time
+  const key = cmd.toLowerCase();
+  if (cmd) s.history = [...s.history.filter((c) => c.toLowerCase() !== key), cmd].slice(-HISTORY_KEEP);
+};
+const dropPending = (s: Session) => {
+  const p = s.pending;
+  if (!p) return;
+  s.pending = null;
+  clearTimeout(p.timer);
+  clearTimeout(p.settle);
+  p.marker.dispose();
+};
+const lineDone = (s: Session) => {
+  const p = s.pending;
+  if (!p) return false;
+  const buf = s.term.buffer.normal;
+  if (s.term.buffer.active !== buf || p.marker.isDisposed || p.marker.line < 0) return true;
+  let last = p.marker.line;
+  while (buf.getLine(last + 1)?.isWrapped) last++;
+  return buf.baseY + buf.cursorY > last;
+};
+
+// The command line the user is sending: the logical line (wrapped rows joined) that starts at `row`, without
+// the prompt (`admin > `, `NAME > `, cmd's `NAME >`; names cannot contain `>`) and without PSReadLine's inline
+// prediction (grey dim + italic text after the cursor, not part of the command).
+const promptLine = (term: XTerm, row: number): string => {
+  const buf = term.buffer.normal; // the prompt is never on the alternate (full-screen) buffer
+  const cell = buf.getNullCell();
+  let text = '';
+  for (let y = row; y < buf.length; y++) {
+    const line = buf.getLine(y);
+    if (!line || (y > row && !line.isWrapped)) break;
+    for (let x = 0; x < line.length; x++) {
+      if (!line.getCell(x, cell)) break;
+      if (cell.getWidth() === 0) continue; // the second half of a wide character
+      if (cell.isDim() && cell.isItalic()) continue;
+      text += cell.getChars() || ' ';
+    }
+  }
+  const gt = text.indexOf('>');
+  return gt < 0 ? '' : text.slice(gt + 1).trim();
+};
 
 // finding: Find Text is open on this terminal. The search add-on selects the current match and the selection is
 // drawn over its highlight, so the selection takes the current-match color (also while the find box has the focus).
@@ -147,6 +217,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   commandGroups,
   onOpenSettings,
   onPickCommand,
+  onPickHistory,
   hotkeysOn,
   onUserInput,
   globalVars,
@@ -258,6 +329,12 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const [showHelperMenu, setShowHelperMenu] = useState<boolean>(false);
   const [showVarsMenu, setShowVarsMenu] = useState<boolean>(false);
   const [showConstMenu, setShowConstMenu] = useState<boolean>(false);
+  // History Commands: the list of the screen it was opened for (a copy taken when it opens)
+  const [historyMenu, setHistoryMenu] = useState<{ id: string; items: string[] } | null>(null);
+  const historyListRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (showHelperMenu || showVarsMenu || showConstMenu) setHistoryMenu(null);
+  }, [showHelperMenu, showVarsMenu, showConstMenu]);
   const [activeCategory, setActiveCategory] = useState<string>('Basic Commands');
   const [usageBanner, setUsageBanner] = useState<{ command: string; usage: string } | null>(null);
 
@@ -378,6 +455,11 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     const osc = term.parser.registerOscHandler(9, (data) => {
       if (!data.startsWith('9;')) return false;
       onPromptStateRef.current(tab.id, true); // the prompt function ran: the shell is idle again
+      const s = sessionsRef.current.get(tab.id);
+      if (s) {
+        readPending(s); // the command before this prompt is done
+        s.atPrompt = true;
+      }
       const path = data.slice(2).replace(/^"|"$/g, '');
       if (path) onShellCwdChangeRef.current(tab.id, path);
       return true;
@@ -400,13 +482,32 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
     // Handle user input in terminal
     term.onData((data) => {
-      if (data.includes('\r')) onPromptStateRef.current(tab.id, false); // Enter: a command or program is running until the next prompt
+      if (data.includes('\r')) {
+        // Enter at the prompt: the command goes to History Commands once the shell has drawn it (readPending).
+        // Input to a running program (a password, an answer) is never recorded.
+        const s = sessionsRef.current.get(tab.id);
+        // The cursor is on the command's line (the start of its wrapped rows); not where the cursor was at the
+        // prompt's OSC report: ConPTY passes that through before the rows in front of the prompt are drawn.
+        if (s?.atPrompt) {
+          readPending(s, true);
+          const buf = term.buffer.normal;
+          const cursor = buf.baseY + buf.cursorY;
+          let start = cursor;
+          while (start > 0 && buf.getLine(start)?.isWrapped) start--;
+          const marker = term.registerMarker(start - cursor); // a marker follows scrollback trimming
+          if (marker) {
+            const timer = window.setTimeout(() => readPending(s, true), 5000);
+            s.pending = { marker, timer, atEnter: promptLine(term, start) }; // last resort: what is drawn now
+          }
+        }
+        if (s) s.atPrompt = false;
+        onPromptStateRef.current(tab.id, false); // Enter: a command or program is running until the next prompt
+      }
       onUserInputRef.current(); // anything typed here means a pending {SELEC}/{DEST} line is no longer ours to rewrite
       invoke('pty_write', { id: tab.id, data }).catch((err) => console.error('PTY Write Error:', err));
     });
 
-    sessionsRef.current.set(tab.id, { term, fit, search, el, osc });
-
+    sessionsRef.current.set(tab.id, { term, fit, search, el, osc, atPrompt: false, pending: null, history: [] });
     // Spawn native Windows PTY process (pwsh.exe / powershell.exe)
     invoke<string>('pty_spawn', {
       id: tab.id,
@@ -422,7 +523,9 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     const unlistenOut = listen<{ id: string; data: string }>('pty-output', (event) => {
       const s = sessionsRef.current.get(event.payload.id);
       if (!s) return;
-      s.term.write(event.payload.data);
+      s.term.write(event.payload.data, () => {
+        if (lineDone(s)) readPending(s);
+      });
       s.term.scrollToBottom();
     });
     const unlistenExit = listen<{ id: string }>('pty-exit', (event) => onShellExitRef.current(event.payload.id));
@@ -446,6 +549,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       unlistenExit.then((u) => u());
       unlistenFailed.then((u) => u());
       sessionsRef.current.forEach((s) => {
+        dropPending(s);
         s.osc.dispose();
         s.term.dispose();
       });
@@ -460,6 +564,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     for (const t of tabsRef.current) if (!map.has(t.id)) createSession(t);
     for (const [id, s] of Array.from(map)) {
       if (tabsRef.current.some((t) => t.id === id)) continue;
+      dropPending(s);
       s.osc.dispose();
       s.term.dispose();
       s.el.remove();
@@ -802,6 +907,27 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           ) : (
             <TermIcon size={13} style={{ color: 'var(--text-main)' }} />
           )}
+          {/* History Commands: the active screen's last commands (icon only) */}
+          <button
+            onClick={() => {
+              const id = activeIdRef.current;
+              const s = id ? sessionsRef.current.get(id) : undefined;
+              setHistoryMenu(historyMenu || !id ? null : { id, items: s ? [...s.history] : [] });
+              setShowHelperMenu(false);
+              setShowVarsMenu(false);
+              setShowConstMenu(false);
+            }}
+            title="History Commands: the last commands of this screen"
+            style={{
+              padding: '2px 5px',
+              display: 'flex',
+              alignItems: 'center',
+              background: historyMenu ? 'var(--bg-selected)' : 'var(--bg-panel-secondary)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
+            <HistoryIcon size={13} style={{ color: '#3b82f6' }} />
+          </button>
           {/* Beginner Command Helper Button */}
           <button
             onClick={() => {
@@ -872,6 +998,58 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           </button>
           )}
         </div>
+
+        {historyMenu && (
+          <>
+            <div
+              style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1040 }}
+              onClick={() => setHistoryMenu(null)}
+            />
+            <div className="terminal-vars-dropdown terminal-history-dropdown">
+              <div className="terminal-vars-heading">
+                <HistoryIcon size={12} style={{ color: '#3b82f6' }} /> History Commands
+                {(() => {
+                  const t = tabs.find((x) => x.id === historyMenu.id);
+                  if (!t) return null;
+                  const side = t.splitOf ? ' (Right)' : tabs.some((x) => x.splitOf === t.id) ? ' (Left)' : '';
+                  return <span className="terminal-history-tab">{`${tabs.find((x) => x.id === (t.splitOf ?? t.id))?.name ?? t.name}${side}`}</span>;
+                })()}
+              </div>
+              {historyMenu.items.length === 0 ? (
+                <div className="terminal-vars-hint">No commands in this screen yet.</div>
+              ) : (
+                <div
+                  className="terminal-history-list"
+                  ref={(el) => {
+                    // newest at the bottom: open scrolled to the end, earlier ones are above
+                    if (el && historyListRef.current !== el) el.scrollTop = el.scrollHeight;
+                    historyListRef.current = el;
+                  }}
+                >
+                  {historyMenu.items.map((cmd, i) => (
+                    <div
+                      key={i}
+                      className="terminal-history-row"
+                      title="Click to put it on the command line (Enter runs it)"
+                      onClick={() => {
+                        setHistoryMenu(null);
+                        onPickHistory(cmd).finally(() => {
+                          xtermRef.current?.scrollToBottom();
+                          xtermRef.current?.focus();
+                        });
+                      }}
+                    >
+                      {cmd}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="terminal-vars-hint">
+                Click one to put it on the command line. The last {HISTORY_KEEP} are kept, newest at the bottom.
+              </div>
+            </div>
+          </>
+        )}
 
         {showConstMenu && constVars.length > 0 && (
           <>

@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.2**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.3**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -468,11 +468,11 @@ All menus stay **fully inside the window**. Near the bottom edge a menu opens up
 
 ## 7. Search
 
-Click the **magnifier icon** in the header to open the search box. Type, and the file panel shows only the matches (it waits a moment after you stop typing). Clear the box (or click its **X**) to return to the normal folder view.
+Click the **magnifier icon** (Toggle Search Bar) in the header to open the **search bar at the bottom of the file panel**. Type, and the file panel shows only the matches (it waits a moment after you stop typing). Clear the box to return to the normal folder view. **Click the magnifier again** (or press **Esc** in the box) to close the bar; that also clears the search. The magnifier stays highlighted while the bar is open or a search is active. If the file panel is hidden, the magnifier shows it together with the bar.
 
-**The search box is a floating, two-line box.** It is 360 px wide and sits on top of the panels below it (the header keeps its height). A long query **wraps onto the next line** instead of running out of sight, and when it is longer than two lines you can **scroll it** with the mouse wheel or the scrollbar. The query is still one line of text: Enter does nothing, and line breaks in pasted text become spaces. Messages (red errors, amber notes, "Searching...") and the `?` options panel appear just below the box.
+**The search bar** is one line across the width of the file panel: the search box, then the **`?`** button and the **Subfolders** button (icons only; hover for their names). A long query scrolls sideways inside the box. Messages (red errors, amber notes, "Searching...") and the `?` options panel open **above** the bar, over the files.
 
-- **Subfolders button** (next to the search box): on by default, so subfolders are searched too (up to 8 levels deep). Click it to turn it **off** and search only the current folder, and click again to turn it back on. The button is highlighted while it is on, its tooltip says "Subfolders: ON" or "OFF", and the results update at once. It works with every filter, and with Bulk Rename: search with Subfolders on, select the results, then press F2.
+- **Subfolders button** (the folder-tree icon right of the `?`): on by default, so subfolders are searched too (up to 8 levels deep). Click it to turn it **off** and search only the current folder, and click again to turn it back on. The button is highlighted while it is on, its tooltip says "Subfolders: ON" or "OFF", and the results update at once. It works with every filter, and with Bulk Rename: search with Subfolders on, select the results, then press F2.
 - **Results** show the path relative to the current folder, like `./sub/report.txt`, and are limited to the first **300** matches.
 - **`?` button:** opens a cheat sheet. Click any example to add it to your search.
 - **Errors in plain words:** if a query can't be read, the box gets a red border and a message below it says why, instead of silently finding nothing. For example `filesize:12Q` shows `filesize: unknown unit "Q". Use B, K, M, G or T`.
@@ -873,6 +873,15 @@ The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pws
 - Everything you can do in PowerShell works. Drop files onto the terminal to type their paths.
 - Folder sync works both ways (see [section 3](#two-way-sync-with-the-terminal)).
 - Keys like Ctrl+A, Ctrl+C, Ctrl+V and Del go **to the terminal**, not the file panel, while you are typing in it.
+
+### History Commands (the clock button)
+The clock button in front of **Commands** (icon only; hover for its name) lists the commands you ran in the **active screen**: the selected tab, or on a split tab the Left or Right screen you last clicked (each screen keeps its own list; the list's top right says which one).
+- The **last 20** commands are kept; about **10** are in view with the **newest at the bottom**, and you scroll up for the older ones. Long commands wrap onto more lines.
+- **Click one** to put it on the command line, replacing anything typed there. It is **not run**: check or change it, then press Enter.
+- Running a command again moves it to the bottom instead of listing it twice. Upper and lower case do not matter here (`ls` then `LS` is one entry, shown the way you typed it last); spaces inside the command do (`ls -Force` and `ls  -Force` are two).
+- Only commands typed at the prompt are kept. What you type into a running program (a password, an answer to a question) is never recorded, and the folder changes boonsh sends when you click folders are not listed.
+- While a program is still running in that screen, picking a command shows a message instead (the text would go to the program).
+- The list is kept in memory only: it is gone when the tab (or screen) is closed or boonsh exits. Commands are recorded as shown on screen, so a `{SELEC}` you typed is kept as `{SELEC}`. (PowerShell's own Up arrow history still works as before.)
 
 ### Commands menu (the "Commands" button)
 A helper for beginners: click **Commands**, point at a group on the left, then click a command on the right.

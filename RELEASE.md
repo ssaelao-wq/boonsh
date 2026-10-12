@@ -6,6 +6,14 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.10.3 (2026-10-12)
+
+### Added
+- **History Commands:** a clock button in front of **Commands** lists the last 20 commands run in the active screen (each screen of a split tab has its own list), newest at the bottom, about 10 in view and the rest a scroll up; long commands wrap. Click one to put it on the command line (replacing what is typed there) so you can check it and press Enter. A repeated command (upper / lower case ignored) moves to the bottom instead of showing twice. Input typed into a running program (a password, an answer to a question) is never kept. Memory only: the list is gone when the tab closes or boonsh exits.
+
+### Changed
+- **Search bar at the bottom of the file panel:** the header's magnifier (Toggle Search Bar) now opens a one-line search bar under the files, with the `?` options and an icon-only Subfolders button; clicking the magnifier again (or Esc) closes it and clears the search. Messages and the options panel open above the bar. The floating two-line box in the header is gone.
+
 ## 0.10.2 (2026-10-12)
 
 - **Find Text in the command line.** Right-click a tab, **Find Text**: a floating box finds text in the whole history; every match is highlighted (yellow on the white theme, brown on the black one) and the current one in orange. Up / Down arrows (or the buttons) go to the match above / below; Esc closes it.

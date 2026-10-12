@@ -7,7 +7,6 @@ import {
   Grid,
   Eye,
   RefreshCw,
-  X,
   Sun,
   Moon,
   FolderTree,
@@ -18,7 +17,6 @@ import {
   Copy,
   ClipboardPaste,
   Trash2,
-  HelpCircle,
   Terminal,
   Sparkles,
   ShoppingBasket,
@@ -56,12 +54,8 @@ interface HeaderBarProps {
   currentPath: string;
   parentPath: string | null;
   searchQuery: string;
-  onSearchChange: (query: string) => void;
-  searchError: string;
-  searchNotice: string;
-  searching: boolean;
-  includeSubfolders: boolean;
-  onToggleIncludeSubfolders: () => void;
+  searchOpen: boolean; // the search bar at the bottom of the file panel is shown
+  onToggleSearch: () => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   showPreview: boolean;
@@ -93,12 +87,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   currentPath,
   parentPath,
   searchQuery,
-  onSearchChange,
-  searchError,
-  searchNotice,
-  searching,
-  includeSubfolders,
-  onToggleIncludeSubfolders,
+  searchOpen,
+  onToggleSearch,
   viewMode,
   onViewModeChange,
   showPreview,
@@ -124,17 +114,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onPaste,
   onDelete,
 }) => {
-  const [showSearchInput, setShowSearchInput] = useState<boolean>(false);
-  const [showSearchHelp, setShowSearchHelp] = useState<boolean>(false);
-  const searchInputRef = useRef<HTMLTextAreaElement>(null);
-
-  // Clicking a cheat-sheet example appends it to the query
-  const insertSearchExample = (example: string) => {
-    const q = searchQuery.trim();
-    onSearchChange(q ? `${q} ${example}` : example);
-    setShowSearchHelp(false);
-    setTimeout(() => searchInputRef.current?.focus(), 0);
-  };
   const [isEditingPath, setIsEditingPath] = useState<boolean>(false);
   const [pathInput, setPathInput] = useState<string>(currentPath);
   const pathInputRef = useRef<HTMLInputElement>(null);
@@ -149,18 +128,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   useEffect(() => {
     setPathInput(currentPath);
   }, [currentPath]);
-
-  // A query set from outside (the AI Assistant) opens the search box so the user sees it
-  useEffect(() => {
-    if (searchQuery && !showSearchInput) setShowSearchInput(true);
-  }, [searchQuery]);
-
-  const handleToggleSearch = () => {
-    if (showSearchInput && searchQuery) {
-      onSearchChange('');
-    }
-    setShowSearchInput(!showSearchInput);
-  };
 
   const handleStartEditingPath = () => {
     setPathInput(currentPath);
@@ -310,88 +277,14 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         )}
       </div>
 
-      {/* Toggleable Search Bar */}
-      {showSearchInput ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
-          <div className="search-box">
-            <textarea
-              ref={searchInputRef}
-              rows={2}
-              spellCheck={false}
-              className={`search-floating${searchError ? ' search-input-error' : ''}`}
-              placeholder="Search name, filetype:exe, path:legal, input:.\folder ..."
-              value={searchQuery}
-              // one logical line: it only wraps on screen, so Enter adds nothing and pasted line breaks become spaces
-              onChange={(e) => onSearchChange(e.target.value.replace(/[\r\n]+/g, ' '))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.preventDefault();
-              }}
-              title={searchError || 'Type a name or filters. Click ? for all options.'}
-              autoFocus
-            />
-            <Search size={14} style={{ position: 'absolute', left: 8, top: 7, zIndex: 1003, color: 'var(--text-muted)', pointerEvents: 'none' }} />
-            <button
-              onClick={handleToggleSearch}
-              style={{ position: 'absolute', right: 4, top: 3, zIndex: 1003, padding: 2, border: 'none' }}
-              title="Close Search"
-            >
-              <X size={12} />
-            </button>
-            {searchError ? (
-              <div className="search-error-bubble">{searchError}</div>
-            ) : searchNotice ? (
-              <div className="search-notice-bubble">{searchNotice}</div>
-            ) : (
-              searching && <div className="search-status-bubble">Searching...</div>
-            )}
-          </div>
-
-          <button
-            className={showSearchHelp ? 'active' : ''}
-            onClick={() => setShowSearchHelp((v) => !v)}
-            title="Search options & examples"
-          >
-            <HelpCircle size={14} />
-          </button>
-          {showSearchHelp && (
-            <>
-              <div className="context-menu-overlay" onClick={() => setShowSearchHelp(false)} />
-              <div className="search-help">
-                <div className="search-help-title">Search options (click one to add it)</div>
-                {SEARCH_EXAMPLES.map(([example, desc]) => (
-                  <div key={example} className="search-help-row" onClick={() => insertSearchExample(example)}>
-                    <code>{example}</code>
-                    <span>{desc}</span>
-                  </div>
-                ))}
-                <div className="search-help-footer">
-                  Separate terms with spaces; all of them must match. Dates are the modified date in local
-                  time. Short forms: name:, size:, type:, ext:, date: (path: has none). Lists like jpg,png may have spaces around the comma. Without input: the search runs in the current folder. The Subfolders button searches up to 8
-                  levels deep, showing at most 300 results.
-                </div>
-              </div>
-            </>
-          )}
-
-          <button
-            className={includeSubfolders ? 'active' : ''}
-            onClick={onToggleIncludeSubfolders}
-            title={includeSubfolders ? "Subfolders: ON (Click to search current folder only)" : "Subfolders: OFF (Click to search subfolders)"}
-            style={{ padding: '3px 6px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}
-          >
-            <FolderTree size={12} />
-            <span style={{ fontSize: 10 }}>Subfolders</span>
-          </button>
-        </div>
-      ) : (
-        <button
-          className={searchQuery ? 'active' : ''}
-          onClick={handleToggleSearch}
-          title="Toggle Search Bar"
-        >
-          <Search size={14} style={{ color: '#06b6d4' }} />
-        </button>
-      )}
+      {/* Toggle Search Bar: the bar itself is at the bottom of the file panel (SearchBar.tsx) */}
+      <button
+        className={searchOpen || searchQuery ? 'active' : ''}
+        onClick={onToggleSearch}
+        title="Toggle Search Bar"
+      >
+        <Search size={14} style={{ color: '#06b6d4' }} />
+      </button>
 
       {/* Minimalist Action Icons */}
       <div className="header-actions">

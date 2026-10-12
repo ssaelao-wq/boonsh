@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { HeaderBar } from './components/HeaderBar';
+import { SearchBar } from './components/SearchBar';
 import { QuickAccessBar } from './components/QuickAccessBar';
 import { FolderTree } from './components/FolderTree';
 import { MainFilePanel } from './components/MainFilePanel';
@@ -126,6 +127,22 @@ export function App() {
   const [includeSubfolders, setIncludeSubfolders] = useState<boolean>(true);
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [showFilePanel, setShowFilePanel] = useState<boolean>(true); // Controls Middle File Panel
+  // The search bar at the bottom of the file panel (header's Toggle Search Bar). Closing it clears the search;
+  // opening it also shows the file panel if that was hidden, since the bar lives there.
+  const [showSearch, setShowSearch] = useState<boolean>(false);
+  const toggleSearch = () => {
+    if (showSearch && showFilePanel) {
+      setShowSearch(false);
+      if (searchQuery) setSearchQuery('');
+    } else {
+      setShowSearch(true);
+      setShowFilePanel(true);
+    }
+  };
+  // A query set from outside (the AI Assistant) opens the search bar so the user sees it
+  useEffect(() => {
+    if (searchQuery && !showSearch) setShowSearch(true);
+  }, [searchQuery]);
   const [showTerminal, setShowTerminal] = useState<boolean>(true); // command line panel (hidden, not closed: the shell keeps running)
   // AI Assistant panel, under the command line panel (remembered between runs)
   const [showAssistant, setShowAssistant] = useState<boolean>(() => localStorage.getItem('boonsh_ai_panel') === '1');
@@ -566,6 +583,19 @@ export function App() {
   const ptyWrite = (data: string): Promise<unknown> => {
     const id = activeTabIdRef.current;
     return id ? invoke('pty_write', { id, data }) : Promise.resolve();
+  };
+
+  // History Commands: put an earlier command of the active screen on its prompt line (replacing what is typed
+  // there) for the user to review and run. Not while a program runs: the keys would go to that program.
+  const typeFromHistory = async (text: string) => {
+    const id = activeTabIdRef.current;
+    if (!id) return;
+    if (atPromptRef.current[id] === false) {
+      alert('A program is still running in this screen. Wait for the prompt, then pick the command again.');
+      return;
+    }
+    pendingCmdRef.current = null;
+    await rewritePromptLine(text);
   };
 
   // The file panel follows the tab: show the folder the tab's shell is in
@@ -1636,12 +1666,8 @@ export function App() {
         currentPath={currentPath}
         parentPath={parentPath}
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        searchError={searchError}
-        searchNotice={searchNotice}
-        searching={searching}
-        includeSubfolders={includeSubfolders}
-        onToggleIncludeSubfolders={() => setIncludeSubfolders(!includeSubfolders)}
+        searchOpen={showSearch && showFilePanel}
+        onToggleSearch={toggleSearch}
         viewMode={viewMode}
         onViewModeChange={(mode) => {
           setViewMode(mode);
@@ -1795,6 +1821,7 @@ export function App() {
 
             {/* Middle Sub-pane: Main File Explorer Table / Grid */}
             {showFilePanel && (
+              <div className="file-panel-column">
               <MainFilePanel
                 items={sortedItems}
                 selectedPaths={selectedPaths}
@@ -1857,6 +1884,19 @@ export function App() {
                 pathVars={pathVars}
                 onAssignPathVar={assignPathVar}
               />
+              {showSearch && (
+                <SearchBar
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  searchError={searchError}
+                  searchNotice={searchNotice}
+                  searching={searching}
+                  includeSubfolders={includeSubfolders}
+                  onToggleIncludeSubfolders={() => setIncludeSubfolders(!includeSubfolders)}
+                  onClose={toggleSearch}
+                />
+              )}
+              </div>
             )}
           </div>
 
@@ -1913,6 +1953,7 @@ export function App() {
             onShellCwdChange={handleShellCwdChange}
             onPromptState={(id, atPrompt) => { atPromptRef.current[id] = atPrompt; }}
             onPickCommand={pickCommand}
+            onPickHistory={typeFromHistory}
             baskets={(treeListing && normalizePath(treeListing.path) === normalizePath(currentPath) ? treeListing.items : [])
               .filter(isBasket)
               .map((i) => basketName(i.name))}
