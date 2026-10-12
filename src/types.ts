@@ -53,4 +53,7 @@ export interface TermTab {
   cwd: string;
   level: 'admin' | 'normal'; // the login this tab's shell runs with
   color: string; // the tab header color (one of TAB_COLORS)
+  // Split Screen: set on the right screen, the id of the tab (left screen) it sits beside. It has no header of its
+  // own, always comes right after that tab in the list, and cannot be split again.
+  splitOf?: string;
 }

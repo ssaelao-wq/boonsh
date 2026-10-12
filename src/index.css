@@ -2613,6 +2613,139 @@ textarea.search-floating:focus {
 .terminal-tab-new:hover {
   background: var(--bg-hover);
 }
+/* Find Text: the floating box over a command line screen */
+.term-find {
+  position: absolute;
+  top: 6px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light, var(--border-color));
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.term-find input {
+  width: 190px;
+  flex: 0 1 190px;
+  min-width: 50px;
+  font-size: 12px;
+  padding: 2px 6px;
+  user-select: text;
+}
+.term-find button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--text-main);
+}
+.term-find button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.term-find button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.app-container span.term-find-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-align: right;
+}
+.term-find button,
+.term-find svg {
+  flex-shrink: 0;
+}
+.app-container span.term-find-status.none {
+  color: #ef4444;
+}
+/* Export Screen: where the file was saved, for a few seconds */
+.app-container div.term-export-note {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: calc(100% - 40px);
+  padding: 5px 12px;
+  font-size: 11px;
+  color: var(--text-main);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* Split Screen: the bar naming the left / right screens, and the separator between them */
+.split-bar {
+  display: flex;
+  justify-content: space-between;
+  height: 22px;
+  min-height: 22px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  --tab-color: #2563eb;
+}
+.split-bar-pane {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 4px 0 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.split-bar-pane:hover {
+  background: var(--bg-hover);
+}
+.split-bar-pane.active {
+  color: var(--text-main);
+  border-bottom-color: var(--tab-color);
+}
+.split-bar-label {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.split-bar-folder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.split-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  cursor: col-resize;
+  display: flex;
+  justify-content: center;
+}
+.split-divider::after {
+  content: '';
+  width: 1px;
+  height: 100%;
+  background: var(--border-color);
+}
+.split-divider:hover::after,
+.split-divider.dragging::after {
+  width: 2px;
+  background: var(--accent);
+}
 .terminal-empty {
   flex: 1;
   display: flex;

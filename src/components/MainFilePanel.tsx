@@ -963,6 +963,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 className="context-menu-item"
                 style={{ justifyContent: 'space-between' }}
                 onMouseEnter={() => setShowGroupSub(true)}
+                // a submenu closes when the pointer leaves its row (it overlaps the row, so moving into it keeps it open)
+                onMouseLeave={() => setShowGroupSub(false)}
                 onClick={() => setShowGroupSub(!showGroupSub)}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1100,6 +1102,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 setShowVarSubmenu(false);
                 setShowOpenWith(false);
               }}
+              // a submenu closes when the pointer leaves its row (it overlaps the row, so moving into it keeps it open)
+              onMouseLeave={() => setShowNewSubmenu(false)}
               onClick={() => setShowNewSubmenu(!showNewSubmenu)}
               style={{ justifyContent: 'space-between' }}
             >
@@ -1163,6 +1167,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                   setShowNewSubmenu(false);
                   setShowVarSubmenu(false);
                 }}
+                // a submenu closes when the pointer leaves its row (it overlaps the row, so moving into it keeps it open)
+                onMouseLeave={() => setShowOpenWith(false)}
                 onClick={() => setShowOpenWith(!showOpenWith)}
                 style={{ justifyContent: 'space-between' }}
               >
@@ -1261,6 +1267,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     setShowNewSubmenu(false);
                     setShowOpenWith(false);
                   }}
+                  // a submenu closes when the pointer leaves its row (it overlaps the row, so moving into it keeps it open)
+                  onMouseLeave={() => setShowVarSubmenu(false)}
                   onClick={() => setShowVarSubmenu(!showVarSubmenu)}
                   style={{ justifyContent: 'space-between' }}
                 >

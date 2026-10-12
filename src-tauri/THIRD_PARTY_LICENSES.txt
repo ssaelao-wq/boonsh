@@ -5,7 +5,7 @@ boonsh itself is released under the MIT License (see the LICENSE file).
 boonsh includes the open-source components listed below. Each is used under its own license, whose
 text follows. Components that share the same license text are listed together above that text.
 
-285 components: Rust 269, JavaScript 16
+286 components: Rust 269, JavaScript 17
 
 
 ==============================================================================
@@ -405,6 +405,33 @@ THE SOFTWARE.
 ==============================================================================
 License text 9, used by:
 
+  - @xterm/addon-search 0.16.0 (MIT)  https://github.com/xtermjs/xterm.js/tree/master/addons/addon-search
+
+------------------------------------------------------------------------------
+Copyright (c) 2017, The xterm.js authors (https://github.com/xtermjs/xterm.js)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+
+==============================================================================
+License text 10, used by:
+
   - @xterm/xterm 6.0.0 (MIT)  https://github.com/xtermjs/xterm.js
 
 ------------------------------------------------------------------------------
@@ -432,7 +459,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 10, used by:
+License text 11, used by:
 
   - fast-sha256 1.3.0 (Unlicense)  https://github.com/dchest/fast-sha256-js
 
@@ -464,7 +491,7 @@ For more information, please refer to <http://unlicense.org>
 
 
 ==============================================================================
-License text 11, used by:
+License text 12, used by:
 
   - json-schema-to-ts 3.1.1 (MIT)  git+https://github.com/ThomasAribart/json-schema-to-ts.git
   - ts-algebra 2.0.0 (MIT)  git+https://github.com/ThomasAribart/ts-algebra.git
@@ -494,7 +521,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 12, used by:
+License text 13, used by:
 
   - lucide-react 1.48.0 (ISC)  https://github.com/lucide-icons/lucide.git
 
@@ -545,7 +572,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 13, used by:
+License text 14, used by:
 
   - marked 18.0.14 (MIT)  git+https://github.com/markedjs/marked.git
 
@@ -597,7 +624,7 @@ This software is provided by the copyright holders and contributors “as is” 
 
 
 ==============================================================================
-License text 14, used by:
+License text 15, used by:
 
   - react 19.3.0 (MIT)  https://github.com/react/react.git
   - react-dom 19.3.0 (MIT)  https://github.com/react/react.git
@@ -628,7 +655,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 15, used by:
+License text 16, used by:
 
   - adler2 2.0.1 (0BSD OR MIT OR Apache-2.0)  https://github.com/oyvindln/adler2
 
@@ -648,7 +675,7 @@ OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 
 ==============================================================================
-License text 16, used by:
+License text 17, used by:
 
   - adler2 2.0.1 (0BSD OR MIT OR Apache-2.0)  https://github.com/oyvindln/adler2
   - cargo-platform 0.1.9 (MIT OR Apache-2.0)  https://github.com/rust-lang/cargo
@@ -858,7 +885,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 17, used by:
+License text 18, used by:
 
   - adler2 2.0.1 (0BSD OR MIT OR Apache-2.0)  https://github.com/oyvindln/adler2
   - anyhow 1.0.104 (MIT OR Apache-2.0)  https://github.com/dtolnay/anyhow
@@ -925,7 +952,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 18, used by:
+License text 19, used by:
 
   - aho-corasick 1.1.5 (Unlicense OR MIT)  https://github.com/BurntSushi/aho-corasick
   - byteorder 1.5.0 (Unlicense OR MIT)  https://github.com/BurntSushi/byteorder
@@ -945,7 +972,7 @@ You may use this code under the terms of either license.
 
 
 ==============================================================================
-License text 19, used by:
+License text 20, used by:
 
   - aho-corasick 1.1.5 (Unlicense OR MIT)  https://github.com/BurntSushi/aho-corasick
   - byteorder 1.5.0 (Unlicense OR MIT)  https://github.com/BurntSushi/byteorder
@@ -981,7 +1008,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 20, used by:
+License text 21, used by:
 
   - aho-corasick 1.1.5 (Unlicense OR MIT)  https://github.com/BurntSushi/aho-corasick
   - byteorder 1.5.0 (Unlicense OR MIT)  https://github.com/BurntSushi/byteorder
@@ -1022,7 +1049,7 @@ For more information, please refer to <http://unlicense.org/>
 
 
 ==============================================================================
-License text 21, used by:
+License text 22, used by:
 
   - alloc-no-stdlib 3.0.0 (BSD-3-Clause)  https://github.com/dropbox/rust-alloc-no-stdlib
   - brotli 9.0.0 (BSD-3-Clause AND MIT)  https://github.com/dropbox/rust-brotli
@@ -1044,7 +1071,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 
 ==============================================================================
-License text 22, used by:
+License text 23, used by:
 
   - anyhow 1.0.104 (MIT OR Apache-2.0)  https://github.com/dtolnay/anyhow
   - dtoa 1.0.11 (MIT OR Apache-2.0)  https://github.com/dtolnay/dtoa
@@ -1255,7 +1282,7 @@ END OF TERMS AND CONDITIONS
 
 
 ==============================================================================
-License text 23, used by:
+License text 24, used by:
 
   - base64 0.22.1 (MIT OR Apache-2.0)  https://github.com/marshallpierce/rust-base64
   - base64 0.23.1 (MIT OR Apache-2.0)  https://github.com/marshallpierce/rust-base64
@@ -1522,7 +1549,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 24, used by:
+License text 25, used by:
 
   - base64 0.22.1 (MIT OR Apache-2.0)  https://github.com/marshallpierce/rust-base64
 
@@ -1551,7 +1578,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 25, used by:
+License text 26, used by:
 
   - base64 0.23.1 (MIT OR Apache-2.0)  https://github.com/marshallpierce/rust-base64
 
@@ -1580,7 +1607,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 26, used by:
+License text 27, used by:
 
   - bit-set 0.8.0 (Apache-2.0 OR MIT)  https://github.com/contain-rs/bit-set
   - bit-vec 0.8.0 (Apache-2.0 OR MIT)  https://github.com/contain-rs/bit-vec
@@ -1794,7 +1821,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 27, used by:
+License text 28, used by:
 
   - bit-set 0.8.0 (Apache-2.0 OR MIT)  https://github.com/contain-rs/bit-set
   - bit-vec 0.8.0 (Apache-2.0 OR MIT)  https://github.com/contain-rs/bit-vec
@@ -1828,7 +1855,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 28, used by:
+License text 29, used by:
 
   - bitflags 1.3.2 (MIT/Apache-2.0)  https://github.com/bitflags/bitflags
   - bitflags 2.13.2 (MIT OR Apache-2.0)  https://github.com/bitflags/bitflags
@@ -1869,7 +1896,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 29, used by:
+License text 30, used by:
 
   - block-buffer 0.10.4 (MIT OR Apache-2.0)  https://github.com/RustCrypto/utils
   - cpufeatures 0.2.17 (MIT OR Apache-2.0)  https://github.com/RustCrypto/utils
@@ -2082,7 +2109,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 30, used by:
+License text 31, used by:
 
   - block-buffer 0.10.4 (MIT OR Apache-2.0)  https://github.com/RustCrypto/utils
 
@@ -2115,7 +2142,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 31, used by:
+License text 32, used by:
 
   - brotli 9.0.0 (BSD-3-Clause AND MIT)  https://github.com/dropbox/rust-brotli
 
@@ -2142,7 +2169,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 32, used by:
+License text 33, used by:
 
   - bs58 0.5.1 (MIT/Apache-2.0)  https://github.com/Nullus157/bs58-rs
 
@@ -2170,7 +2197,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 33, used by:
+License text 34, used by:
 
   - bumpalo 3.20.3 (MIT OR Apache-2.0)  https://github.com/fitzgen/bumpalo
 
@@ -2203,7 +2230,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 34, used by:
+License text 35, used by:
 
   - bytes 1.12.1 (MIT)  https://github.com/tokio-rs/bytes
 
@@ -2236,7 +2263,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 35, used by:
+License text 36, used by:
 
   - cfb 0.14.0 (MIT)  https://github.com/mdsteele/rust-cfb
 
@@ -2265,7 +2292,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 36, used by:
+License text 37, used by:
 
   - cfg-if 1.0.5 (MIT OR Apache-2.0)  https://github.com/rust-lang/cfg-if
   - socket2 0.6.5 (MIT OR Apache-2.0)  https://github.com/rust-lang/socket2
@@ -2299,7 +2326,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 37, used by:
+License text 38, used by:
 
   - chrono 0.4.45 (MIT OR Apache-2.0)  https://github.com/chronotope/chrono
 
@@ -2546,7 +2573,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 38, used by:
+License text 39, used by:
 
   - cookie 0.18.2 (MIT OR Apache-2.0)  https://github.com/SergioBenitez/cookie-rs
 
@@ -2756,7 +2783,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 39, used by:
+License text 40, used by:
 
   - cookie 0.18.2 (MIT OR Apache-2.0)  https://github.com/SergioBenitez/cookie-rs
 
@@ -2790,7 +2817,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 40, used by:
+License text 41, used by:
 
   - cpufeatures 0.2.17 (MIT OR Apache-2.0)  https://github.com/RustCrypto/utils
 
@@ -2823,7 +2850,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 41, used by:
+License text 42, used by:
 
   - crc32fast 1.5.2 (MIT OR Apache-2.0)  https://github.com/srijs/rust-crc32fast
   - ctor 1.0.13 (Apache-2.0 OR MIT)  https://github.com/mmastrac/linktime
@@ -3043,7 +3070,7 @@ Apache License
 
 
 ==============================================================================
-License text 42, used by:
+License text 43, used by:
 
   - crc32fast 1.5.2 (MIT OR Apache-2.0)  https://github.com/srijs/rust-crc32fast
 
@@ -3072,7 +3099,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 43, used by:
+License text 44, used by:
 
   - crossbeam-channel 0.5.17 (MIT OR Apache-2.0)  https://github.com/crossbeam-rs/crossbeam
   - crossbeam-utils 0.8.23 (MIT OR Apache-2.0)  https://github.com/crossbeam-rs/crossbeam
@@ -3108,7 +3135,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 44, used by:
+License text 45, used by:
 
   - crossbeam-channel 0.5.17 (MIT OR Apache-2.0)  https://github.com/crossbeam-rs/crossbeam
 
@@ -3709,7 +3736,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 45, used by:
+License text 46, used by:
 
   - crypto-common 0.1.7 (MIT OR Apache-2.0)  https://github.com/RustCrypto/traits
 
@@ -3742,7 +3769,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 46, used by:
+License text 47, used by:
 
   - cssparser 0.37.0 (MPL-2.0)  https://github.com/servo/rust-cssparser
   - cssparser-macros 0.7.1 (MPL-2.0)  https://github.com/servo/rust-cssparser
@@ -4124,7 +4151,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 
 ==============================================================================
-License text 47, used by:
+License text 48, used by:
 
   - ctor 1.0.13 (Apache-2.0 OR MIT)  https://github.com/mmastrac/linktime
   - tinyvec 1.13.3 (Zlib OR Apache-2.0 OR MIT)  https://github.com/Lokathor/tinyvec
@@ -4138,7 +4165,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 
 ==============================================================================
-License text 48, used by:
+License text 49, used by:
 
   - darling 0.24.1 (MIT)  https://github.com/TedDriggs/darling
   - darling_core 0.24.1 (MIT)  https://github.com/TedDriggs/darling
@@ -4169,7 +4196,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 49, used by:
+License text 50, used by:
 
   - defmt 1.1.1 (MIT OR Apache-2.0)  https://github.com/knurling-rs/defmt
   - defmt-macros 1.1.1 (MIT OR Apache-2.0)  https://github.com/knurling-rs/defmt
@@ -4203,7 +4230,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 50, used by:
+License text 51, used by:
 
   - deranged 0.5.8 (MIT OR Apache-2.0)  https://github.com/jhpratt/deranged
 
@@ -4412,7 +4439,7 @@ Apache License
 
 
 ==============================================================================
-License text 51, used by:
+License text 52, used by:
 
   - deranged 0.5.8 (MIT OR Apache-2.0)  https://github.com/jhpratt/deranged
 
@@ -4439,7 +4466,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 52, used by:
+License text 53, used by:
 
   - derive_more 2.1.1 (MIT)  https://github.com/JelteF/derive_more
   - derive_more-impl 2.1.1 (MIT)  https://github.com/JelteF/derive_more
@@ -4469,7 +4496,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 53, used by:
+License text 54, used by:
 
   - digest 0.10.7 (MIT OR Apache-2.0)  https://github.com/RustCrypto/traits
 
@@ -4502,7 +4529,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 54, used by:
+License text 55, used by:
 
   - dirs 5.0.1 (MIT OR Apache-2.0)  https://github.com/soc/dirs-rs
   - dirs 7.0.0 (MIT OR Apache-2.0)  https://codeberg.org/dirs/dirs-rs
@@ -4687,7 +4714,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
 
 ==============================================================================
-License text 55, used by:
+License text 56, used by:
 
   - dirs 5.0.1 (MIT OR Apache-2.0)  https://github.com/soc/dirs-rs
   - dirs 7.0.0 (MIT OR Apache-2.0)  https://codeberg.org/dirs/dirs-rs
@@ -4717,7 +4744,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 56, used by:
+License text 57, used by:
 
   - dom_query 0.28.0 (MIT)  https://github.com/niklak/dom_query
 
@@ -4752,7 +4779,7 @@ developed by Chen Jiaju, licensed under the MIT License and the Apache License 2
 
 
 ==============================================================================
-License text 57, used by:
+License text 58, used by:
 
   - downcast-rs 1.2.1 (MIT/Apache-2.0)  https://github.com/marcianx/downcast-rs
 
@@ -4785,7 +4812,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 58, used by:
+License text 59, used by:
 
   - dpi 0.1.2 (Apache-2.0 AND MIT)  https://github.com/rust-windowing/winit
 
@@ -4844,7 +4871,7 @@ have been licensed under extremely permissive terms.
 
 
 ==============================================================================
-License text 59, used by:
+License text 60, used by:
 
   - dtoa-short 0.3.5 (MPL-2.0)  https://github.com/upsuper/dtoa-short
 
@@ -5225,7 +5252,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 
 ==============================================================================
-License text 60, used by:
+License text 61, used by:
 
   - dunce 1.0.5 (CC0-1.0 OR MIT-0 OR Apache-2.0)  https://gitlab.com/kornelski/dunce
 
@@ -5354,7 +5381,7 @@ express Statement of Purpose.
 
 
 ==============================================================================
-License text 61, used by:
+License text 62, used by:
 
   - equivalent 1.0.2 (Apache-2.0 OR MIT)  https://github.com/indexmap-rs/equivalent
 
@@ -5387,7 +5414,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 62, used by:
+License text 63, used by:
 
   - fdeflate 0.3.7 (MIT OR Apache-2.0)  https://github.com/image-rs/fdeflate
 
@@ -5420,7 +5447,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 63, used by:
+License text 64, used by:
 
   - filedescriptor 0.8.3 (MIT)  https://github.com/wezterm/wezterm
   - portable-pty 0.8.1 (MIT)  https://github.com/wez/wezterm
@@ -5450,7 +5477,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 64, used by:
+License text 65, used by:
 
   - flate2 1.1.10 (MIT OR Apache-2.0)  https://github.com/rust-lang/flate2-rs
 
@@ -5483,7 +5510,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 65, used by:
+License text 66, used by:
 
   - fnv 1.0.7 (Apache-2.0 / MIT)  https://github.com/servo/rust-fnv
 
@@ -5516,7 +5543,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 66, used by:
+License text 67, used by:
 
   - foldhash 0.2.0 (Zlib)  https://github.com/orlp/foldhash
 
@@ -5543,7 +5570,7 @@ the following restrictions:
 
 
 ==============================================================================
-License text 67, used by:
+License text 68, used by:
 
   - form_urlencoded 1.2.2 (MIT OR Apache-2.0)  https://github.com/servo/rust-url
 
@@ -5576,7 +5603,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 68, used by:
+License text 69, used by:
 
   - generic-array 0.14.7 (MIT)  https://github.com/fizyk20/generic-array.git
 
@@ -5605,7 +5632,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 69, used by:
+License text 70, used by:
 
   - getrandom 0.3.4 (MIT OR Apache-2.0)  https://github.com/rust-random/getrandom
   - getrandom 0.4.3 (MIT OR Apache-2.0)  https://github.com/rust-random/getrandom
@@ -5815,7 +5842,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 70, used by:
+License text 71, used by:
 
   - getrandom 0.3.4 (MIT OR Apache-2.0)  https://github.com/rust-random/getrandom
 
@@ -5849,7 +5876,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 71, used by:
+License text 72, used by:
 
   - getrandom 0.4.3 (MIT OR Apache-2.0)  https://github.com/rust-random/getrandom
 
@@ -5883,7 +5910,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 72, used by:
+License text 73, used by:
 
   - hashbrown 0.12.3 (MIT OR Apache-2.0)  https://github.com/rust-lang/hashbrown
   - hashbrown 0.17.1 (MIT OR Apache-2.0)  https://github.com/rust-lang/hashbrown
@@ -5917,7 +5944,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 73, used by:
+License text 74, used by:
 
   - heck 0.5.0 (MIT OR Apache-2.0)  https://github.com/withoutboats/heck
   - unicode-segmentation 1.13.3 (MIT OR Apache-2.0)  https://github.com/unicode-rs/unicode-segmentation
@@ -5951,7 +5978,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 74, used by:
+License text 75, used by:
 
   - hex 0.4.3 (MIT OR Apache-2.0)  https://github.com/KokaKiwi/rust-hex
 
@@ -5979,7 +6006,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 75, used by:
+License text 76, used by:
 
   - html5ever 0.39.0 (MIT OR Apache-2.0)  https://github.com/servo/html5ever
   - markup5ever 0.39.0 (MIT OR Apache-2.0)  https://github.com/servo/html5ever
@@ -6014,7 +6041,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 76, used by:
+License text 77, used by:
 
   - http 1.5.0 (MIT OR Apache-2.0)  https://github.com/hyperium/http
 
@@ -6223,7 +6250,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 77, used by:
+License text 78, used by:
 
   - http 1.5.0 (MIT OR Apache-2.0)  https://github.com/hyperium/http
 
@@ -6256,7 +6283,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 78, used by:
+License text 79, used by:
 
   - http-range 0.1.5 (MIT)  https://github.com/bancek/rust-http-range.git
 
@@ -6285,7 +6312,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 79, used by:
+License text 80, used by:
 
   - ico 0.5.0 (MIT)  https://github.com/mdsteele/rust-ico
 
@@ -6314,7 +6341,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 80, used by:
+License text 81, used by:
 
   - icu_collections 2.3.0 (Unicode-3.0)  https://github.com/unicode-org/icu4x
   - icu_locale_core 2.3.0 (Unicode-3.0)  https://github.com/unicode-org/icu4x
@@ -6385,7 +6412,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 
 ==============================================================================
-License text 81, used by:
+License text 82, used by:
 
   - ident_case 1.0.1 (MIT/Apache-2.0)  https://github.com/TedDriggs/ident_case
 
@@ -6412,7 +6439,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 82, used by:
+License text 83, used by:
 
   - idna 1.1.0 (MIT OR Apache-2.0)  https://github.com/servo/rust-url/
   - percent-encoding 2.3.2 (MIT OR Apache-2.0)  https://github.com/servo/rust-url/
@@ -6447,7 +6474,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 83, used by:
+License text 84, used by:
 
   - idna_adapter 1.2.2 (Apache-2.0 OR MIT)  https://github.com/hsivonen/idna_adapter
 
@@ -6480,7 +6507,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 84, used by:
+License text 85, used by:
 
   - indexmap 1.9.3 (Apache-2.0 OR MIT)  https://github.com/bluss/indexmap
   - indexmap 2.14.2 (Apache-2.0 OR MIT)  https://github.com/indexmap-rs/indexmap
@@ -6514,7 +6541,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 85, used by:
+License text 86, used by:
 
   - infer 0.22.0 (MIT)  https://github.com/bojand/infer
 
@@ -6543,7 +6570,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 86, used by:
+License text 87, used by:
 
   - json-patch 4.2.0 (MIT/Apache-2.0)  https://github.com/idubrov/json-patch
 
@@ -6572,7 +6599,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 87, used by:
+License text 88, used by:
 
   - jsonptr 0.7.1 (MIT OR Apache-2.0)  https://github.com/chanced/jsonptr
 
@@ -6781,7 +6808,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 88, used by:
+License text 89, used by:
 
   - jsonptr 0.7.1 (MIT OR Apache-2.0)  https://github.com/chanced/jsonptr
 
@@ -6810,7 +6837,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 89, used by:
+License text 90, used by:
 
   - keyboard-types 0.8.3 (MIT OR Apache-2.0)  https://github.com/rust-windowing/keyboard-types
 
@@ -6837,7 +6864,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 90, used by:
+License text 91, used by:
 
   - lazy_static 1.5.0 (MIT OR Apache-2.0)  https://github.com/rust-lang-nursery/lazy-static.rs
 
@@ -6870,7 +6897,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 91, used by:
+License text 92, used by:
 
   - libc 0.2.189 (MIT OR Apache-2.0)  https://github.com/rust-lang/libc
 
@@ -6903,7 +6930,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 92, used by:
+License text 93, used by:
 
   - lock_api 0.4.14 (MIT OR Apache-2.0)  https://github.com/Amanieu/parking_lot
   - parking_lot 0.12.5 (MIT OR Apache-2.0)  https://github.com/Amanieu/parking_lot
@@ -6938,7 +6965,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 93, used by:
+License text 94, used by:
 
   - memoffset 0.6.5 (MIT)  https://github.com/Gilnaa/memoffset
 
@@ -6965,7 +6992,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 94, used by:
+License text 95, used by:
 
   - mime 0.3.17 (MIT OR Apache-2.0)  https://github.com/hyperium/mime
 
@@ -6992,40 +7019,6 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 95, used by:
-
-  - miniz_oxide 0.8.9 (MIT OR Zlib OR Apache-2.0)  https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
-  - miniz_oxide 0.9.1 (MIT OR Zlib OR Apache-2.0)  https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
-
-------------------------------------------------------------------------------
-MIT License
-
-Copyright 2013-2014 RAD Game Tools and Valve Software
-Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
-Copyright (c) 2017 Frommi
-Copyright (c) 2017-2024 oyvindln
-
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
-==============================================================================
 License text 96, used by:
 
   - miniz_oxide 0.8.9 (MIT OR Zlib OR Apache-2.0)  https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
@@ -7038,6 +7031,7 @@ Copyright 2013-2014 RAD Game Tools and Valve Software
 Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
 Copyright (c) 2017 Frommi
 Copyright (c) 2017-2024 oyvindln
+
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -7065,6 +7059,39 @@ License text 97, used by:
   - miniz_oxide 0.9.1 (MIT OR Zlib OR Apache-2.0)  https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
 
 ------------------------------------------------------------------------------
+MIT License
+
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+Copyright (c) 2017 Frommi
+Copyright (c) 2017-2024 oyvindln
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+==============================================================================
+License text 98, used by:
+
+  - miniz_oxide 0.8.9 (MIT OR Zlib OR Apache-2.0)  https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
+  - miniz_oxide 0.9.1 (MIT OR Zlib OR Apache-2.0)  https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
+
+------------------------------------------------------------------------------
 Copyright 2013-2014 RAD Game Tools and Valve Software
 Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
 Copyright (c) 2020 Frommi
@@ -7082,7 +7109,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 
 ==============================================================================
-License text 98, used by:
+License text 99, used by:
 
   - mio 1.2.3 (MIT)  https://github.com/tokio-rs/mio
 
@@ -7109,7 +7136,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 99, used by:
+License text 100, used by:
 
   - muda 0.20.0 (Apache-2.0 OR MIT)  https://github.com/tauri-apps/muda
   - tray-icon 0.25.1 (MIT OR Apache-2.0)  https://github.com/tauri-apps/tray-icon
@@ -7139,7 +7166,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 100, used by:
+License text 101, used by:
 
   - muda 0.20.0 (Apache-2.0 OR MIT)  https://github.com/tauri-apps/muda
 
@@ -7166,7 +7193,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 
 ==============================================================================
-License text 101, used by:
+License text 102, used by:
 
   - new_debug_unreachable 1.0.6 (MIT)  https://github.com/mbrubeck/rust-debug-unreachable
 
@@ -7199,7 +7226,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 102, used by:
+License text 103, used by:
 
   - nix 0.25.1 (MIT)  https://github.com/nix-rust/nix
 
@@ -7228,7 +7255,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 103, used by:
+License text 104, used by:
 
   - num-conv 0.2.2 (MIT OR Apache-2.0)  https://github.com/jhpratt/num-conv
 
@@ -7255,7 +7282,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 104, used by:
+License text 105, used by:
 
   - open 5.4.4 (MIT)  https://github.com/Byron/open-rs
 
@@ -7288,7 +7315,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 105, used by:
+License text 106, used by:
 
   - option-ext 0.2.0 (MPL-2.0)  https://github.com/soc/option-ext.git
 
@@ -7669,7 +7696,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 
 ==============================================================================
-License text 106, used by:
+License text 107, used by:
 
   - phf 0.13.1 (MIT)  https://github.com/rust-phf/rust-phf
   - phf_generator 0.13.1 (MIT)  https://github.com/rust-phf/rust-phf
@@ -7700,7 +7727,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 107, used by:
+License text 108, used by:
 
   - pin-utils 0.1.0 (MIT OR Apache-2.0)  https://github.com/rust-lang-nursery/pin-utils
 
@@ -7909,7 +7936,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 108, used by:
+License text 109, used by:
 
   - pin-utils 0.1.0 (MIT OR Apache-2.0)  https://github.com/rust-lang-nursery/pin-utils
 
@@ -7942,7 +7969,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 109, used by:
+License text 110, used by:
 
   - plist 1.10.1 (MIT)  https://github.com/ebarnard/rust-plist/
 
@@ -7969,7 +7996,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 110, used by:
+License text 111, used by:
 
   - png 0.17.16 (MIT OR Apache-2.0)  https://github.com/image-rs/image-png
   - png 0.18.1 (MIT OR Apache-2.0)  https://github.com/image-rs/image-png
@@ -8003,7 +8030,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 111, used by:
+License text 112, used by:
 
   - powerfmt 0.2.0 (MIT OR Apache-2.0)  https://github.com/jhpratt/powerfmt
 
@@ -8212,7 +8239,7 @@ Apache License
 
 
 ==============================================================================
-License text 112, used by:
+License text 113, used by:
 
   - powerfmt 0.2.0 (MIT OR Apache-2.0)  https://github.com/jhpratt/powerfmt
 
@@ -8239,7 +8266,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 113, used by:
+License text 114, used by:
 
   - precomputed-hash 0.1.1 (MIT)  https://github.com/emilio/precomputed-hash
 
@@ -8268,7 +8295,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 114, used by:
+License text 115, used by:
 
   - quick-xml 0.42.0 (MIT)  https://github.com/tafia/quick-xml
 
@@ -8299,7 +8326,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 115, used by:
+License text 116, used by:
 
   - raw-window-handle 0.6.2 (MIT OR Apache-2.0 OR Zlib)  https://github.com/rust-windowing/raw-window-handle
 
@@ -8328,7 +8355,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 116, used by:
+License text 117, used by:
 
   - raw-window-handle 0.6.2 (MIT OR Apache-2.0 OR Zlib)  https://github.com/rust-windowing/raw-window-handle
 
@@ -8347,7 +8374,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 
 ==============================================================================
-License text 117, used by:
+License text 118, used by:
 
   - same-file 1.0.6 (Unlicense/MIT)  https://github.com/BurntSushi/same-file
   - winapi-util 0.1.11 (Unlicense OR MIT)  https://github.com/BurntSushi/winapi-util
@@ -8377,7 +8404,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 118, used by:
+License text 119, used by:
 
   - schemars 0.8.22 (MIT)  https://github.com/GREsau/schemars
   - schemars 0.9.0 (MIT)  https://github.com/GREsau/schemars
@@ -8409,7 +8436,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 119, used by:
+License text 120, used by:
 
   - scopeguard 1.2.0 (MIT OR Apache-2.0)  https://github.com/bluss/scopeguard
 
@@ -8442,7 +8469,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 120, used by:
+License text 121, used by:
 
   - serde_spanned 1.1.1 (MIT OR Apache-2.0)  https://github.com/toml-rs/toml
   - toml 1.1.6+spec-1.1.0 (MIT OR Apache-2.0)  https://github.com/toml-rs/toml
@@ -8473,7 +8500,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 121, used by:
+License text 122, used by:
 
   - serde_with 3.24.0 (MIT OR Apache-2.0)  https://github.com/jonasbb/serde_with/
   - serde_with_macros 3.24.0 (MIT OR Apache-2.0)  https://github.com/jonasbb/serde_with/
@@ -8507,7 +8534,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 122, used by:
+License text 123, used by:
 
   - serial-core 0.4.0 (MIT)  https://github.com/dcuddeback/serial-rs
 
@@ -8535,7 +8562,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 123, used by:
+License text 124, used by:
 
   - serial-windows 0.4.0 (MIT)  https://github.com/dcuddeback/serial-rs
 
@@ -8544,7 +8571,7 @@ License text 123, used by:
 
 
 ==============================================================================
-License text 124, used by:
+License text 125, used by:
 
   - serialize-to-javascript 0.1.2 (MIT OR Apache-2.0)  https://github.com/chippers/serialize-to-javascript
   - serialize-to-javascript-impl 0.1.2 (MIT OR Apache-2.0)  https://github.com/chippers/serialize-to-javascript
@@ -8757,7 +8784,7 @@ Apache License
 
 
 ==============================================================================
-License text 125, used by:
+License text 126, used by:
 
   - serialize-to-javascript 0.1.2 (MIT OR Apache-2.0)  https://github.com/chippers/serialize-to-javascript
   - serialize-to-javascript-impl 0.1.2 (MIT OR Apache-2.0)  https://github.com/chippers/serialize-to-javascript
@@ -8787,7 +8814,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 126, used by:
+License text 127, used by:
 
   - sha2 0.10.9 (MIT OR Apache-2.0)  https://github.com/RustCrypto/hashes
 
@@ -8822,7 +8849,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 127, used by:
+License text 128, used by:
 
   - shared_library 0.1.9 (Apache-2.0/MIT)  https://github.com/tomaka/shared_library/
 
@@ -8855,7 +8882,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 128, used by:
+License text 129, used by:
 
   - shell-words 1.1.1 (MIT/Apache-2.0)  https://github.com/tmiasko/shell-words
 
@@ -9064,7 +9091,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 129, used by:
+License text 130, used by:
 
   - shell-words 1.1.1 (MIT/Apache-2.0)  https://github.com/tmiasko/shell-words
 
@@ -9097,7 +9124,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 130, used by:
+License text 131, used by:
 
   - simd-adler32 0.3.10 (MIT)  https://github.com/mcountryman/simd-adler32
 
@@ -9126,7 +9153,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 131, used by:
+License text 132, used by:
 
   - siphasher 1.0.4 (MIT OR Apache-2.0)  https://github.com/jedisct1/rust-siphash
 
@@ -9141,7 +9168,7 @@ option.
 
 
 ==============================================================================
-License text 132, used by:
+License text 133, used by:
 
   - siphasher 1.0.4 (MIT OR Apache-2.0)  https://github.com/jedisct1/rust-siphash
 
@@ -9166,7 +9193,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 133, used by:
+License text 134, used by:
 
   - smallvec 1.16.2 (MIT OR Apache-2.0)  https://github.com/servo/rust-smallvec
 
@@ -9199,7 +9226,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 134, used by:
+License text 135, used by:
 
   - softbuffer 0.4.8 (MIT OR Apache-2.0)  https://github.com/rust-windowing/softbuffer
 
@@ -9408,7 +9435,7 @@ Apache License
 
 
 ==============================================================================
-License text 135, used by:
+License text 136, used by:
 
   - softbuffer 0.4.8 (MIT OR Apache-2.0)  https://github.com/rust-windowing/softbuffer
 
@@ -9435,7 +9462,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 136, used by:
+License text 137, used by:
 
   - stable_deref_trait 1.2.1 (MIT OR Apache-2.0)  https://github.com/storyyeller/stable_deref_trait
 
@@ -9468,7 +9495,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 137, used by:
+License text 138, used by:
 
   - string_cache 0.9.0 (MIT OR Apache-2.0)  https://github.com/servo/string-cache
 
@@ -9501,7 +9528,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 138, used by:
+License text 139, used by:
 
   - strsim 0.11.1 (MIT)  https://github.com/rapidfuzz/strsim-rs
 
@@ -9532,7 +9559,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 139, used by:
+License text 140, used by:
 
   - synstructure 0.14.0 (MIT)  https://github.com/mystor/synstructure
 
@@ -9547,7 +9574,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 
 ==============================================================================
-License text 140, used by:
+License text 141, used by:
 
   - tao 0.37.1 (Apache-2.0)  https://github.com/tauri-apps/tao
 
@@ -9573,7 +9600,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 
 ==============================================================================
-License text 141, used by:
+License text 142, used by:
 
   - tendril 0.5.1 (MIT OR Apache-2.0)  https://github.com/servo/html5ever
 
@@ -9606,7 +9633,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 142, used by:
+License text 143, used by:
 
   - time 0.3.55 (MIT OR Apache-2.0)  https://github.com/time-rs/time
   - time-core 0.1.9 (MIT OR Apache-2.0)  https://github.com/time-rs/time
@@ -9635,7 +9662,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 143, used by:
+License text 144, used by:
 
   - tinyvec 1.13.3 (Zlib OR Apache-2.0 OR MIT)  https://github.com/Lokathor/tinyvec
 
@@ -9654,7 +9681,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 
 ==============================================================================
-License text 144, used by:
+License text 145, used by:
 
   - tokio 1.53.1 (MIT)  https://github.com/tokio-rs/tokio
 
@@ -9683,7 +9710,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 145, used by:
+License text 146, used by:
 
   - tokio-macros 2.7.2 (MIT)  https://github.com/tokio-rs/tokio
 
@@ -9713,7 +9740,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 146, used by:
+License text 147, used by:
 
   - tracing 0.1.44 (MIT)  https://github.com/tokio-rs/tracing
   - tracing-attributes 0.1.31 (MIT)  https://github.com/tokio-rs/tracing
@@ -9748,7 +9775,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 147, used by:
+License text 148, used by:
 
   - trash 5.2.9 (MIT)  https://github.com/ArturKovacs/trash
 
@@ -9772,7 +9799,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 
 ==============================================================================
-License text 148, used by:
+License text 149, used by:
 
   - tray-icon 0.25.1 (MIT OR Apache-2.0)  https://github.com/tauri-apps/tray-icon
 
@@ -9799,7 +9826,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 
 ==============================================================================
-License text 149, used by:
+License text 150, used by:
 
   - typenum 1.20.1 (MIT OR Apache-2.0)  https://github.com/paholg/typenum
 
@@ -9808,7 +9835,7 @@ MIT OR Apache-2.0
 
 
 ==============================================================================
-License text 150, used by:
+License text 151, used by:
 
   - typenum 1.20.1 (MIT OR Apache-2.0)  https://github.com/paholg/typenum
 
@@ -10017,7 +10044,7 @@ limitations under the License.
 
 
 ==============================================================================
-License text 151, used by:
+License text 152, used by:
 
   - typenum 1.20.1 (MIT OR Apache-2.0)  https://github.com/paholg/typenum
 
@@ -10046,7 +10073,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 152, used by:
+License text 153, used by:
 
   - unicode-ident 1.0.26 ((MIT OR Apache-2.0) AND Unicode-3.0)  https://github.com/dtolnay/unicode-ident
 
@@ -10093,7 +10120,7 @@ authorization of the copyright holder.
 
 
 ==============================================================================
-License text 153, used by:
+License text 154, used by:
 
   - unicode-segmentation 1.13.3 (MIT OR Apache-2.0)  https://github.com/unicode-rs/unicode-segmentation
 
@@ -10108,7 +10135,7 @@ according to those terms.
 
 
 ==============================================================================
-License text 154, used by:
+License text 155, used by:
 
   - urlpattern 0.6.0 (MIT)  https://github.com/denoland/rust-urlpattern
 
@@ -10137,7 +10164,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 155, used by:
+License text 156, used by:
 
   - utf8_iter 1.0.4 (Apache-2.0 OR MIT)  https://github.com/hsivonen/utf8_iter
 
@@ -10187,7 +10214,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 
 
 ==============================================================================
-License text 156, used by:
+License text 157, used by:
 
   - utf8_iter 1.0.4 (Apache-2.0 OR MIT)  https://github.com/hsivonen/utf8_iter
 
@@ -10220,7 +10247,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 157, used by:
+License text 158, used by:
 
   - uuid 1.26.1 (Apache-2.0 OR MIT)  https://github.com/uuid-rs/uuid
 
@@ -10254,7 +10281,7 @@ DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 158, used by:
+License text 159, used by:
 
   - web-time 1.1.0 (MIT OR Apache-2.0)  https://github.com/daxpedda/web-time
 
@@ -10463,7 +10490,7 @@ Apache License
 
 
 ==============================================================================
-License text 159, used by:
+License text 160, used by:
 
   - web-time 1.1.0 (MIT OR Apache-2.0)  https://github.com/daxpedda/web-time
 
@@ -10492,7 +10519,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 160, used by:
+License text 161, used by:
 
   - winapi 0.3.9 (MIT/Apache-2.0)  https://github.com/retep998/winapi-rs
 
@@ -10519,7 +10546,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 161, used by:
+License text 162, used by:
 
   - window-vibrancy 0.8.1 (Apache-2.0 OR MIT)  https://github.com/tauri-apps/tauri-plugin-vibrancy
 
@@ -10548,7 +10575,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 162, used by:
+License text 163, used by:
 
   - window-vibrancy 0.8.1 (Apache-2.0 OR MIT)  https://github.com/tauri-apps/tauri-plugin-vibrancy
 
@@ -10575,7 +10602,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 
 ==============================================================================
-License text 163, used by:
+License text 164, used by:
 
   - windows 0.61.3 (MIT OR Apache-2.0)  https://github.com/microsoft/windows-rs
   - windows 0.62.2 (MIT OR Apache-2.0)  https://github.com/microsoft/windows-rs
@@ -10808,7 +10835,7 @@ Apache License
 
 
 ==============================================================================
-License text 164, used by:
+License text 165, used by:
 
   - windows 0.61.3 (MIT OR Apache-2.0)  https://github.com/microsoft/windows-rs
   - windows 0.62.2 (MIT OR Apache-2.0)  https://github.com/microsoft/windows-rs
@@ -10861,7 +10888,7 @@ MIT License
 
 
 ==============================================================================
-License text 165, used by:
+License text 166, used by:
 
   - winnow 1.0.4 (MIT)  https://github.com/winnow-rs/winnow
 
@@ -10887,7 +10914,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 ==============================================================================
-License text 166, used by:
+License text 167, used by:
 
   - winreg 0.10.1 (MIT)  https://github.com/gentoo90/winreg-rs
 
@@ -10914,7 +10941,7 @@ THE SOFTWARE.
 
 
 ==============================================================================
-License text 167, used by:
+License text 168, used by:
 
   - wry 0.57.0 (Apache-2.0 OR MIT)  https://github.com/tauri-apps/wry
 
@@ -10943,7 +10970,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 168, used by:
+License text 169, used by:
 
   - wry 0.57.0 (Apache-2.0 OR MIT)  https://github.com/tauri-apps/wry
 
@@ -10971,7 +10998,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 
 ==============================================================================
-License text 169, used by:
+License text 170, used by:
 
   - zip 8.6.0 (MIT)  https://github.com/zip-rs/zip2
 
@@ -11000,7 +11027,7 @@ SOFTWARE.
 
 
 ==============================================================================
-License text 170, used by:
+License text 171, used by:
 
   - zlib-rs 0.6.8 (Zlib)  https://github.com/trifectatechfoundation/zlib-rs
 
@@ -11027,7 +11054,7 @@ freely, subject to the following restrictions:
 
 
 ==============================================================================
-License text 171, used by:
+License text 172, used by:
 
   - zopfli 0.8.3 (Apache-2.0)  https://github.com/zopfli-rs/zopfli
 

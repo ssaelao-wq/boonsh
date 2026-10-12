@@ -1,6 +1,6 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.1**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.2**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
@@ -46,9 +46,9 @@ This document describes everything boonsh can do, how to use it, and where its l
 +---------------------------------------------------------------------------------+
 ```
 
-- The app starts **maximized**. The window never scrolls; each panel scrolls on its own.
+- The app starts **maximized**. After that the window keeps the size you give it (opening folders or selecting items does not maximize it again). The window never scrolls; each panel scrolls on its own.
 - The **window title** shows `boonsh - <path>` of the selected file, or of the current folder when nothing is selected.
-- **Resizing:** drag the thin bars between panels. The bar between the left side and the terminal moves from 15% to 85% of the width. The bar between the folder tree and the file panel moves the tree width (from 100 px up to 40% of the window). The bar above the preview drawer sets its height, and the bar above the AI Assistant sets its height. Panel sizes are not saved between runs.
+- **Resizing:** drag the thin bars between panels. The bar between the left side and the terminal moves from 15% to 85% of the width. The bar between the folder tree and the file panel moves the tree width (from 100 px up to 40% of the window). With the file panel hidden (only the folder tree and the command line), the bar between them sets the tree width, from 15% to 85%; when the file panel is shown again, a tree wider than 40% is narrowed to 40% so the file panel has room. The bar above the preview drawer sets its height, and the bar above the AI Assistant sets its height. Panel sizes are not saved between runs.
 - The **header bar** holds, from left to right:
   - Up, Refresh | Cut, Copy, Paste, Delete
   - the path bar
@@ -70,9 +70,9 @@ This document describes everything boonsh can do, how to use it, and where its l
 
 ### Folder tree
 - Shows **This PC** with all your drives, each in its own icon color (the same as in Quick Access). Baskets show under their folder with a violet basket icon; a click opens one (section 17). Click the arrow to expand a folder, or click the name to open it and expand it.
-- The tree follows you: when you open a folder elsewhere, the tree expands to it and scrolls it into view.
+- The tree follows you: when you open a folder elsewhere, the tree expands to it and scrolls it into view, and folds away the folders (and drives) you left: open something on D: and C: folds up.
 - It stays current for the open folder: a sub-folder renamed, added or deleted there (in boonsh, in the terminal or by another program) changes in the tree too. A folder elsewhere in the tree that was renamed or deleted since it was shown is reloaded when you click it: nothing opens, its parent's list is refreshed and the terminal gets no `cd` to a folder that no longer exists. When you open a folder that was made after the tree listed its parent (from the path bar, a `cd` in the terminal, Quick Access), that list is reloaded too, so the tree still finds and highlights it.
-- Right-click a folder: New (Folder, Text Document, Shortcut), Open, Add to Quick Access, Refresh. Right-clicking also opens that folder.
+- Right-click a folder: New (Folder, Text Document, Shortcut, Basket), Open, Add to Quick Access, Refresh. Right-clicking also opens that folder.
 
 ### Frequently Accessed (above the Folder Tree)
 A short list of the folders you open most, so you can jump back to them in one click.
@@ -462,7 +462,7 @@ A preset is a saved list of rules, in their order with all their settings, plus 
 
 **On a basket:** also **Paste as links into this basket**. **Inside an opened basket** the menus change: no New and no Quick Access; Paste becomes **Paste as links**; **Open file location**; Del becomes **Remove from basket**, plus **Delete files (Recycle Bin)...**; a gone item offers only **Clear** and **Relink...**, a new item only **Link** and **Clear** (see [section 17](#17-baskets)).
 
-**On a folder in the folder tree:** Open, New, Add to Quick Access, Refresh. **On a Quick Access chip:** Remove from Quick Access.
+**On a folder in the folder tree:** Open, New (Folder, Text Document, Shortcut, Basket), Add to Quick Access, Refresh. **On a Quick Access chip:** Remove from Quick Access.
 
 All menus stay **fully inside the window**. Near the bottom edge a menu opens upward; near the right edge it moves left (and the New submenu opens to the left).
 
@@ -848,7 +848,7 @@ Open it with the **Eye icon** or **Ctrl+P**. It appears below the file panel and
 
 ## 9. Terminal
 
-The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, else `cmd`. It uses a fixed-width font (Cascadia Code) at 12 px, remembers 5,000 lines of scrollback, follows the dark or light theme, and the prompt is short: `<username> >` (or `admin >` in admin mode). The button at the top-right of the terminal header shows **User: <name>** (with **(Admin)** in an Administrator tab); click it to switch that tab's login.
+The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, else `cmd`. It uses a fixed-width font (Cascadia Code) at 12 px, remembers 50,000 lines of scrollback per command line, follows the dark or light theme, and the prompt is short: `<username> >` (or `admin >` in admin mode). The button at the top-right of the terminal header shows **User: <name>** (with **(Admin)** in an Administrator tab); click it to switch that tab's login.
 
 - **Copy / cut / paste:** select text with the mouse. **Ctrl+C** copies it (with nothing selected, Ctrl+C still interrupts the running command). **Ctrl+V** pastes the clipboard at the prompt. **Ctrl+X** with a selection copies it (output text cannot be removed, so cut = copy; with no selection it goes to the shell). Right-click in the terminal for **Cut**, **Copy** and **Paste** (Cut and Copy are greyed out with no selection), and for **Explain with AI** / **Ask AI about this...**, which send the selected text to the AI Assistant (see section 16, *Ask about the command line*).
 - **Tabs:** the terminal can hold several command lines at once, one per tab, in a tab bar above the terminal header.
@@ -860,6 +860,15 @@ The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pws
   - **Rename:** right-click the tab, **Rename Tab**, type the name, press Enter (Esc cancels, an empty name is ignored). The name is not saved when you close boonsh.
   - **Tabs and the file panel:** the file panel follows the **active** tab. Click another tab and the file panel switches to the folder that tab's shell is in. Open a folder in the file panel and only the active tab gets the `cd`. A `cd` typed in a background tab does not move the file panel; it is remembered for when you switch to that tab.
   - Each tab keeps its own history, running program and scrollback. Hiding the terminal (below) keeps all tabs running.
+  - **Split Screen:** right-click a tab and choose **Split Screen** to show two command lines side by side in that tab, half and half. The right screen is a new command line, started the same way as a new tab (your app's login, the tab's folder). It belongs to the same tab: there is still one tab header (with a split icon), and a small bar above the screens names them **Left** and **Right** with the folder each one is in.
+    - **The active screen:** click in a screen (or on its name in the bar) to make it active; its name is underlined in the tab color. The active screen is the one that gets your commands, the `cd` when you open a folder, and the one the file panel follows, the same as switching tabs. The **User** button shows and switches the login of the active screen. Clicking the tab header goes back to the screen you used last in it.
+    - **Resize:** drag the line between the two screens (from 15% to 85%); double-click it to go back to half and half. The size is not saved when you close boonsh.
+    - **Close one screen:** the **x** next to its name in the bar, or right-click the tab and choose **Close Left Screen** / **Close Right Screen**. The other screen stays and becomes the tab's only screen (it keeps the tab's name and color). Typing `exit` in a screen closes that screen. If a program is running in it, boonsh asks first.
+    - **Close the tab** (its **x**, or **Close Tab**) closes both screens. Dragging the tab moves both screens with it.
+    - A split tab **cannot be split again**: its right-click menu offers the two close items instead of Split Screen.
+  - **Find Text:** right-click a tab and choose **Find Text**. A small box floats over the top right of the command line. Type a word: every match in the output (all 50,000 lines of history, not just what is on screen) gets a **yellow** background (dark brown on the black theme) and the current match an **orange** one; boonsh starts from the newest output at the bottom. The box shows where you are (`12 of 40`, or **No results**). Step with the **up arrow** (the match above, older output; also **Enter**) and the **down arrow** (the match below; also **Shift+Enter**), with the keys or the buttons; at the top or bottom it wraps around. Matching ignores upper and lower case. **Esc** or the **x** closes the box and removes the highlights. The box opens with the last text you searched.
+  - **Export Screen:** right-click a tab and choose **Export Screen** to save everything the command line holds (its history, up to **50,000 lines**; older lines are no longer kept) to a **.txt** file. Windows asks where to save it; the suggested name is the tab name with the date and time (`Surface 2026-10-12 1530.txt`). Long lines that wrapped on screen are saved as one line. The file is UTF-8 (Thai and other text open correctly in Notepad). A note at the bottom of the terminal says how many lines were saved and where.
+  - **On a split tab** these two work on **one screen**: right-click the **Left** or **Right** name in the bar above the screens and choose **Find Text** or **Export Screen** (that menu also has **Close Left/Right Screen**). In the tab's own right-click menu they are greyed out. The suggested export name says which screen it was (`Surface Right 2026-10-12 1530.txt`).
 - **Show / hide the terminal:** the green terminal icon in the top-right toolbar (before the gear) hides the whole terminal side so the file panel gets the full width, and shows it again. The terminal is only hidden, not closed: the shell and any program in it keep running, and the folder `cd` still follows you. It is shown when boonsh starts.
 - Everything you can do in PowerShell works. Drop files onto the terminal to type their paths.
 - Folder sync works both ways (see [section 3](#two-way-sync-with-the-terminal)).
@@ -1173,7 +1182,7 @@ A **basket** sits in a folder like a sub-folder, but it holds **links** to files
 - In Windows Explorer a basket is a small file named `<name>.basket`. It moves with its folder, and its links still work after the basket is moved, because they are full paths.
 
 ### Create, rename, delete
-- **Create:** right-click empty space in a folder, **New**, **Basket**. An empty basket named **New basket** appears (or `New basket (2)` when the name is taken) and the Rename box opens, so you can type its name straight away.
+- **Create:** right-click empty space in a folder (or a folder in the folder tree), **New**, **Basket**. An empty basket named **New basket** appears (or `New basket (2)` when the name is taken) and the Rename box opens, so you can type its name straight away.
 - **Rename** with F2 or right-click, **Rename**, like any item. You type the name only; `.basket` stays.
 - **Copy, move, zip or delete** a basket from its folder like any file. Deleting a basket removes only the list; the linked files are not touched.
 - A basket cannot hold another basket.

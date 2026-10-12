@@ -339,6 +339,14 @@ export function App() {
   const [isDraggingTree, setIsDraggingTree] = useState<boolean>(false);
   const [isDraggingH, setIsDraggingH] = useState<boolean>(false);
 
+  // With the file panel hidden the command line separator sizes the folder tree; when the file panel comes back
+  // the tree goes back within the tree separator's own limit (40%) so the file panel has room
+  useEffect(() => {
+    if (!showFilePanel || !appRef.current) return;
+    const max = appRef.current.getBoundingClientRect().width * 0.4;
+    setTreeWidthPx((w) => Math.min(w, Math.max(150, max)));
+  }, [showFilePanel]);
+
   const appRef = useRef<HTMLDivElement>(null);
 
   // Dynamically update window title with full directory/file pathname
@@ -350,12 +358,9 @@ export function App() {
       titleStr = `boonsh - ${currentPath}`;
     }
     document.title = titleStr;
+    // Title only: the window size is the user's choice after startup
     try {
-      const win = getCurrentWindow();
-      win.setTitle(titleStr);
-      win.unminimize().catch(() => {});
-      win.setFocus().catch(() => {});
-      win.maximize().catch(() => {});
+      getCurrentWindow().setTitle(titleStr).catch(() => {});
     } catch {
       // Fallback for non-tauri dev env
     }
@@ -585,6 +590,29 @@ export function App() {
     activate(id);
   };
 
+  // Split Screen: a second shell beside the tab, started like a new tab (same login as the app, the tab's folder).
+  // It is a screen of the same tab, so it takes the tab's color; a tab is split once only.
+  const splitTab = (mainId: string) => {
+    const list = tabsRef.current;
+    const main = list.find((t) => t.id === mainId);
+    if (!main || main.splitOf || list.some((t) => t.splitOf === mainId)) return;
+    const id = `tab${++tabCounterRef.current}`;
+    atPromptRef.current[id] = true;
+    const idx = list.indexOf(main);
+    const pane: TermTab = {
+      id,
+      name: userNameRef.current,
+      cwd: main.cwd || currentPathRef.current,
+      level: appLevelRef.current,
+      color: main.color,
+      splitOf: mainId,
+    };
+    updateTabs([...list.slice(0, idx + 1), pane, ...list.slice(idx + 1)]);
+    pendingCmdRef.current = null;
+    activate(id);
+    followTab(pane);
+  };
+
   const selectTab = (id: string) => {
     if (id === activeTabIdRef.current) return;
     const t = tabsRef.current.find((x) => x.id === id);
@@ -599,9 +627,27 @@ export function App() {
     const list = tabsRef.current;
     const idx = list.findIndex((t) => t.id === id);
     if (idx < 0) return;
-    const next = list.filter((t) => t.id !== id);
+    const gone = list[idx];
     delete atPromptRef.current[id];
     delete heldCdRef.current[id];
+    // One screen of a split tab closes: the other one stays as the tab's only screen, with the tab's name and color
+    const partner = gone.splitOf
+      ? list.find((t) => t.id === gone.splitOf)
+      : list.find((t) => t.splitOf === id);
+    if (partner) {
+      updateTabs(
+        list
+          .filter((t) => t.id !== id)
+          .map((t) => (t.id === partner.id && t.splitOf ? { ...t, splitOf: undefined, name: gone.name, color: gone.color } : t))
+      );
+      if (activeTabIdRef.current === id) {
+        pendingCmdRef.current = null;
+        activate(partner.id);
+        followTab(partner);
+      }
+      return;
+    }
+    const next = list.filter((t) => t.id !== id);
     updateTabs(next);
     if (next.length === 0) {
       // There is always one command line: the last tab going away leaves a fresh one. A shell that dies at once
@@ -615,7 +661,9 @@ export function App() {
       return;
     }
     if (activeTabIdRef.current === id) {
-      const neighbor = next[idx] ?? next[idx - 1] ?? null;
+      const near = next[idx] ?? next[idx - 1] ?? null;
+      // a split tab next to it: go to its left screen
+      const neighbor = near?.splitOf ? next.find((t) => t.id === near.splitOf) ?? near : near;
       pendingCmdRef.current = null;
       activate(neighbor ? neighbor.id : null);
       if (neighbor) followTab(neighbor);
@@ -623,8 +671,20 @@ export function App() {
   };
 
   const RUNNING_MSG = 'A program is still running in this tab. Close it anyway?';
+  // Close a whole tab (both screens when it is split)
   const closeTab = (id: string) => {
-    if (atPromptRef.current[id] === false && !window.confirm(RUNNING_MSG)) return;
+    const right = tabsRef.current.find((t) => t.splitOf === id);
+    const ids = right ? [id, right.id] : [id];
+    if (ids.some((x) => atPromptRef.current[x] === false) && !window.confirm(RUNNING_MSG)) return;
+    if (right) {
+      if (activeTabIdRef.current === right.id) activate(id); // the file panel then follows the next tab only once
+      removeTab(right.id);
+    }
+    removeTab(id);
+  };
+  // Close one screen of a split tab
+  const closePane = (id: string) => {
+    if (atPromptRef.current[id] === false && !window.confirm('A program is still running in this screen. Close it anyway?')) return;
     removeTab(id);
   };
   const closeAllTabs = () => {
@@ -645,7 +705,11 @@ export function App() {
     delete atPromptRef.current[oldId];
     delete heldCdRef.current[oldId];
     atPromptRef.current[nid] = true;
-    updateTabs(list.map((t) => (t.id === oldId ? { ...t, id: nid, level } : t)));
+    updateTabs(
+      list.map((t) =>
+        t.id === oldId ? { ...t, id: nid, level } : t.splitOf === oldId ? { ...t, splitOf: nid } : t
+      )
+    );
     if (activeTabIdRef.current === oldId) {
       pendingCmdRef.current = null;
       activate(nid);
@@ -677,15 +741,18 @@ export function App() {
   const recolorTab = (id: string, color: string) => {
     updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, color } : t)));
   };
-  // Drag a tab to a new place in the bar (index among the tabs)
+  // Drag a tab to a new place in the bar (index among the tab headers); a split tab moves with its right screen
   const moveTab = (id: string, toIndex: number) => {
-    const list = tabsRef.current;
-    const from = list.findIndex((t) => t.id === id);
-    if (from < 0 || from === toIndex || toIndex < 0 || toIndex >= list.length) return;
-    const next = [...list];
-    const [t] = next.splice(from, 1);
-    next.splice(toIndex, 0, t);
-    updateTabs(next);
+    const groups: TermTab[][] = [];
+    for (const t of tabsRef.current) {
+      if (t.splitOf && groups.length) groups[groups.length - 1].push(t);
+      else groups.push([t]);
+    }
+    const from = groups.findIndex((g) => g[0].id === id);
+    if (from < 0 || from === toIndex || toIndex < 0 || toIndex >= groups.length) return;
+    const [g] = groups.splice(from, 1);
+    groups.splice(toIndex, 0, g);
+    updateTabs(groups.flat());
   };
 
   // The first tab: named after the user, opens in the default folder
@@ -903,8 +970,10 @@ export function App() {
     });
     if (picked) basketCall('basket_relink', { oldPath: item.path, newPath: picked }, [picked]);
   };
-  const createBasket = () => {
-    const dir = currentPathRef.current;
+  // New -> Basket in the file panel (the current folder) or the folder tree (the folder right-clicked there):
+  // the new basket is shown selected in that folder with its Rename box open
+  const createBasket = (folder?: string) => {
+    const dir = folder || currentPathRef.current;
     if (!dir) return;
     invoke<string>('basket_create', { parentDir: dir })
       .then((path) => fetchDirectory(dir, [path]).then(() => setRenameTrigger((t) => t + 1)))
@@ -1511,7 +1580,9 @@ export function App() {
       const mouseX = e.clientX - bounds.left;
       const newPct = (mouseX / bounds.width) * 100;
       if (newPct > 15 && newPct < 85) {
-        setLeftWidthPct(newPct);
+        // Without the file panel the left column is just the folder tree, whose width is in pixels
+        if (showFilePanel) setLeftWidthPct(newPct);
+        else if (mouseX > 100) setTreeWidthPx(mouseX);
       }
     } else if (isDraggingTree) {
       const mouseX = e.clientX - bounds.left;
@@ -1705,6 +1776,7 @@ export function App() {
                 onNavigate={handleNavigate}
                 onOpenBasket={openBasket}
                 openBasketPath={basketView?.path ?? null}
+                onCreateBasket={createBasket}
                 listing={treeListing}
                 onAddQuickAccess={handleAddQuickAccess}
                 onRefresh={refreshView}
@@ -1829,6 +1901,8 @@ export function App() {
             onSelectTab={selectTab}
             onNewTab={newTab}
             onCloseTab={closeTab}
+            onSplitTab={splitTab}
+            onClosePane={closePane}
             onCloseAllTabs={closeAllTabs}
             onRenameTab={renameTab}
             onRecolorTab={recolorTab}

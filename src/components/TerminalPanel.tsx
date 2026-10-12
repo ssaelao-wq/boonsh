@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -21,6 +22,11 @@ import {
   Palette,
   Sparkles,
   MessageSquare,
+  Columns2,
+  Search,
+  FileDown,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { useMenuPosition } from '../useMenuPosition';
 import { CommandGroup, CommandItem, GroupIcon } from '../commands';
@@ -39,7 +45,9 @@ interface TerminalPanelProps {
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onNewTab: () => void;
-  onCloseTab: (id: string) => void;
+  onCloseTab: (id: string) => void; // the whole tab (both screens when split)
+  onSplitTab: (id: string) => void; // Split Screen: a second shell on the right of this tab
+  onClosePane: (id: string) => void; // one screen of a split tab
   onCloseAllTabs: () => void;
   onRenameTab: (id: string, name: string) => void;
   onRecolorTab: (id: string, color: string) => void;
@@ -66,19 +74,48 @@ interface TerminalPanelProps {
 interface Session {
   term: XTerm;
   fit: FitAddon;
+  search: SearchAddon; // Find Text
   el: HTMLDivElement;
   osc: { dispose: () => void };
 }
 
-const xtermTheme = (t: 'dark' | 'light') => {
+// finding: Find Text is open on this terminal. The search add-on selects the current match and the selection is
+// drawn over its highlight, so the selection takes the current-match color (also while the find box has the focus).
+const xtermTheme = (t: 'dark' | 'light', finding = false) => {
   const isLight = t === 'light';
+  const sel = finding ? findDecorations(t).activeMatchBackground : isLight ? '#d4d4d8' : '#3f3f46';
   return {
     background: isLight ? '#f4f4f5' : '#000000',
     foreground: isLight ? '#09090b' : '#ffffff',
     cursor: isLight ? '#09090b' : '#ffffff',
-    selectionBackground: isLight ? '#d4d4d8' : '#3f3f46',
+    selectionBackground: sel,
+    selectionInactiveBackground: sel,
   };
 };
+
+// Lines kept per command line, and the most Export Screen writes
+const SCROLLBACK_LINES = 50000;
+
+// Find Text highlights: every match, and a stronger one for the current match (#RRGGBB only)
+const findDecorations = (t: 'dark' | 'light') =>
+  t === 'light'
+    ? { matchBackground: '#fde047', activeMatchBackground: '#fb923c', matchOverviewRuler: '#ca8a04', activeMatchColorOverviewRuler: '#ea580c' }
+    : { matchBackground: '#854d0e', activeMatchBackground: '#ea580c', matchOverviewRuler: '#ca8a04', activeMatchColorOverviewRuler: '#f97316' };
+
+/** The text of a command line: every line kept (up to SCROLLBACK_LINES), wrapped lines joined, CRLF ends. */
+function screenText(term: XTerm): string {
+  const buf = term.buffer.active;
+  const lines: string[] = [];
+  for (let i = 0; i < buf.length; i++) {
+    const line = buf.getLine(i);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if (line.isWrapped && lines.length) lines[lines.length - 1] += text;
+    else lines.push(text);
+  }
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  return lines.slice(-SCROLLBACK_LINES).join('\r\n') + '\r\n';
+}
 
 function copySelection(term: XTerm, clear: boolean) {
   const text = term.getSelection();
@@ -96,6 +133,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onSelectTab,
   onNewTab,
   onCloseTab,
+  onSplitTab,
+  onClosePane,
   onCloseAllTabs,
   onRenameTab,
   onRecolorTab,
@@ -129,18 +168,22 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onUserInputRef.current = onUserInput;
   const [username, setUsername] = useState<string>('User');
 
-  const [termMenu, setTermMenu] = useState<{ x: number; y: number; hasSel: boolean } | null>(null);
+  // id: the screen that was right-clicked
+  const [termMenu, setTermMenu] = useState<{ x: number; y: number; hasSel: boolean; id: string } | null>(null);
   const termMenuPos = useMenuPosition(termMenu);
+  const menuTerm = (): XTerm | null =>
+    (termMenu && sessionsRef.current.get(termMenu.id)?.term) || xtermRef.current;
 
   const pasteFromClipboard = () => {
+    const term = menuTerm();
     setTermMenu(null);
     navigator.clipboard
       .readText()
       .then((text) => {
-        if (text && xtermRef.current) xtermRef.current.paste(text);
+        if (text && term) term.paste(text);
       })
       .catch(() => {})
-      .finally(() => xtermRef.current?.focus());
+      .finally(() => term?.focus());
   };
 
   // Tab right-click menu, header right-click menu, and the tab being renamed
@@ -166,7 +209,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       if (!d) return;
       if (!d.moved && Math.abs(ev.clientX - d.x) < 5) return;
       d.moved = true;
-      const list = tabsRef.current;
+      const list = tabsRef.current.filter((t) => !t.splitOf); // the headers (a right screen has none)
       const over = list.findIndex((t) => {
         const r = tabElsRef.current[t.id]?.getBoundingClientRect();
         return r && ev.clientX >= r.left && ev.clientX <= r.right;
@@ -192,8 +235,25 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     setRenaming(null);
   };
 
-  // The Admin / normal user button shows the login of the active tab
+  // The Admin / normal user button shows the login of the active tab (the active screen of a split tab)
   const isAdmin = tabs.find((t) => t.id === activeTabId)?.level === 'admin';
+
+  // Split Screen: only left screens have a tab header; a right screen belongs to the header of its `splitOf`
+  const heads = tabs.filter((t) => !t.splitOf);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeMainId = activeTab ? activeTab.splitOf ?? activeTab.id : null;
+  const activeMain = heads.find((t) => t.id === activeMainId);
+  const activeRight = activeMainId ? tabs.find((t) => t.splitOf === activeMainId) : undefined;
+  // The screen last used in each split tab, so clicking its header goes back to that screen
+  const lastPaneRef = useRef<Record<string, string>>({});
+  if (activeTab && activeMainId) lastPaneRef.current[activeMainId] = activeTab.id;
+  const pickHeader = (mainId: string) => {
+    if (activeMainId === mainId) return;
+    const last = lastPaneRef.current[mainId];
+    const ok = last && tabs.some((x) => x.id === last && (x.id === mainId || x.splitOf === mainId));
+    onSelectTab(ok ? last : mainId);
+  };
+  const folderName = (p: string) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 
   const [showHelperMenu, setShowHelperMenu] = useState<boolean>(false);
   const [showVarsMenu, setShowVarsMenu] = useState<boolean>(false);
@@ -229,14 +289,57 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
 
-  // Fit the active terminal to its box and tell its PTY
-  const refit = () => {
+  // Split Screen: the left/right share of each split tab (key = the tab's id), half and half at first; memory only
+  const [splitRatio, setSplitRatio] = useState<Record<string, number>>({});
+  const splitRatioRef = useRef(splitRatio);
+  splitRatioRef.current = splitRatio;
+  const onSelectTabRef = useRef(onSelectTab);
+  onSelectTabRef.current = onSelectTab;
+
+  // The screens shown for the active tab: its own, plus the right screen when it is split (left first)
+  const shownIds = (): string[] => {
     const id = activeIdRef.current;
-    const s = id ? sessionsRef.current.get(id) : undefined;
-    if (!id || !s) return;
-    s.fit.fit();
-    s.term.scrollToBottom();
-    invoke('pty_resize', { id, cols: s.term.cols, rows: s.term.rows }).catch(() => {});
+    if (!id) return [];
+    const list = tabsRef.current;
+    const t = list.find((x) => x.id === id);
+    if (!t) return [id];
+    const main = t.splitOf ?? t.id;
+    return list.filter((x) => x.id === main || x.splitOf === main).map((x) => x.id);
+  };
+
+  // Fit the shown terminals to their boxes and tell their PTYs
+  const refit = () => {
+    for (const id of shownIds()) {
+      const s = sessionsRef.current.get(id);
+      if (!s || s.el.style.display === 'none') continue;
+      s.fit.fit();
+      s.term.scrollToBottom();
+      invoke('pty_resize', { id, cols: s.term.cols, rows: s.term.rows }).catch(() => {});
+    }
+  };
+
+  // Place the terminals: the active tab's screen(s) are shown, side by side when split, the rest hidden
+  const SPLIT_GAP = 3; // half the width of the separator between the two screens
+  const layout = () => {
+    const ids = shownIds();
+    const ratio = ids.length === 2 ? splitRatioRef.current[ids[0]] ?? 0.5 : 1;
+    sessionsRef.current.forEach((s, id) => {
+      const at = ids.indexOf(id);
+      s.el.style.display = at < 0 ? 'none' : 'block';
+      if (ids.length < 2) {
+        s.el.style.left = '0';
+        s.el.style.right = '0';
+        s.el.style.width = '';
+      } else if (at === 0) {
+        s.el.style.left = '0';
+        s.el.style.right = '';
+        s.el.style.width = `calc(${ratio * 100}% - ${SPLIT_GAP}px)`;
+      } else if (at === 1) {
+        s.el.style.left = `calc(${ratio * 100}% + ${SPLIT_GAP}px)`;
+        s.el.style.right = '0';
+        s.el.style.width = '';
+      }
+    });
   };
 
   const createSession = (tab: TermTab) => {
@@ -246,6 +349,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     el.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;';
     el.style.display = tab.id === activeIdRef.current ? 'block' : 'none';
     host.appendChild(el);
+    // A click in a screen of a split tab makes it the active one (commands, cd and the file panel follow it)
+    el.addEventListener('mousedown', () => onSelectTabRef.current(tab.id), true);
 
     const term = new XTerm({
       // Fixed-width app font (--font-mono) at the file panel's 12px; xterm needs a literal font string
@@ -256,12 +361,18 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       lineHeight: 1.15,
       theme: xtermTheme(themeRef.current),
       cursorBlink: true,
-      scrollback: 5000,
+      scrollback: SCROLLBACK_LINES,
+      allowProposedApi: true, // the search add-on draws its match highlights with decorations
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    const search = new SearchAddon();
+    term.loadAddon(search);
     term.open(el);
     fit.fit();
+    search.onDidChangeResults((r) => {
+      if (findRef.current?.id === tab.id) setFindResult({ index: r.resultIndex, count: r.resultCount });
+    });
 
     // Shell prompt reports its working directory via OSC 9;9 (see pty.rs) -> sync file panel
     const osc = term.parser.registerOscHandler(9, (data) => {
@@ -294,7 +405,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       invoke('pty_write', { id: tab.id, data }).catch((err) => console.error('PTY Write Error:', err));
     });
 
-    sessionsRef.current.set(tab.id, { term, fit, el, osc });
+    sessionsRef.current.set(tab.id, { term, fit, search, el, osc });
 
     // Spawn native Windows PTY process (pwsh.exe / powershell.exe)
     invoke<string>('pty_spawn', {
@@ -357,12 +468,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
   }, [tabIds]);
 
-  // Show the active tab's terminal (also when the panel is shown again), refit it and give it the cursor
+  // Show the active tab's terminal(s) (also when the panel is shown again), refit and give the active one the cursor
   useEffect(() => {
     const map = sessionsRef.current;
-    map.forEach((s, id) => {
-      s.el.style.display = id === activeTabId ? 'block' : 'none';
-    });
+    layout();
     const s = activeTabId ? map.get(activeTabId) : undefined;
     xtermRef.current = s ? s.term : null;
     fitAddonRef.current = s ? s.fit : null;
@@ -375,6 +484,141 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     return () => clearTimeout(timer);
   }, [activeTabId, visible, tabIds]);
 
+  // The separator was dragged: place and refit both screens
+  useEffect(() => {
+    layout();
+    refit();
+  }, [splitRatio]);
+
+  // Drag the separator between the two screens of a split tab
+  const splitBoxRef = useRef<HTMLDivElement>(null);
+  const [draggingSplit, setDraggingSplit] = useState(false);
+  const startSplitDrag = (e: React.MouseEvent, mainId: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    setDraggingSplit(true);
+    const move = (ev: MouseEvent) => {
+      const r = splitBoxRef.current?.getBoundingClientRect();
+      if (!r || r.width <= 0) return;
+      const ratio = Math.min(0.85, Math.max(0.15, (ev.clientX - r.left) / r.width));
+      setSplitRatio((m) => ({ ...m, [mainId]: ratio }));
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      setDraggingSplit(false);
+      sessionsRef.current.get(activeIdRef.current ?? '')?.term.focus();
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  // ---- Find Text: a floating box over one screen; matches are highlighted, Up / Down step through them ----
+  const [find, setFind] = useState<{ id: string; text: string } | null>(null);
+  const findRef = useRef(find);
+  findRef.current = find;
+  const [findResult, setFindResultState] = useState<{ index: number; count: number } | null>(null);
+  const findResultRef = useRef(findResult); // read right after a step (the add-on reports synchronously)
+  const setFindResult = (r: { index: number; count: number } | null) => {
+    findResultRef.current = r;
+    setFindResultState(r);
+  };
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const lastFindRef = useRef(''); // the box opens with the last text searched
+
+  const runFind = (dir: 'up' | 'down', text: string, fromEnd = false) => {
+    const f = findRef.current;
+    const s = f ? sessionsRef.current.get(f.id) : undefined;
+    if (!s) return;
+    if (!text) {
+      s.search.clearDecorations();
+      setFindResult(null);
+      return;
+    }
+    // A new text starts from the bottom (the newest output) and goes up
+    if (fromEnd) s.term.clearSelection();
+    const opts = { decorations: findDecorations(themeRef.current) };
+    const step = () => (dir === 'up' ? s.search.findPrevious(text, opts) : s.search.findNext(text, opts));
+    const before = findResultRef.current;
+    const found = step();
+    // Turning around (Up, then Down) the add-on first lands on the match it is already on: take one more step
+    const after = findResultRef.current;
+    if (found && !fromEnd && before && after && after.count > 1 && after.index === before.index) step();
+    if (!found) setFindResult({ index: -1, count: 0 });
+  };
+  const closeFind = (focus = true) => {
+    const f = findRef.current;
+    const s = f ? sessionsRef.current.get(f.id) : undefined;
+    if (s) {
+      s.search.clearDecorations();
+      s.term.clearSelection();
+      s.term.options.theme = xtermTheme(themeRef.current);
+      if (focus) s.term.focus();
+    }
+    findRef.current = null;
+    setFind(null);
+    setFindResult(null);
+  };
+  const openFind = (id: string) => {
+    if (findRef.current && findRef.current.id !== id) closeFind(false);
+    if (id !== activeIdRef.current) onSelectTab(id);
+    const text = findRef.current?.id === id ? findRef.current.text : lastFindRef.current;
+    const next = { id, text };
+    findRef.current = next;
+    setFind(next);
+    const s = sessionsRef.current.get(id);
+    if (s) s.term.options.theme = xtermTheme(themeRef.current, true);
+    setTimeout(() => {
+      findInputRef.current?.focus();
+      findInputRef.current?.select();
+      if (text) runFind('up', text, true);
+    }, 80);
+  };
+  // The screen with the box went away or is no longer shown: close the box
+  useEffect(() => {
+    if (find && !shownIds().includes(find.id)) closeFind(false);
+  }, [activeTabId, tabIds]);
+  // Theme changed: draw the highlights in the new colors
+  useEffect(() => {
+    if (findRef.current?.text) runFind('up', findRef.current.text, true);
+  }, [theme]);
+
+  // ---- Export Screen: everything the command line still holds (up to 50,000 lines) to a .txt file ----
+  const [exportNote, setExportNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!exportNote) return;
+    const t = setTimeout(() => setExportNote(null), 5000);
+    return () => clearTimeout(t);
+  }, [exportNote]);
+  const exportScreen = async (id: string, side?: 'Left' | 'Right') => {
+    const s = sessionsRef.current.get(id);
+    const tab = tabsRef.current.find((t) => t.id === id);
+    if (!s || !tab) return;
+    const text = screenText(s.term); // taken now, so output that comes while the dialog is open is not mixed in
+    const owner = tabsRef.current.find((t) => t.id === (tab.splitOf ?? tab.id)) ?? tab;
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}${pad(d.getMinutes())}`;
+    const name = `${owner.name}${side ? ` ${side}` : ''} ${stamp}`.replace(/[\\/:*?"<>|]+/g, '_');
+    try {
+      const path = await invoke<string | null>('save_file_dialog', {
+        title: 'Export Screen',
+        filter: 'Text file (*.txt)|*.txt',
+        defaultName: name,
+      });
+      if (!path) return;
+      await invoke('write_text_file', { path, content: '﻿' + text }); // BOM: Thai and other text opens right everywhere
+      const lines = text.split('\r\n').length - 1;
+      setExportNote(`Saved ${lines.toLocaleString()} line${lines === 1 ? '' : 's'} to ${path}`);
+    } catch (err) {
+      window.alert(`Export Screen failed: ${err}`);
+    }
+  };
+
+  // Right-click on the Left / Right name of a split tab: Find Text / Export Screen on that screen
+  const [paneCtx, setPaneCtx] = useState<{ x: number; y: number; id: string; side: 'Left' | 'Right' } | null>(null);
+  const paneCtxPos = useMenuPosition(paneCtx);
+
   // Synchronize terminal fit & scroll whenever usageBanner toggles
   useEffect(() => {
     refit();
@@ -384,8 +628,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   // Update xterm theme dynamically when app theme changes
   useEffect(() => {
-    sessionsRef.current.forEach((s) => {
-      s.term.options.theme = xtermTheme(theme);
+    sessionsRef.current.forEach((s, id) => {
+      s.term.options.theme = xtermTheme(theme, findRef.current?.id === id);
     });
   }, [theme]);
 
@@ -466,17 +710,17 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     >
       {/* Command line tabs: always shown, even for a single tab */}
       <div className="terminal-tabs">
-        {tabs.map((t) => (
+        {heads.map((t) => (
           <div
             key={t.id}
             ref={(el) => {
               tabElsRef.current[t.id] = el;
             }}
-            className={`terminal-tab ${t.id === activeTabId ? 'active' : ''}`}
+            className={`terminal-tab ${t.id === activeMainId ? 'active' : ''}`}
             style={{ '--tab-color': t.color } as React.CSSProperties}
             onMouseDown={(e) => startTabDrag(e, t.id)}
             onClick={() => {
-              if (!justDraggedRef.current) onSelectTab(t.id);
+              if (!justDraggedRef.current) pickHeader(t.id);
             }}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -484,9 +728,11 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               setColorOpen(false);
               setTabCtx({ x: e.clientX, y: e.clientY, id: t.id });
             }}
-            title={t.name}
+            title={tabs.some((x) => x.splitOf === t.id) ? `${t.name} (split screen)` : t.name}
           >
-            {t.level === 'admin' ? (
+            {tabs.some((x) => x.splitOf === t.id) ? (
+              <Columns2 size={12} style={{ flexShrink: 0 }} />
+            ) : t.level === 'admin' ? (
               <ShieldCheck size={12} style={{ color: '#86efac', flexShrink: 0 }} />
             ) : (
               <TermIcon size={12} style={{ flexShrink: 0 }} />
@@ -509,10 +755,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             ) : (
               <span className="terminal-tab-name">{t.name}</span>
             )}
-            {tabs.length > 1 && (
+            {heads.length > 1 && (
               <button
                 className="terminal-tab-close"
-                title="Close tab"
+                title={tabs.some((x) => x.splitOf === t.id) ? 'Close tab (both screens)' : 'Close tab'}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -840,18 +1086,146 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           </button>
         </div>
       )}
+      {/* Split Screen: a bar naming the two screens, each with its own close button */}
+      {activeMain && activeRight && (
+        <div className="split-bar" style={{ '--tab-color': activeMain.color } as React.CSSProperties}>
+          {[activeMain, activeRight].map((p, i) => {
+            const share = splitRatio[activeMain.id] ?? 0.5;
+            return (
+              <div
+                key={p.id}
+                className={`split-bar-pane ${p.id === activeTabId ? 'active' : ''}`}
+                style={{ width: `calc(${(i === 0 ? share : 1 - share) * 100}% - ${SPLIT_GAP}px)` }}
+                onClick={() => onSelectTab(p.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setPaneCtx({ x: e.clientX, y: e.clientY, id: p.id, side: i === 0 ? 'Left' : 'Right' });
+                }}
+                title={`${i === 0 ? 'Left' : 'Right'} screen: ${p.cwd} (right-click: Find Text, Export Screen)`}
+              >
+                {p.level === 'admin' ? (
+                  <ShieldCheck size={11} style={{ color: '#22c55e', flexShrink: 0 }} />
+                ) : (
+                  <TermIcon size={11} style={{ flexShrink: 0 }} />
+                )}
+                <span className="split-bar-label">{i === 0 ? 'Left' : 'Right'}</span>
+                <span className="split-bar-folder">{folderName(p.cwd)}</span>
+                <button
+                  className="terminal-tab-close"
+                  title={`Close the ${i === 0 ? 'left' : 'right'} screen`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClosePane(p.id);
+                  }}
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div
-        className="terminal-container"
-        ref={terminalRef}
+        ref={splitBoxRef}
         style={{
-          background: theme === 'light' ? '#f4f4f5' : '#000000',
-          ...(tabs.length === 0 ? { display: 'none' } : {}),
+          flex: '1 1 0%',
+          minHeight: 0,
+          position: 'relative',
+          display: tabs.length === 0 ? 'none' : 'flex',
         }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setTermMenu({ x: e.clientX, y: e.clientY, hasSel: !!xtermRef.current?.hasSelection() });
-        }}
-      />
+      >
+        <div
+          className="terminal-container"
+          ref={terminalRef}
+          style={{ background: theme === 'light' ? '#f4f4f5' : '#000000' }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            // the screen that was right-clicked (a split tab has two)
+            let id = activeIdRef.current;
+            sessionsRef.current.forEach((s, sid) => {
+              if (s.el.contains(e.target as Node)) id = sid;
+            });
+            const s = id ? sessionsRef.current.get(id) : undefined;
+            setTermMenu({ x: e.clientX, y: e.clientY, hasSel: !!s?.term.hasSelection(), id: id ?? '' });
+          }}
+        />
+        {activeMain && activeRight && (
+          <div
+            className={`split-divider ${draggingSplit ? 'dragging' : ''}`}
+            style={{ left: `calc(${(splitRatio[activeMain.id] ?? 0.5) * 100}% - ${SPLIT_GAP}px)`, width: SPLIT_GAP * 2 }}
+            onMouseDown={(e) => startSplitDrag(e, activeMain.id)}
+            onDoubleClick={() => setSplitRatio((m) => ({ ...m, [activeMain.id]: 0.5 }))}
+            title="Drag to resize the screens (double-click: half and half)"
+          />
+        )}
+        {find && (() => {
+          // over the top right of its own screen (the left one of a split tab ends at the separator)
+          const ids = shownIds();
+          const ratio = activeMain ? splitRatio[activeMain.id] ?? 0.5 : 0.5;
+          const split = ids.length === 2;
+          const onLeft = split && ids[0] === find.id;
+          const right = onLeft ? `calc(${(1 - ratio) * 100}% + ${SPLIT_GAP + 18}px)` : '18px';
+          // never wider than its own screen
+          const share = !split ? 1 : onLeft ? ratio : 1 - ratio;
+          const maxWidth = `calc(${share * 100}% - ${split ? SPLIT_GAP + 30 : 30}px)`;
+          const status = !find.text
+            ? ''
+            : !findResult || findResult.count === 0
+              ? 'No results'
+              : findResult.index < 0
+                ? `${findResult.count.toLocaleString()}+ found`
+                : `${findResult.index + 1} of ${findResult.count.toLocaleString()}`;
+          return (
+            <div className="term-find" style={{ right, maxWidth }} onMouseDown={(e) => e.stopPropagation()}>
+              <Search size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              <input
+                ref={findInputRef}
+                value={find.text}
+                placeholder="Find text"
+                spellCheck={false}
+                onChange={(e) => {
+                  const text = e.target.value;
+                  lastFindRef.current = text;
+                  const next = { id: find.id, text };
+                  findRef.current = next;
+                  setFind(next);
+                  runFind('up', text, true);
+                }}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Escape') closeFind();
+                  else if (e.key === 'Enter') runFind(e.shiftKey ? 'down' : 'up', find.text);
+                  else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    runFind('up', find.text);
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    runFind('down', find.text);
+                  }
+                }}
+              />
+              <span className={`term-find-status ${status === 'No results' ? 'none' : ''}`}>{status}</span>
+              <button title="Find up: the match above (Up arrow, Enter)" disabled={!find.text} onClick={() => runFind('up', find.text)}>
+                <ChevronUp size={14} />
+              </button>
+              <button title="Find down: the match below (Down arrow, Shift+Enter)" disabled={!find.text} onClick={() => runFind('down', find.text)}>
+                <ChevronDown size={14} />
+              </button>
+              <button title="Close (Esc)" onClick={() => closeFind()}>
+                <X size={13} />
+              </button>
+            </div>
+          );
+        })()}
+        {exportNote && (
+          <div className="term-export-note" onClick={() => setExportNote(null)} title={exportNote}>
+            {exportNote}
+          </div>
+        )}
+        {/* keeps the pointer from selecting terminal text while the separator is dragged */}
+        {draggingSplit && <div style={{ position: 'fixed', inset: 0, zIndex: 2000, cursor: 'col-resize' }} />}
+      </div>
 
       {tabCtx && (
         <>
@@ -875,6 +1249,78 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               <X size={13} style={{ color: '#ef4444' }} />
               <span>Close Tab</span>
             </div>
+            {(() => {
+              const right = tabs.find((x) => x.splitOf === tabCtx.id);
+              if (!right) {
+                return (
+                  <div
+                    className="context-menu-item"
+                    onClick={() => {
+                      const id = tabCtx.id;
+                      setTabCtx(null);
+                      onSplitTab(id);
+                    }}
+                  >
+                    <Columns2 size={13} style={{ color: '#06b6d4' }} />
+                    <span>Split Screen</span>
+                  </div>
+                );
+              }
+              // already split (a split tab is not split again): close one of its screens instead
+              return ([
+                ['Close Left Screen', tabCtx.id],
+                ['Close Right Screen', right.id],
+              ] as const).map(([label, id]) => (
+                <div
+                  key={label}
+                  className="context-menu-item"
+                  onClick={() => {
+                    setTabCtx(null);
+                    onClosePane(id);
+                  }}
+                >
+                  <Columns2 size={13} style={{ color: '#ef4444' }} />
+                  <span>{label}</span>
+                </div>
+              ));
+            })()}
+            <div className="context-menu-divider" />
+            {(() => {
+              // A split tab has two screens: these are on the Left / Right names above the screens instead
+              const split = tabs.some((x) => x.splitOf === tabCtx.id);
+              const tip = split ? 'This tab is split: right-click the Left or Right name above a screen' : undefined;
+              return (
+                <>
+                  <div
+                    className={`context-menu-item ${split ? 'disabled' : ''}`}
+                    title={tip}
+                    onClick={() => {
+                      if (split) return;
+                      const id = tabCtx.id;
+                      setTabCtx(null);
+                      openFind(id);
+                    }}
+                  >
+                    <Search size={13} style={{ color: '#f59e0b' }} />
+                    <span>Find Text</span>
+                  </div>
+                  <div
+                    className={`context-menu-item ${split ? 'disabled' : ''}`}
+                    title={tip}
+                    onClick={() => {
+                      if (split) return;
+                      const id = tabCtx.id;
+                      setTabCtx(null);
+                      exportScreen(id);
+                    }}
+                  >
+                    <FileDown size={13} style={{ color: '#22c55e' }} />
+                    <span>Export Screen</span>
+                  </div>
+                </>
+              );
+            })()}
+            <div className="context-menu-divider" />
             <div
               className="context-menu-item"
               onClick={() => {
@@ -910,6 +1356,55 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
         </>
       )}
 
+      {paneCtx && (
+        <>
+          <div
+            className="context-menu-overlay"
+            onClick={() => setPaneCtx(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setPaneCtx(null);
+            }}
+          />
+          <div className="context-menu" ref={paneCtxPos.ref} style={paneCtxPos.style}>
+            <div
+              className="context-menu-item"
+              onClick={() => {
+                const id = paneCtx.id;
+                setPaneCtx(null);
+                openFind(id);
+              }}
+            >
+              <Search size={13} style={{ color: '#f59e0b' }} />
+              <span>Find Text</span>
+            </div>
+            <div
+              className="context-menu-item"
+              onClick={() => {
+                const { id, side } = paneCtx;
+                setPaneCtx(null);
+                exportScreen(id, side);
+              }}
+            >
+              <FileDown size={13} style={{ color: '#22c55e' }} />
+              <span>Export Screen</span>
+            </div>
+            <div className="context-menu-divider" />
+            <div
+              className="context-menu-item"
+              onClick={() => {
+                const id = paneCtx.id;
+                setPaneCtx(null);
+                onClosePane(id);
+              }}
+            >
+              <X size={13} style={{ color: '#ef4444' }} />
+              <span>Close {paneCtx.side} Screen</span>
+            </div>
+          </div>
+        </>
+      )}
+
       {headerCtx && (
         <>
           <div
@@ -932,10 +1427,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               <span>New Tab</span>
             </div>
             <div
-              className={`context-menu-item ${tabs.length > 1 ? '' : 'disabled'}`}
+              className={`context-menu-item ${heads.length > 1 ? '' : 'disabled'}`}
               onClick={() => {
                 setHeaderCtx(null);
-                if (tabs.length > 1) onCloseAllTabs();
+                if (heads.length > 1) onCloseAllTabs();
               }}
             >
               <X size={13} style={{ color: '#ef4444' }} />
@@ -965,9 +1460,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
                 className="context-menu-item"
                 style={termMenu.hasSel ? undefined : { opacity: 0.4, pointerEvents: 'none' }}
                 onClick={() => {
-                  if (xtermRef.current) copySelection(xtermRef.current, clear);
+                  const term = menuTerm();
+                  if (term) copySelection(term, clear);
                   setTermMenu(null);
-                  xtermRef.current?.focus();
+                  term?.focus();
                 }}
               >
                 <Icon size={13} style={{ color: clear ? '#ef4444' : '#3b82f6' }} />
@@ -989,7 +1485,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
                 style={termMenu.hasSel ? undefined : { opacity: 0.4, pointerEvents: 'none' }}
                 title={termMenu.hasSel ? undefined : 'Select some text first (an error, a command and its output)'}
                 onClick={() => {
-                  const text = xtermRef.current?.getSelection() ?? '';
+                  const text = menuTerm()?.getSelection() ?? '';
                   setTermMenu(null);
                   if (text.trim()) onAskAi(text, send);
                 }}

@@ -61,7 +61,8 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   const cleanCurrent = cleanOf(currentPath);
   const isSelected = cleanCurrent === cleanPath;
 
-  // Auto-expand if currentPath is inside this folder; collapse if user clicked higher or outside folder
+  // Auto-expand if currentPath is inside this folder; collapse if user clicked higher or outside folder (drives too:
+  // opening D: folds C: away, like folders)
   useEffect(() => {
     if (cleanCurrent === cleanPath || cleanCurrent.startsWith(cleanPath + '\\')) {
       // the open folder is below this one, but this list (loaded earlier) does not have the way down: a folder
@@ -72,7 +73,7 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
         fetchSubfolders();
       }
       setIsExpanded(true);
-    } else if (isExpanded && !isDrive) {
+    } else if (isExpanded) {
       setIsExpanded(false);
     }
   }, [currentPath]);
@@ -201,6 +202,7 @@ interface FolderTreeProps {
   openBasketPath: string | null;
   onAddQuickAccess?: (item: { label: string; path: string; icon_type?: string }) => void;
   onRefresh?: () => void;
+  onCreateBasket?: (folder: string) => void; // New -> Basket in the right-clicked folder
 }
 
 export const FolderTree: React.FC<FolderTreeProps> = ({
@@ -211,6 +213,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   openBasketPath,
   onAddQuickAccess,
   onRefresh,
+  onCreateBasket,
 }) => {
   const [drives, setDrives] = useState<QuickAccessItem[]>([]);
   const [contextMenu, setContextMenu] = useState<{
@@ -298,6 +301,14 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
       .catch((err) => alert(err));
   };
 
+  const handleCreateBasket = () => {
+    if (!contextMenu) return;
+    const targetDir = contextMenu.path;
+    setContextMenu(null);
+    setShowNewSubmenu(false);
+    onCreateBasket?.(targetDir);
+  };
+
   const handleCreateTextFile = () => {
     if (!contextMenu) return;
     const targetDir = contextMenu.path;
@@ -382,6 +393,8 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             <div
               className="context-menu-item"
               onMouseEnter={() => setShowNewSubmenu(true)}
+              // a submenu closes when the pointer leaves its row (it overlaps the row, so moving into it keeps it open)
+              onMouseLeave={() => setShowNewSubmenu(false)}
               onClick={() => setShowNewSubmenu(!showNewSubmenu)}
               style={{ justifyContent: 'space-between' }}
             >
@@ -406,6 +419,16 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
                     <Link size={13} style={{ color: 'var(--text-muted)' }} />
                     <span>Shortcut</span>
                   </div>
+                  {onCreateBasket && (
+                    <div
+                      className="context-menu-item"
+                      onClick={handleCreateBasket}
+                      title="A basket holds links to files and folders from anywhere"
+                    >
+                      <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
+                      <span>Basket</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

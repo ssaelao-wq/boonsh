@@ -6,6 +6,21 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.10.2 (2026-10-12)
+
+- **Find Text in the command line.** Right-click a tab, **Find Text**: a floating box finds text in the whole history; every match is highlighted (yellow on the white theme, brown on the black one) and the current one in orange. Up / Down arrows (or the buttons) go to the match above / below; Esc closes it.
+- **Export Screen.** Right-click a tab, **Export Screen** saves the command line's text (up to 50,000 lines) to a .txt file you choose.
+- **On a split tab** both work per screen: right-click the Left or Right name above the screens. In the tab's menu they are greyed out.
+- **The command line keeps 50,000 lines of history** (it was 5,000).
+
+- **Split Screen in the command line.** Right-click a tab and choose **Split Screen** to get a second command line beside it, in the same tab (half and half; drag the line between them to resize, double-click it for half and half again). Each screen has its own close button in a small Left / Right bar; closing one leaves the other as the tab's only screen. The screen you click is the active one: it gets commands and `cd`, and the file panel follows it. A split tab cannot be split again. See the manual, section *Terminal*, Tabs.
+
+- **Fix: New → Basket was missing in the folder tree.** Right-click a folder in the folder tree, **New**, now also offers **Basket**: it is made in that folder and its Rename box opens, as in the file panel.
+- **Drives fold away like folders in the folder tree.** Opening a folder on D: (or D: itself) now folds C: away, the same as opening another folder folds the previous one; before, every drive you opened stayed unfolded.
+- **Fix: right-click submenus stayed open.** **Assign to Global Var** (and **Open with**) kept its submenu open after the pointer moved on to Paste or Compress; every submenu (New, Open with, Assign to Global Var, Group by, and New in the folder tree) now closes when the pointer leaves its row, and stays open while you move into it.
+- **Fix: the bar between the folder tree and the command line did not move.** With the file panel hidden, dragging the bar between the folder tree and the command line now resizes them (it only worked when the file panel was shown). When the file panel comes back, a very wide tree is narrowed to 40% of the window so the file panel has room.
+- **Fix: the window jumped to full screen.** With boonsh in a smaller window, clicking a folder name (in the folder tree or anywhere that opens a folder or selects an item) maximized the window again. The window is now maximized only when boonsh starts; after that its size stays as you set it.
+
 ## 0.10.1 (2026-10-10)
 
 - **Baskets.** A new kind of item: **New → Basket** makes a basket in a folder; it holds links to files and folders from anywhere (copy, then paste on the basket, or drag onto it). Open it like a folder: actions (copy, move, zip, rename, bulk rename, delete files) work on the real items, Delete only removes the link. Nothing is changed by guessing: an item moved away outside boonsh shows grey as **gone** (Clear / Relink), an item that appeared in a linked folder shows grey as **new** (Link / Clear), and neither is ever part of an action. In commands, `{BASKET:name}` or a Global Var assigned to a basket becomes its linked items; PowerShell tabs get `basket`, `basket-add`, `basket-remove`, `basket-list` and `basket-new` for pipes. The search box searches inside an open basket. See the manual, section 17.
