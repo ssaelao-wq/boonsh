@@ -44,7 +44,7 @@ jobs:
         run: >
           cargo test --manifest-path src-tauri/Cargo.toml --lib --
           --skip file_props::tests::reads_real_files
-          --skip file_props::tests::default_apps
+          --skip file_props::assoc_tests::default_apps
           --skip file_props::handler_tests
           --skip file_props::installed_tests
           --skip secrets::tests
