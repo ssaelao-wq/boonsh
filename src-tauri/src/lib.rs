@@ -3,12 +3,16 @@ mod basket;
 mod bulk_rename;
 mod cmdvars;
 mod dir_watch;
+mod drives;
 mod file_props;
+mod folder_size;
 mod fs_ops;
 mod localtime;
+mod paste;
 mod pty;
 mod search;
 mod secrets;
+mod shell_icons;
 
 use ai_chats::*;
 use basket::*;
@@ -37,6 +41,9 @@ pub fn run() {
     cmdvars::remove_stale_vars_files();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Updates from the GitHub releases (signed; see tauri.conf.json plugins.updater and src/updater.ts)
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(PtyState::default())
         .invoke_handler(tauri::generate_handler![
             pty_spawn,
@@ -44,6 +51,12 @@ pub fn run() {
             pty_resize,
             pty_close,
             list_directory,
+            tree_has_children,
+            drives::get_drives,
+            folder_size::folder_sizes,
+            folder_size::folder_sizes_stop,
+            folder_size::folder_sizes_forget,
+            folder_size::watch_folder_sizes,
             get_quick_access,
             create_new_file,
             create_new_folder,
@@ -56,7 +69,11 @@ pub fn run() {
             bulk_rename_apply,
             bulk_rename_undo,
             delete_items,
-            paste_items,
+            paste::paste_check,
+            paste::paste_items,
+            paste::paste_cancel,
+            paste::paste_pause,
+            paste::paste_start_now,
             compress_to_zip,
             extract_zip,
             read_text_file,
@@ -73,6 +90,7 @@ pub fn run() {
             search_files,
             get_file_details,
             get_default_apps,
+            shell_icons::get_file_icons,
             open_admin_terminal,
             is_admin,
             relaunch_as_admin,

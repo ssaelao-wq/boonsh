@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { HeaderBar } from './components/HeaderBar';
 import { SearchBar } from './components/SearchBar';
@@ -10,36 +9,18 @@ import { MainFilePanel } from './components/MainFilePanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { TerminalPanel } from './components/TerminalPanel';
 import { StatusBar } from './components/StatusBar';
+import { ThisPCView } from './components/ThisPCView';
 import { SettingsPanel } from './components/SettingsPanel';
 import { FrequentPanel } from './components/FrequentPanel';
 import { AssistantPanel } from './components/AssistantPanel';
+import { PasteConflictDialog } from './components/PasteConflictDialog';
+import { PasteProgress } from './components/PasteProgress';
 import type { Section as SettingsSection } from './components/SettingsPanel';
 import { AssistantHost } from './assistant';
-import {
-  GroupSpec,
-  Bucket,
-  layoutItems,
-  loadGroups,
-  saveGroups,
-  topGroupIds,
-} from './grouping';
-import { QA_MAX, QA_KEY, defaultQuickAccess, isShown, parseSaved, samePath } from './quickAccess';
+import { layoutItems, topGroupIds } from './grouping';
+import { QA_MAX, defaultQuickAccess, samePath } from './quickAccess';
 import { BulkRenameDialog } from './components/BulkRenameDialog';
-import {
-  PathVars,
-  PathVarName,
-  EMPTY_PATH_VARS,
-  hasPlaceholder,
-} from './pathVars';
-import {
-  GlobalVarDef,
-  loadGlobalVars,
-  saveGlobalVars,
-  resetGlobalVars,
-  renameInText,
-} from './globalVars';
-import { ConstVar, loadConstVars, saveConstVars, constMap } from './constVars';
-import { CommandGroup, loadCommandGroups, saveCommandGroups, resetCommandGroups } from './commands';
+import { resetGlobalVars } from './globalVars';
 import {
   RenameBatch,
   RenameOp,
@@ -49,40 +30,25 @@ import {
   loadRenameHistory,
   saveRenameHistory,
 } from './bulkRename';
-import { tabColor } from './tabColors';
 import { addMessage, basketName, isBasket, parentDir } from './basket';
-import { FileItem, QuickAccessItem, FileListResult, ViewMode, ItemDetails, TermTab } from './types';
-import {
-  FrequentStats,
-  FrequentSettings,
-  loadStats,
-  saveStats,
-  loadSettings as loadFrequentSettings,
-  saveSettings as saveFrequentSettings,
-  recordVisit,
-  removeVisit,
-  topFolders,
-} from './frequent';
-import {
-  ColumnId,
-  ColumnPrefs,
-  DateColumn,
-  DateMode,
-  SortLevel,
-  DEFAULT_PREFS,
-  DEFAULT_SORT,
-  loadPrefs,
-  savePrefs,
-  loadSort,
-  saveSort,
-  sortClick,
-  sortSet,
-  sortRemove,
-  detailKey,
-  hasMediaProps,
-  needsDetails,
-} from './columns';
+import { FileItem, FileListResult, TermTab } from './types';
+import { topFolders } from './frequent';
+import { DEFAULT_PREFS, sortClick, sortSet, sortRemove } from './columns';
+import { useTerminalTabs } from './hooks/useTerminalTabs';
+import { useCommandLine } from './hooks/useCommandLine';
+import { useViewSettings } from './hooks/useViewSettings';
+import { useFileDetails } from './hooks/useFileDetails';
+import { useFolderSizes, formatTotalSize } from './hooks/useFolderSizes';
+import { useDrives, useFrequent, useQuickAccess, useSplitters, useWindowSetup } from './hooks/usePanels';
+import { usePaste } from './hooks/usePaste';
+import { useDualPane } from './hooks/useDualPane';
+import { Side, sameFolder, transferProblem, transferQuestion } from './dualPane';
+import { useUpdater } from './hooks/useUpdater';
+import { UpdateNotice } from './components/UpdateNotice';
 
+// The app's state lives here and in the hooks of src/hooks (one per area: command line tabs, commands and
+// variables, view settings, file details, folder sizes, paste, smaller panels). What stays here is the core that
+// ties them together: the folder on screen, the selection, navigation, baskets, search and the layout.
 export function App() {
   const [currentPath, setCurrentPath] = useState<string>('');
   const currentPathRef = useRef(currentPath);
@@ -92,14 +58,10 @@ export function App() {
   // The latest real listing of a folder (never search results): the folder tree takes that folder's sub-folders
   // from it, so a folder renamed, added or deleted there shows in the tree too.
   const [treeListing, setTreeListing] = useState<{ path: string; items: FileItem[] } | null>(null);
-  const [quickAccess, setQuickAccess] = useState<QuickAccessItem[]>([]);
   // selectedItem = focused item (preview, title, status); selectedPaths = full multi-selection
   const [selectedItem, setSelectedItem] = useState<FileItem | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const selectionAnchorRef = useRef<string | null>(null); // Shift+Click range start
-  // In-app file clipboard for Ctrl+X / Ctrl+C / Ctrl+V. `basket`: copied inside that basket, so a paste into a
-  // folder takes only its linked items (basket.rs paste_out) and a cut there moves the links along.
-  const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'cut'; paths: string[]; basket?: string } | null>(null);
   // An open basket (basket.rs): the file panel lists its links instead of the folder. `trail` = the linked folders
   // opened inside it (empty = its top level). The current folder stays the basket's own folder, so the command
   // line stays there too (a basket is not a folder on disk).
@@ -114,15 +76,25 @@ export function App() {
   const [totalFolders, setTotalFolders] = useState<number>(0);
   const [totalSize, setTotalSize] = useState<number>(0);
 
-  // UI Modes, Toggles & Theme (Persisted in localStorage)
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const saved = localStorage.getItem('boonsh_theme');
-    return saved === 'light' ? 'light' : 'dark';
-  });
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const saved = localStorage.getItem('boonsh_view_mode');
-    return (saved === 'tiles' || saved === 'thumbnails' || saved === 'details') ? saved : 'details';
-  });
+  // UI Modes, Toggles & Theme (Persisted in localStorage), sort, columns and grouping
+  const {
+    theme,
+    setTheme,
+    viewMode,
+    setViewMode,
+    sortLevels,
+    updateSort,
+    colPrefs,
+    updatePrefs,
+    groups,
+    updateGroups,
+    groupColumn,
+    collapsed,
+    setCollapsed,
+    toggleGroup,
+    setDateMode,
+    hideColumn,
+  } = useViewSettings();
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [includeSubfolders, setIncludeSubfolders] = useState<boolean>(true);
   const [showPreview, setShowPreview] = useState<boolean>(false);
@@ -156,331 +128,44 @@ export function App() {
     toggleAssistant(true);
     setAskAiRequest((prev) => ({ id: (prev?.id ?? 0) + 1, text, send }));
   };
-  const [assistantHeightPx, setAssistantHeightPx] = useState<number>(300);
-  const [isDraggingAi, setIsDraggingAi] = useState<boolean>(false);
   const rightShown = showTerminal || showAssistant; // the right column holds the command line and the assistant
   const [shellEngine] = useState<string>('PowerShell 7');
 
-  // Terminal helper commands (editable in Settings, persisted in localStorage)
-  const [commandGroups, setCommandGroups] = useState<CommandGroup[]>(loadCommandGroups);
   const [showSettings, setShowSettings] = useState<boolean>(false);
-  const handleCommandGroupsChange = (groups: CommandGroup[]) => {
-    setCommandGroups(groups);
-    saveCommandGroups(groups);
-  };
-
-  // {SELEC} / {DEST}: path variables for terminal commands. Memory only, so they vanish when the app closes.
-  const [globalVars, setGlobalVars] = useState<GlobalVarDef[]>(loadGlobalVars); // definitions (saved)
-  const globalVarsRef = useRef(globalVars);
-  globalVarsRef.current = globalVars;
-  const [pathVars, setPathVars] = useState<PathVars>(EMPTY_PATH_VARS); // values (memory only)
-  const pathVarsRef = useRef(pathVars);
-  pathVarsRef.current = pathVars;
-  const varNames = () => globalVarsRef.current.map((v) => v.name);
-  // CONST variables ({IP} = 202.283.242.97): saved with their values, filled into commands as written
-  const [constVars, setConstVars] = useState<ConstVar[]>(loadConstVars);
-  const constVarsRef = useRef(constVars);
-  constVarsRef.current = constVars;
-  const consts = () => constMap(constVarsRef.current);
-  // The command line tabs fill in placeholders typed at the prompt from these values (cmdvars.rs session file)
-  useEffect(() => {
-    invoke('write_vars_file', { vars: pathVars, consts: constMap(constVars) }).catch(() => {});
-  }, [pathVars, constVars]);
-  // Command template (with {SELEC}/{DEST}) sitting untouched at the prompt. While it is set, the typed line can be
-  // rewritten when a variable or the folder changes. The terminal clears it as soon as the user types.
-  const pendingCmdRef = useRef<string | null>(null);
-
-  // Replace what is on the prompt line: Esc clears the line (PSReadLine and cmd). The pause keeps ConPTY from
-  // reading Esc plus the next character as one Alt+key chord.
-  const rewritePromptLine = async (text: string) => {
-    await ptyWrite('\x1b');
-    await new Promise((r) => setTimeout(r, 60));
-    await ptyWrite(text);
-  };
-
-  // A command template as it is typed: baskets ({BASKET:name}, or a Global Var holding a basket, become the
-  // basket's linked items), Global Vars and CONSTs. The rules are in src-tauri/src/cmdvars.rs, shared with
-  // placeholders the user types at a PowerShell prompt. Throws when a basket is not found.
-  const expandCommand = (template: string, vars = pathVarsRef.current, base = currentPathRef.current) =>
-    invoke<string>('expand_command', { text: template, cwd: base, vars, consts: consts() });
-
-  // Type a command template at the prompt, expanded against the current folder.
-  const pickCommand = async (template: string) => {
-    let text: string;
-    try {
-      text = await expandCommand(template);
-    } catch (err) {
-      alert(String(err));
-      return;
-    }
-    const replace = pendingCmdRef.current !== null;
-    pendingCmdRef.current = hasPlaceholder(template, varNames()) ? template : null;
-    if (replace) await rewritePromptLine(text);
-    else await ptyWrite(text);
-  };
-
-  const setPathVarValues = (next: PathVars) => {
-    pathVarsRef.current = next;
-    setPathVars(next);
-    const template = pendingCmdRef.current;
-    if (template !== null) {
-      expandCommand(template, next)
-        .then(rewritePromptLine)
-        .catch(() => {});
-    }
-  };
-
-  const assignPathVar = (name: PathVarName, paths: string[]) => {
-    setPathVarValues({ ...pathVarsRef.current, [name]: paths });
-  };
-
-  // Settings added, renamed or deleted variables. A rename keeps the value and updates {OLD} in the commands;
-  // a deleted variable loses its value.
-  const handleGlobalVarsChange = (next: GlobalVarDef[]) => {
-    const old = globalVarsRef.current;
-    const values: PathVars = {};
-    let commands = commandGroups;
-    for (const def of next) {
-      const before = old.find((o) => o.id === def.id);
-      const key = before ? before.name : def.name;
-      if (pathVarsRef.current[key]?.length) values[def.name] = pathVarsRef.current[key];
-      if (before && before.name !== def.name) {
-        commands = commands.map((g) => ({
-          ...g,
-          items: g.items.map((i) => ({
-            ...i,
-            insertText: renameInText(i.insertText, before.name, def.name),
-            usage: renameInText(i.usage, before.name, def.name),
-          })),
-        }));
-      }
-    }
-    if (commands !== commandGroups) handleCommandGroupsChange(commands);
-    globalVarsRef.current = next;
-    setGlobalVars(next);
-    saveGlobalVars(next);
-    pendingCmdRef.current = null; // names changed under the prompt line; leave it as it is
-    setPathVarValues(values);
-  };
-
-  // Settings added, renamed, edited or deleted CONST variables. A rename updates {OLD} in the commands.
-  const handleConstVarsChange = (next: ConstVar[]) => {
-    const old = constVarsRef.current;
-    let commands = commandGroups;
-    for (const def of next) {
-      const before = old.find((o) => o.id === def.id);
-      if (before && before.name !== def.name) {
-        commands = commands.map((g) => ({
-          ...g,
-          items: g.items.map((i) => ({
-            ...i,
-            insertText: renameInText(i.insertText, before.name, def.name),
-            usage: renameInText(i.usage, before.name, def.name),
-          })),
-        }));
-      }
-    }
-    if (commands !== commandGroups) handleCommandGroupsChange(commands);
-    constVarsRef.current = next;
-    setConstVars(next);
-    saveConstVars(next);
-  };
-
-  // Sort State
-  // Smart sort: a list of levels (column + direction), and which columns the file panel shows. Both are saved.
-  const [sortLevels, setSortLevels] = useState<SortLevel[]>(loadSort);
-  const [colPrefs, setColPrefs] = useState<ColumnPrefs>(loadPrefs);
-  const [details, setDetails] = useState<Record<string, ItemDetails>>({}); // media properties, by detailKey
-  // Default app of each file type for the Type column ("MP4 (VLC media player)"); '' = none. Asked once per type.
-  const [appByExt, setAppByExt] = useState<Record<string, string>>({});
-  // Frequently Accessed folders: visit counts (always counted, even while the panel is hidden) and its settings
-  const [freqStats, setFreqStats] = useState<FrequentStats>(loadStats);
-  const [freqSettings, setFreqSettings] = useState<FrequentSettings>(loadFrequentSettings);
-  const updateFreqStats = (next: FrequentStats) => {
-    setFreqStats(next);
-    saveStats(next);
-  };
-  const updateFreqSettings = (next: FrequentSettings) => {
-    setFreqSettings(next);
-    saveFrequentSettings(next);
-  };
   const [settingsStart, setSettingsStart] = useState<SettingsSection>('commands');
-  const updateSort = (next: SortLevel[]) => {
-    setSortLevels(next);
-    saveSort(next);
-  };
-  // Group view: header rows over the files. Separate from the sort, saved, and kept for every folder and search
-  // result until the user cancels it. The layers follow the sort numbers of the grouped columns.
-  const [groups, setGroups] = useState<GroupSpec[]>(loadGroups);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set()); // ids of folded groups (this session)
-  const updateGroups = (next: GroupSpec[]) => {
-    setGroups(next);
-    saveGroups(next);
-    setCollapsed(new Set());
-  };
-  const groupColumn = (col: ColumnId, buckets: Bucket[]) => {
-    const rest = groups.filter((g) => g.column !== col);
-    if (buckets.length === 0) {
-      updateGroups(rest); // nothing ticked any more: stop grouping this column
-      return;
-    }
-    updateGroups([...rest, { column: col, buckets }]);
-    // the sort numbers decide the layer order, so a grouped column gets a number (the next one) if it has none
-    if (!sortLevels.some((l) => l.column === col)) updateSort([...sortLevels, { column: col, order: 'asc' }]);
-  };
-  const updatePrefs = (next: ColumnPrefs) => {
-    setColPrefs(next);
-    savePrefs(next);
-    // a hidden column should not keep sorting or grouping invisibly
-    const kept = sortLevels.filter((l) => next.visible.includes(l.column));
-    if (kept.length !== sortLevels.length) updateSort(kept.length ? kept : DEFAULT_SORT);
-    const keptGroups = groups.filter((g) => next.visible.includes(g.column));
-    if (keptGroups.length !== groups.length) updateGroups(keptGroups);
-  };
-  const setDateMode = (col: DateColumn, kind: 'dateSort' | 'dateShow', mode: DateMode) =>
-    updatePrefs({ ...colPrefs, [kind]: { ...colPrefs[kind], [col]: mode } });
-  const hideColumn = (col: ColumnId) => {
-    if (col === 'name') return;
-    updatePrefs({ ...colPrefs, visible: colPrefs.visible.filter((c) => c !== col) });
-  };
   const openSettings = (section: SettingsSection = 'commands') => {
     setSettingsStart(section);
     setShowSettings(true);
   };
+  // Command template (with {SELEC}/{DEST}) sitting untouched at the prompt. While it is set, the typed line can be
+  // rewritten when a variable or the folder changes. The terminal clears it as soon as the user types.
+  const pendingCmdRef = useRef<string | null>(null);
 
-  // Resizable Split Handles
-  const [leftWidthPct, setLeftWidthPct] = useState<number>(55);
-  const [treeWidthPx, setTreeWidthPx] = useState<number>(210);
-  const [previewHeightPx, setPreviewHeightPx] = useState<number>(240);
-  const [isDraggingV, setIsDraggingV] = useState<boolean>(false);
-  const [isDraggingTree, setIsDraggingTree] = useState<boolean>(false);
-  const [isDraggingH, setIsDraggingH] = useState<boolean>(false);
-
-  // With the file panel hidden the command line separator sizes the folder tree; when the file panel comes back
-  // the tree goes back within the tree separator's own limit (40%) so the file panel has room
-  useEffect(() => {
-    if (!showFilePanel || !appRef.current) return;
-    const max = appRef.current.getBoundingClientRect().width * 0.4;
-    setTreeWidthPx((w) => Math.min(w, Math.max(150, max)));
-  }, [showFilePanel]);
-
-  const appRef = useRef<HTMLDivElement>(null);
-
-  // Dynamically update window title with full directory/file pathname
-  useEffect(() => {
-    let titleStr = 'boonsh';
-    if (selectedItem) {
-      titleStr = `boonsh - ${selectedItem.path}`;
-    } else if (currentPath) {
-      titleStr = `boonsh - ${currentPath}`;
-    }
-    document.title = titleStr;
-    // Title only: the window size is the user's choice after startup
-    try {
-      getCurrentWindow().setTitle(titleStr).catch(() => {});
-    } catch {
-      // Fallback for non-tauri dev env
-    }
-  }, [currentPath, selectedItem?.path]);
-
-  // Initial window focus and bring-to-front on startup/relaunch
-  useEffect(() => {
-    try {
-      // Invoke native Rust Win32 window focus API
-      invoke('force_window_to_front').catch(() => {});
-
-      const win = getCurrentWindow();
-      const forceForeground = async () => {
-        try {
-          await win.show();
-          await win.setAlwaysOnTop(true);
-          await win.unminimize();
-          await win.setFocus();
-          await win.maximize();
-        } catch {
-          // Fallback if setAlwaysOnTop fails
-          win.unminimize().catch(() => {});
-          win.setFocus().catch(() => {});
-          win.maximize().catch(() => {});
-        }
-      };
-
-      forceForeground();
-
-      // Repeated focus steps to guarantee window focus over foreground apps
-      const t1 = setTimeout(() => {
-        invoke('force_window_to_front').catch(() => {});
-        win.setFocus().catch(() => {});
-      }, 100);
-
-      const t2 = setTimeout(() => {
-        invoke('force_window_to_front').catch(() => {});
-        win.setFocus().catch(() => {});
-      }, 300);
-
-      const t3 = setTimeout(() => {
-        win.setAlwaysOnTop(false).catch(() => {});
-        win.setFocus().catch(() => {});
-      }, 500);
-
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-      };
-    } catch {}
-  }, []);
-
-  // Quick Access: what the bar shows is saved (max QA_MAX items). Nothing saved yet = Home, Desktop, Downloads,
-  // Documents and the C: drive. A saved empty list is a real choice (everything unchecked in Settings).
-  const [qaCandidates, setQaCandidates] = useState<QuickAccessItem[]>([]); // the built-in choices: folders + drives
-  const loadQaCandidates = () =>
-    invoke<QuickAccessItem[]>('get_quick_access')
-      .then((qa) => {
-        setQaCandidates(qa);
-        return qa;
-      })
-      .catch((err) => {
-        console.error('Quick access error:', err);
-        return [] as QuickAccessItem[];
-      });
-  useEffect(() => {
-    const saved = parseSaved(localStorage.getItem(QA_KEY));
-    if (saved) setQuickAccess(saved);
-    loadQaCandidates().then((qa) => {
-      if (saved) return;
-      const initial = defaultQuickAccess(qa);
-      setQuickAccess(initial);
-      localStorage.setItem(QA_KEY, JSON.stringify(initial));
-    });
-  }, []);
-  // drives can come and go: look again whenever Settings opens
-  useEffect(() => {
-    if (showSettings) loadQaCandidates();
-  }, [showSettings]);
-
-  const saveQuickAccess = (list: QuickAccessItem[]) => {
-    setQuickAccess(list);
-    localStorage.setItem(QA_KEY, JSON.stringify(list));
-  };
-
-  // Quick Access Add / Remove Handlers
-  const handleAddQuickAccess = (item: { label: string; path: string; icon_type?: string }) => {
-    if (quickAccess.length >= QA_MAX) {
-      alert(`Quick Access is limited to a maximum of ${QA_MAX} items. Remove one in Settings, Quick Access, or by right-click.`);
-      return;
-    }
-    if (isShown(quickAccess, { label: item.label, path: item.path, icon_type: '' })) {
-      alert('This item is already in Quick Access.');
-      return;
-    }
-    saveQuickAccess([...quickAccess, { label: item.label, path: item.path, icon_type: item.icon_type || 'folder' }]);
-  };
-
-  const handleRemoveQuickAccess = (path: string) => {
-    saveQuickAccess(quickAccess.filter((q) => !samePath(q.path, path)));
-  };
-
+  const {
+    appRef,
+    leftWidthPct,
+    treeWidthPx,
+    previewHeightPx,
+    assistantHeightPx,
+    isDraggingV,
+    isDraggingTree,
+    isDraggingH,
+    isDraggingAi,
+    startV,
+    startTree,
+    startH,
+    startAi,
+    handleMouseMove,
+    handleMouseUp,
+  } = useSplitters(showFilePanel);
+  const { quickAccess, qaCandidates, saveQuickAccess, handleAddQuickAccess, handleRemoveQuickAccess } = useQuickAccess(showSettings);
+  const skipVisitRef = useRef(false); // a switch between two panes is not a visit
+  const { freqStats, freqSettings, updateFreqStats, updateFreqSettings, forgetFolder } = useFrequent(currentPath, skipVisitRef);
+  // ---- This PC (drives.rs, ThisPCView) ----
+  // After a click on "This PC" (or Up at the top of a drive), the This PC view in place of the file list. The
+  // folder (and the terminal) stay where they were; file keys and Paste do nothing there.
+  const { drives, loadDrives, thisPC, setThisPC, thisPCRef } = useDrives();
+  useWindowSetup(currentPath, selectedItem?.path);
   const normalizePath = (p: string) => p.toLowerCase().replace(/\\+$/, '');
 
   const selectSingle = (item: FileItem | null) => {
@@ -506,6 +191,7 @@ export function App() {
         setCurrentPath(res.current_path);
         setParentPath(res.parent_path);
         setRawItems(res.items);
+        setThisPC(false); // a folder opened: leave the This PC view
         setTreeListing({ path: res.current_path, items: res.items });
         setTotalFiles(res.total_files);
         setTotalFolders(res.total_folders);
@@ -524,13 +210,8 @@ export function App() {
       .catch((err) => {
         console.error('List directory error:', err);
         // a folder that can no longer be opened (deleted, drive gone) should not stay in Frequently Accessed
-        if (targetPath) {
-          const next = removeVisit(freqStatsRef.current, targetPath);
-          if (next !== freqStatsRef.current) {
-            freqStatsRef.current = next;
-            updateFreqStats(next);
-          }
-        }
+        // a folder that can no longer be opened (deleted, drive gone) should not stay in Frequently Accessed
+        if (targetPath) forgetFolder(targetPath);
         return false;
       });
   };
@@ -538,53 +219,57 @@ export function App() {
   useEffect(() => {
     fetchDirectory();
   }, []);
-
-  // Every time a different folder becomes the current one (double-click, tree, Quick Access, path bar, `cd` in
-  // the terminal) it counts as one visit. Refreshing or searching does not change the path, so it does not count.
-  const freqStatsRef = useRef(freqStats);
-  freqStatsRef.current = freqStats;
-  useEffect(() => {
-    if (!currentPath) return;
-    const next = recordVisit(freqStatsRef.current, currentPath);
-    freqStatsRef.current = next;
-    updateFreqStats(next);
-  }, [currentPath]);
-
-  // ---- Command line tabs ----
-  // Each tab is its own shell. The active tab is the one the file panel follows, the one GUI navigation sends
-  // `cd` to, and the one commands/paths are typed into. Refs are updated together with the state so code that
-  // runs right after a change (select a new tab, then navigate) already sees it.
-  const [tabs, setTabs] = useState<TermTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const tabsRef = useRef<TermTab[]>([]);
-  const activeTabIdRef = useRef<string | null>(null);
-  const tabCounterRef = useRef(0);
-  const tabColorRef = useRef(0); // next color of the rotation
-  const userNameRef = useRef('User');
-  const firstTabRef = useRef(false);
-  const appLevelRef = useRef<'admin' | 'normal'>('normal'); // the login boonsh itself runs with
-  // Per tab: true while its shell sits at the prompt, false while a command or program (claude, vim, npm run dev
-  // ...) is running. Keys sent to a running program would be typed into it, so a cd is held back until the
-  // prompt returns.
-  const atPromptRef = useRef<Record<string, boolean>>({});
-  // Per tab: the folder the GUI moved to while a program was running; the shell is told when its prompt is back.
-  const heldCdRef = useRef<Record<string, string | null>>({});
-
-  const updateTabs = (next: TermTab[]) => {
-    tabsRef.current = next;
-    setTabs(next);
-  };
-  const activate = (id: string | null) => {
-    activeTabIdRef.current = id;
-    setActiveTabId(id);
+  // The file panel follows the tab: show the folder the tab's shell is in
+  const followTab = (t: TermTab) => {
+    if (t.cwd && normalizePath(t.cwd) !== normalizePath(currentPathRef.current)) fetchDirectory(t.cwd);
   };
 
-  // Type into the active tab's shell
-  const ptyWrite = (data: string): Promise<unknown> => {
-    const id = activeTabIdRef.current;
-    return id ? invoke('pty_write', { id, data }) : Promise.resolve();
+  const {
+    tabs,
+    activeTabId,
+    tabsRef,
+    activeTabIdRef,
+    atPromptRef,
+    heldCdRef,
+    updateTabs,
+    ptyWrite,
+    newTab,
+    splitTab,
+    splitPane,
+    selectTab,
+    removeTab,
+    closeTab,
+    closePane,
+    closeAllTabs,
+    switchTabLevel,
+    spawnFailed,
+    renameTab,
+    recolorTab,
+    moveTab,
+  } = useTerminalTabs({ currentPathRef, pendingCmdRef, onFollow: followTab });
+  // The folder the active screen's shell is in: command templates are expanded against it (`.\name` paths), which
+  // is not always the file panel's folder (switching between two panes does not move the shell)
+  const shellCwdRef = {
+    get current() {
+      return tabsRef.current.find((t) => t.id === activeTabIdRef.current)?.cwd || currentPathRef.current;
+    },
+    set current(_v: string) {},
   };
-
+  const {
+    commandGroups,
+    handleCommandGroupsChange,
+    resetCommands,
+    globalVars,
+    pathVars,
+    pathVarsRef,
+    constVars,
+    handleGlobalVarsChange,
+    handleConstVarsChange,
+    assignPathVar,
+    rewritePromptLine,
+    expandCommand,
+    pickCommand,
+  } = useCommandLine({ ptyWrite, currentPathRef: shellCwdRef, pendingCmdRef });
   // History Commands: put an earlier command of the active screen on its prompt line (replacing what is typed
   // there) for the user to review and run. Not while a program runs: the keys would go to that program.
   const typeFromHistory = async (text: string) => {
@@ -597,211 +282,6 @@ export function App() {
     pendingCmdRef.current = null;
     await rewritePromptLine(text);
   };
-
-  // The file panel follows the tab: show the folder the tab's shell is in
-  const followTab = (t: TermTab) => {
-    if (t.cwd && normalizePath(t.cwd) !== normalizePath(currentPathRef.current)) fetchDirectory(t.cwd);
-  };
-
-  const newTab = () => {
-    const id = `tab${++tabCounterRef.current}`;
-    atPromptRef.current[id] = true;
-    updateTabs([
-      ...tabsRef.current,
-      {
-        id,
-        name: userNameRef.current,
-        cwd: currentPathRef.current,
-        level: appLevelRef.current,
-        color: tabColor(tabColorRef.current++),
-      },
-    ]);
-    pendingCmdRef.current = null;
-    activate(id);
-  };
-
-  // Split Screen: a second shell beside the tab, started like a new tab (same login as the app, the tab's folder).
-  // It is a screen of the same tab, so it takes the tab's color; a tab is split once only.
-  const splitTab = (mainId: string) => {
-    const list = tabsRef.current;
-    const main = list.find((t) => t.id === mainId);
-    if (!main || main.splitOf || list.some((t) => t.splitOf === mainId)) return;
-    const id = `tab${++tabCounterRef.current}`;
-    atPromptRef.current[id] = true;
-    const idx = list.indexOf(main);
-    const pane: TermTab = {
-      id,
-      name: userNameRef.current,
-      cwd: main.cwd || currentPathRef.current,
-      level: appLevelRef.current,
-      color: main.color,
-      splitOf: mainId,
-    };
-    updateTabs([...list.slice(0, idx + 1), pane, ...list.slice(idx + 1)]);
-    pendingCmdRef.current = null;
-    activate(id);
-    followTab(pane);
-  };
-
-  const selectTab = (id: string) => {
-    if (id === activeTabIdRef.current) return;
-    const t = tabsRef.current.find((x) => x.id === id);
-    if (!t) return;
-    pendingCmdRef.current = null;
-    activate(id);
-    followTab(t);
-  };
-
-  const lastRespawnRef = useRef(0);
-  const removeTab = (id: string, byExit = false) => {
-    const list = tabsRef.current;
-    const idx = list.findIndex((t) => t.id === id);
-    if (idx < 0) return;
-    const gone = list[idx];
-    delete atPromptRef.current[id];
-    delete heldCdRef.current[id];
-    // One screen of a split tab closes: the other one stays as the tab's only screen, with the tab's name and color
-    const partner = gone.splitOf
-      ? list.find((t) => t.id === gone.splitOf)
-      : list.find((t) => t.splitOf === id);
-    if (partner) {
-      updateTabs(
-        list
-          .filter((t) => t.id !== id)
-          .map((t) => (t.id === partner.id && t.splitOf ? { ...t, splitOf: undefined, name: gone.name, color: gone.color } : t))
-      );
-      if (activeTabIdRef.current === id) {
-        pendingCmdRef.current = null;
-        activate(partner.id);
-        followTab(partner);
-      }
-      return;
-    }
-    const next = list.filter((t) => t.id !== id);
-    updateTabs(next);
-    if (next.length === 0) {
-      // There is always one command line: the last tab going away leaves a fresh one. A shell that dies at once
-      // (a broken install) must not respawn in a loop, so a tab that ended on its own gets one only every 3 s.
-      pendingCmdRef.current = null;
-      activate(null);
-      if (!byExit || Date.now() - lastRespawnRef.current > 3000) {
-        lastRespawnRef.current = Date.now();
-        newTab();
-      }
-      return;
-    }
-    if (activeTabIdRef.current === id) {
-      const near = next[idx] ?? next[idx - 1] ?? null;
-      // a split tab next to it: go to its left screen
-      const neighbor = near?.splitOf ? next.find((t) => t.id === near.splitOf) ?? near : near;
-      pendingCmdRef.current = null;
-      activate(neighbor ? neighbor.id : null);
-      if (neighbor) followTab(neighbor);
-    }
-  };
-
-  const RUNNING_MSG = 'A program is still running in this tab. Close it anyway?';
-  // Close a whole tab (both screens when it is split)
-  const closeTab = (id: string) => {
-    const right = tabsRef.current.find((t) => t.splitOf === id);
-    const ids = right ? [id, right.id] : [id];
-    if (ids.some((x) => atPromptRef.current[x] === false) && !window.confirm(RUNNING_MSG)) return;
-    if (right) {
-      if (activeTabIdRef.current === right.id) activate(id); // the file panel then follows the next tab only once
-      removeTab(right.id);
-    }
-    removeTab(id);
-  };
-  // Close one screen of a split tab
-  const closePane = (id: string) => {
-    if (atPromptRef.current[id] === false && !window.confirm('A program is still running in this screen. Close it anyway?')) return;
-    removeTab(id);
-  };
-  const closeAllTabs = () => {
-    if (tabsRef.current.some((t) => atPromptRef.current[t.id] === false) && !window.confirm(RUNNING_MSG)) return;
-    updateTabs([]);
-    activate(null);
-    atPromptRef.current = {};
-    heldCdRef.current = {};
-    pendingCmdRef.current = null;
-    newTab(); // there is always one command line
-  };
-  // Give a tab a new shell with the other login: same place in the bar, same name and folder, new id (so the old
-  // shell is ended and a new one starts). Only this tab changes; the others keep running as they are.
-  const replaceTab = (oldId: string, level: 'admin' | 'normal') => {
-    const list = tabsRef.current;
-    if (!list.some((t) => t.id === oldId)) return;
-    const nid = `tab${++tabCounterRef.current}`;
-    delete atPromptRef.current[oldId];
-    delete heldCdRef.current[oldId];
-    atPromptRef.current[nid] = true;
-    updateTabs(
-      list.map((t) =>
-        t.id === oldId ? { ...t, id: nid, level } : t.splitOf === oldId ? { ...t, splitOf: nid } : t
-      )
-    );
-    if (activeTabIdRef.current === oldId) {
-      pendingCmdRef.current = null;
-      activate(nid);
-    }
-  };
-  const switchTabLevel = () => {
-    const id = activeTabIdRef.current;
-    const t = tabsRef.current.find((x) => x.id === id);
-    if (!id || !t) return;
-    if (
-      atPromptRef.current[id] === false &&
-      !window.confirm("Switching the login restarts this tab's command line and ends the program running in it. Continue?")
-    ) {
-      return;
-    }
-    replaceTab(id, t.level === 'admin' ? 'normal' : 'admin');
-  };
-  // A tab's shell could not start (the Windows permission prompt was refused ...): back to the app's own login
-  const spawnFailed = (id: string, message: string) => {
-    window.alert(message);
-    const t = tabsRef.current.find((x) => x.id === id);
-    if (!t) return;
-    if (t.level !== appLevelRef.current) replaceTab(id, appLevelRef.current);
-    else removeTab(id);
-  };
-  const renameTab = (id: string, name: string) => {
-    updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, name } : t)));
-  };
-  const recolorTab = (id: string, color: string) => {
-    updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, color } : t)));
-  };
-  // Drag a tab to a new place in the bar (index among the tab headers); a split tab moves with its right screen
-  const moveTab = (id: string, toIndex: number) => {
-    const groups: TermTab[][] = [];
-    for (const t of tabsRef.current) {
-      if (t.splitOf && groups.length) groups[groups.length - 1].push(t);
-      else groups.push([t]);
-    }
-    const from = groups.findIndex((g) => g[0].id === id);
-    if (from < 0 || from === toIndex || toIndex < 0 || toIndex >= groups.length) return;
-    const [g] = groups.splice(from, 1);
-    groups.splice(toIndex, 0, g);
-    updateTabs(groups.flat());
-  };
-
-  // The first tab: named after the user, opens in the default folder
-  useEffect(() => {
-    if (firstTabRef.current) return; // StrictMode runs effects twice in dev
-    firstTabRef.current = true;
-    Promise.all([
-      invoke<string>('get_username')
-        .then((n) => {
-          userNameRef.current = n;
-        })
-        .catch(() => {}),
-      invoke<boolean>('is_admin')
-        .then((a) => {
-          appLevelRef.current = a ? 'admin' : 'normal';
-        })
-        .catch(() => {}),
-    ]).finally(newTab);
-  }, []);
 
   // Bi-directional navigation: Navigate GUI & send cd command to the active tab's PowerShell
   // selectPaths: select these after opening (Open file location from a basket)
@@ -848,10 +328,14 @@ export function App() {
       return;
     }
     // Remember where this tab is, so switching back to it shows that folder
+    const before = tabsRef.current.find((t) => t.id === id)?.cwd ?? '';
     if (tabsRef.current.some((t) => t.id === id && t.cwd !== path)) {
       updateTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, cwd: path } : t)));
     }
     if (id !== activeTabIdRef.current) return; // a tab in the background does not move the file panel
+    // Only a shell that moved (a typed cd) moves the file panel: with two panes the shell stays in its folder when
+    // the user switches panes, so a prompt in the same folder as before must not pull the active pane back.
+    if (before && normalizePath(path) === normalizePath(before)) return;
     const last = lastRequestedPathRef.current;
     if (last === null || normalizePath(path) !== normalizePath(last)) {
       fetchDirectory(path);
@@ -870,6 +354,18 @@ export function App() {
     });
   };
 
+  // ---- Cut / Copy / Paste (paste.rs, hooks/usePaste.ts) ----
+  const { clipboard, setClipboard, pasteItems, transfer, pasteError, clashPrompt, jobs: pasteJobs, cancelJob, pauseJob, startJobNow } = usePaste({
+    currentPathRef,
+    basketViewRef,
+    addToBasket: (basket, paths) => addToBasket(basket, paths),
+    // show the pasted items selected, unless the user has gone to another folder meanwhile (a long copy)
+    reload: (dest, selectPaths) => {
+      if (!basketViewRef.current && normalizePath(currentPathRef.current) === normalizePath(dest)) fetchDirectory(dest, selectPaths);
+      reloadOtherPane(dest, selectPaths);
+    },
+    notify: (message) => setRenameToast({ message, undoable: false }),
+  });
   // ---- Baskets (basket.rs / basket.ts) ----
   // Open a basket: its own folder becomes the current folder (so the command line is there), then its links show.
   const openBasket = async (path: string) => {
@@ -934,10 +430,19 @@ export function App() {
     }
   };
   const refreshView = () => {
+    if (thisPCRef.current) {
+      loadDrives();
+      return;
+    }
     if (basketViewRef.current) {
       if (searchQueryRef.current.trim()) setSearchRefreshTick((t) => t + 1);
       else loadBasket();
-    } else fetchDirectory(currentPathRef.current);
+    } else {
+      fetchDirectory(currentPathRef.current);
+      // Refresh measures the folders again from scratch (changes deep inside are not watched)
+      const path = currentPathRef.current;
+      if (path) invoke('folder_sizes_forget', { path, levels: 0xffffffff }).catch(() => {}).finally(remeasure);
+    }
   };
 
   const loadBasketRef = useRef(loadBasket);
@@ -1031,6 +536,7 @@ export function App() {
   // An open basket (and the level inside it) is listed and searched instead of the folder
   const basketKey = basketView ? [basketView.path, ...basketView.trail].join('|') : '';
   const prevBasketKeyRef = useRef(basketKey);
+  const skipSearchReloadRef = useRef(false); // a pane switch clears the search and opens the folder itself
   useEffect(() => {
     const seq = ++searchSeqRef.current;
     const q = searchQuery.trim();
@@ -1043,7 +549,8 @@ export function App() {
       setSearchError('');
       setSearchNotice('');
       setSearching(false);
-      if (bv) loadBasket(bv);
+      if (skipSearchReloadRef.current) skipSearchReloadRef.current = false;
+      else if (bv) loadBasket(bv);
       else if (!basketChanged) fetchDirectory(currentPath);
       return;
     }
@@ -1139,77 +646,152 @@ export function App() {
     };
   }, []);
 
+  const openThisPC = () => {
+    if (basketViewRef.current) {
+      setBasketView(null);
+      setBasketCounts(null);
+    }
+    if (searchQueryRef.current.trim()) setSearchQuery('');
+    selectSingle(null);
+    setThisPC(true);
+    loadDrives();
+  };
+  const thisPCShown = thisPC && !searchQuery.trim();
+
+  const inFolderView = !basketView && !searchQuery.trim();
+  const { sizedItems, sizeStatus, remeasure } = useFolderSizes({
+    currentPath,
+    currentPathRef,
+    parentPath,
+    rawItems,
+    sizesOn: colPrefs.folderSizes,
+    inFolderView,
+    basketOpen: !!basketView,
+    totalSize,
+  });
+  const { details, appByExt } = useFileDetails(rawItems, colPrefs, sortLevels, groups);
   // Sort Items logic (see columns.ts): folders first (optional), each sort level in turn, then the name
   const layout = useMemo(
-    () => layoutItems(rawItems, groups, sortLevels, colPrefs, details, collapsed),
-    [rawItems, groups, sortLevels, colPrefs, details, collapsed]
+    () => layoutItems(sizedItems, groups, sortLevels, colPrefs, details, collapsed),
+    [sizedItems, groups, sortLevels, colPrefs, details, collapsed]
   );
   // the items in view order, without those folded away inside a collapsed group (selection works on these)
   const sortedItems = layout.flat;
-  const toggleGroup = (id: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
 
-  const showType = colPrefs.visible.includes('ext');
-  useEffect(() => {
-    if (!showType) return;
-    const todo = [...new Set(rawItems.filter((i) => !i.is_dir && i.ext).map((i) => i.ext.toLowerCase()))].filter(
-      (e) => appByExt[e] === undefined
-    );
-    if (todo.length === 0) return;
-    invoke<Record<string, string>>('get_default_apps', { exts: todo })
-      .then((res) => setAppByExt((prev) => ({ ...prev, ...res })))
-      .catch(() => {});
-  }, [rawItems, showType, appByExt]);
-  // The user may change a default app in Windows while boonsh is open: look again when the window comes back
+  // ---- Two file panes (hooks/useDualPane.ts) ----
+  const {
+    dual,
+    ratio: dualRatio,
+    activeSide,
+    other: otherPane,
+    toggleDual,
+    switchTo,
+    toggleActive,
+    reloadOther,
+    setRatio: setDualRatio,
+    saveRatio: saveDualRatio,
+  } = useDualPane({
+    getActive: () => ({
+      path: currentPathRef.current,
+      items: rawItems,
+      selected: [...selectedPaths],
+      plain: !basketViewRef.current && !searchQueryRef.current.trim() && !thisPCRef.current,
+    }),
+    navigate: async (path, select) => {
+      if (searchQueryRef.current.trim()) {
+        skipSearchReloadRef.current = true;
+        setSearchQuery('');
+      }
+      skipVisitRef.current = true;
+      // the terminal stays where it is (the user's choice): no cd on a switch
+      const ok = await fetchDirectory(path, select);
+      if (!ok) skipVisitRef.current = false;
+      return ok;
+    },
+  });
+  const otherLayout = useMemo(
+    () => layoutItems(otherPane?.items ?? [], groups, sortLevels, colPrefs, details, collapsed),
+    [otherPane?.items, groups, sortLevels, colPrefs, details, collapsed]
+  );
+  // a paste / F5 / F6 into the folder the other pane shows: list it again with the new items selected
+  function reloadOtherPane(dest: string, selectPaths: string[]) {
+    if (otherPane && sameFolder(otherPane.path, dest)) reloadOther(selectPaths);
+  }
+  // F5 / F6 (and a drop): copy or move to the other pane. In an open basket only its linked items go.
+  const sendToOtherPane = async (move: boolean, paths = selectedItems.filter((i) => !i.state).map((i) => i.path), ask = true) => {
+    if (!otherPane || thisPCRef.current) return;
+    const problem = transferProblem(paths, currentPathRef.current, otherPane.path, move);
+    if (problem) {
+      alert(problem);
+      return;
+    }
+    if (ask && !window.confirm(transferQuestion(paths, otherPane.path, move))) return;
+    const bv = basketViewRef.current;
+    try {
+      const res = await transfer({ mode: move ? 'cut' : 'copy', paths, basket: bv?.path }, otherPane.path);
+      const err = res && pasteError(res);
+      if (err) alert(err.message);
+    } catch (err) {
+      alert(String(err));
+    }
+  };
+  // A drop of boonsh items on a pane: copy there (Shift: move). Nothing happens on its own folder.
+  const dropOnPane = (side: Side, e: React.DragEvent) => {
+    if (e.defaultPrevented) return; // a basket row took it
+    const raw = e.dataTransfer.getData('application/x-boonsh-paths');
+    if (!raw) return;
+    e.preventDefault();
+    const paths = JSON.parse(raw) as string[];
+    const dest = side === activeSide ? currentPathRef.current : otherPane?.path ?? '';
+    if (!dest || paths.length === 0 || paths.every((p) => sameFolder(parentDir(p), dest))) return;
+    if (side === activeSide) {
+      if (basketViewRef.current) addToBasket(basketViewRef.current.path, paths);
+      else if (!thisPCRef.current) {
+        transfer({ mode: e.shiftKey ? 'cut' : 'copy', paths }, dest)
+          .then((res) => {
+            const err = res && pasteError(res);
+            if (err) alert(err.message);
+          })
+          .catch((err) => alert(String(err)));
+      }
+      return;
+    }
+    const problem = transferProblem(paths, parentDir(paths[0]), dest, e.shiftKey);
+    if (problem) {
+      alert(problem);
+      return;
+    }
+    transfer({ mode: e.shiftKey ? 'cut' : 'copy', paths }, dest)
+      .then((res) => {
+        const err = res && pasteError(res);
+        if (err) alert(err.message);
+      })
+      .catch((err) => alert(String(err)));
+  };
+  const dualBoxRef = useRef<HTMLDivElement>(null);
+  const startDualDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const box = dualBoxRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const move = (ev: MouseEvent) => setDualRatio((ev.clientX - box.left) / box.width);
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      saveDualRatio();
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  // linked items may have been moved or added elsewhere meanwhile: check the open basket again when the window
+  // comes back
   useEffect(() => {
     const onFocus = () => {
-      setAppByExt({});
-      // linked items may have been moved or added elsewhere meanwhile: check the open basket again
       if (basketViewRef.current && !searchQueryRef.current.trim()) loadBasketRef.current(undefined, undefined, true);
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, []);
-
-  // Properties for the Dimensions / Length / Album ... columns (and sorting by them) are read from the files
-  // by the backend, only for the files that can have them, and only while such a column is shown or sorted on.
-  const detailsSeqRef = useRef(0);
-  const detailsRef = useRef(details);
-  detailsRef.current = details;
-  const wantDetails = needsDetails(colPrefs, [
-    ...sortLevels,
-    ...groups.map((g) => ({ column: g.column, order: 'asc' as const })),
-  ]);
-  useEffect(() => {
-    if (!wantDetails) return;
-    const todo = rawItems.filter((i) => hasMediaProps(i) && !detailsRef.current[detailKey(i)]);
-    if (todo.length === 0) return;
-    const seq = ++detailsSeqRef.current;
-    (async () => {
-      for (let k = 0; k < todo.length; k += 50) {
-        if (seq !== detailsSeqRef.current) return; // a newer folder / list took over
-        const chunk = todo.slice(k, k + 50);
-        try {
-          const res = await invoke<ItemDetails[]>('get_file_details', { paths: chunk.map((c) => c.path) });
-          if (seq !== detailsSeqRef.current) return;
-          setDetails((prev) => {
-            const next = { ...prev };
-            chunk.forEach((item, n) => {
-              if (res[n]) next[detailKey(item)] = res[n];
-            });
-            return next;
-          });
-        } catch {
-          return;
-        }
-      }
-    })();
-  }, [rawItems, wantDetails]);
-
   // --- Multi-selection (Click / Ctrl+Click / Shift+Click / Ctrl+A) ---
   const selectedItems = sortedItems.filter((i) => selectedPaths.has(i.path));
 
@@ -1259,29 +841,19 @@ export function App() {
     setClipboard({ mode, paths: items.map((i) => i.path), basket: basketView?.path });
   };
 
-  // Paste into the current folder; resolves with the new paths (the AI Assistant uses it too). In an open basket
-  // a paste adds links instead.
-  const pasteItems = async (): Promise<string[]> => {
-    if (!clipboard || !currentPath) return [];
-    if (basketViewRef.current) {
-      await addToBasket(basketViewRef.current.path, clipboard.paths);
-      return [];
-    }
-    const dest = currentPath;
-    try {
-      const newPaths = clipboard.basket
-        ? await invoke<string[]>('basket_paste_out', { basket: clipboard.basket, paths: clipboard.paths, destDir: dest, mode: clipboard.mode })
-        : await invoke<string[]>('paste_items', { paths: clipboard.paths, destDir: dest, mode: clipboard.mode });
-      if (clipboard.mode === 'cut') setClipboard(null); // moved items can't be pasted again
-      fetchDirectory(dest, newPaths);
-      return newPaths;
-    } catch (err) {
-      fetchDirectory(dest);
-      throw err;
-    }
-  };
+  // ---- Updates (updater.ts): the installer closes boonsh, which ends the programs running in its tabs ----
+  const updater = useUpdater(() => {
+    const running = tabsRef.current.filter((t) => atPromptRef.current[t.id] === false).length;
+    return (
+      running === 0 ||
+      window.confirm(
+        `Installing the update closes boonsh. ${running === 1 ? 'A program is' : `${running} programs are`} still running in the command line and will be stopped. Install now?`
+      )
+    );
+  });
+
   const pasteClipboard = () => {
-    pasteItems().catch((err) => alert(err));
+    pasteItems().catch((err) => alert(err instanceof Error ? err.message : String(err)));
   };
 
   // --- Zip: compress selection / extract selected .zip files (long-running; shown in status bar) ---
@@ -1468,14 +1040,8 @@ export function App() {
     setSort: updateSort,
     setGroups: updateGroups,
     setPrefs: updatePrefs,
-    setViewMode: (mode) => {
-      setViewMode(mode);
-      localStorage.setItem('boonsh_view_mode', mode);
-    },
-    setTheme: (t) => {
-      setTheme(t);
-      localStorage.setItem('boonsh_theme', t);
-    },
+    setViewMode,
+    setTheme,
     setPanels: (p) => {
       if (p.preview !== undefined) setShowPreview(p.preview);
       if (p.filePanel !== undefined) setShowFilePanel(p.filePanel);
@@ -1543,7 +1109,7 @@ export function App() {
   // Handler lives in a ref so the single window listener always sees current state.
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandlerRef.current = (e: KeyboardEvent) => {
-    if (showSettings || bulkRenamePaths) return;
+    if (showSettings || bulkRenamePaths || clashPrompt) return;
     // File keys inside a text field (incl. xterm's hidden textarea) act on the text, not files
     const tag = (e.target as HTMLElement | null)?.tagName;
     const inTextField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
@@ -1556,15 +1122,27 @@ export function App() {
     } else if (e.ctrlKey && key === 'p') {
       e.preventDefault();
       setShowPreview((v) => !v);
-    } else if (e.key === 'F5') {
+    } else if (e.key === 'F5' && !(dual && !inTextField && !thisPCRef.current && !e.ctrlKey && !e.altKey && !e.shiftKey)) {
+      // two-pane mode: F5 copies to the other pane (below); Ctrl+R refreshes
       e.preventDefault();
       refreshView();
     } else if (inTextField) {
       return;
+    } else if (thisPCRef.current) {
+      return; // the This PC view lists drives, not files: no file keys there
     } else if ((e.target as HTMLElement | null)?.closest?.('.assistant-panel')) {
       return; // the AI Assistant's text: Ctrl+A / Ctrl+C work on the text there (the panel handles them)
     } else if (ctrlOnly && key === 'c' && (window.getSelection()?.toString() ?? '') !== '') {
       return; // text is selected (e.g. in the AI Assistant): copy the text, not the files
+    } else if (ctrlOnly && key === 'r') {
+      e.preventDefault();
+      refreshView(); // also in two-pane mode, where F5 copies
+    } else if (dual && (e.key === 'F5' || e.key === 'F6') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      sendToOtherPane(e.key === 'F6');
+    } else if (dual && e.key === 'Tab' && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      toggleActive();
     } else if (e.key === 'Delete') {
       e.preventDefault();
       deleteSelection();
@@ -1599,50 +1177,95 @@ export function App() {
   }, []);
 
   const formatSelectedSize = () =>
-    formatTotalSize(selectedItems.reduce((sum, i) => sum + (i.is_dir ? 0 : i.size), 0));
+    formatTotalSize(selectedItems.reduce((sum, i) => sum + i.size, 0)); // folders count once measured
 
-  // Resizable Panel Mouse Handlers
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!appRef.current) return;
-    const bounds = appRef.current.getBoundingClientRect();
-
-    if (isDraggingV) {
-      const mouseX = e.clientX - bounds.left;
-      const newPct = (mouseX / bounds.width) * 100;
-      if (newPct > 15 && newPct < 85) {
-        // Without the file panel the left column is just the folder tree, whose width is in pixels
-        if (showFilePanel) setLeftWidthPct(newPct);
-        else if (mouseX > 100) setTreeWidthPx(mouseX);
-      }
-    } else if (isDraggingTree) {
-      const mouseX = e.clientX - bounds.left;
-      if (mouseX > 100 && mouseX < bounds.width * 0.4) {
-        setTreeWidthPx(mouseX);
-      }
-    } else if (isDraggingAi) {
-      const h = bounds.bottom - e.clientY - 24; // subtract status bar
-      if (h > 140 && h < bounds.height - 180) {
-        setAssistantHeightPx(h);
-      }
-    } else if (isDraggingH) {
-      const mouseY = bounds.bottom - e.clientY - 24; // subtract status bar
-      if (mouseY > 100 && mouseY < bounds.height - 150) {
-        setPreviewHeightPx(mouseY);
-      }
-    }
+  // The file panel's props. In two-pane mode the active pane gets these; the other pane (passivePanelProps) shows
+  // its own folder, and a click there switches to it (the menus then act on it, as the active pane).
+  const filePanelProps: React.ComponentProps<typeof MainFilePanel> = {
+    items: sortedItems,
+    selectedPaths,
+    onItemClick: handleItemClick,
+    onItemContextSelect: handleItemContextSelect,
+    cutPaths: clipboard?.mode === 'cut' ? clipboard.paths : [],
+    selectionCount: selectedItems.length,
+    canPaste: !!clipboard,
+    onCut: () => clipboardSelection('cut'),
+    onCopy: () => clipboardSelection('copy'),
+    onPaste: pasteClipboard,
+    onDeleteSelection: deleteSelection,
+    onBulkRename: openBulkRename,
+    renameTrigger,
+    zipSelectionCount: selectedZips.length,
+    isBusy: !!busyMessage,
+    onCompress: compressSelection,
+    onExtract: extractSelectedZips,
+    onClearSelection: () => selectSingle(null),
+    onOpenDirectory: openDirectory,
+    onOpenFile: handleOpenFile,
+    basketMode: basketView ? { atTop: basketView.trail.length === 0 } : null,
+    onCreateBasket: createBasket,
+    onPasteIntoBasket: pasteIntoBasket,
+    onDropOnBasket: addToBasket,
+    onRenamed: handleRenamed,
+    onOpenLocation: (item) => handleNavigate(parentDir(item.path), [item.path]),
+    onBasketDeleteFiles: () => deleteBasketFiles(selectedItems),
+    onBasketLink: linkInBasket,
+    onBasketClear: removeFromBasket,
+    onBasketRelink: relinkInBasket,
+    viewMode,
+    colPrefs,
+    sortLevels,
+    details,
+    appByExt,
+    rows: layout.rows,
+    groups,
+    onGroupColumn: groupColumn,
+    onUngroupColumn: (col) => updateGroups(groups.filter((g) => g.column !== col)),
+    onUngroupAll: () => updateGroups([]),
+    onToggleGroup: toggleGroup,
+    onSelectGroup: (groupItems) => {
+      setSelectedItem(groupItems[0] ?? null);
+      setSelectedPaths(new Set(groupItems.map((i) => i.path)));
+      selectionAnchorRef.current = groupItems[0]?.path ?? null;
+    },
+    onCollapseAll: () => setCollapsed(new Set(topGroupIds(layout.rows))),
+    onExpandAll: () => setCollapsed(new Set()),
+    onSortClick: (col, additive) => updateSort(sortClick(sortLevels, col, additive)),
+    onSortSet: (col, order, mode) => updateSort(sortSet(sortLevels, col, order, mode)),
+    onSortRemove: (col) => updateSort(sortRemove(sortLevels, col)),
+    onDateMode: setDateMode,
+    onHideColumn: hideColumn,
+    onOpenColumnSettings: () => openSettings('columns'),
+    onAddQuickAccess: handleAddQuickAccess,
+    currentPath,
+    onRefresh: refreshView,
+    globalVars,
+    pathVars,
+    onAssignPathVar: assignPathVar,
   };
-
-  const handleMouseUp = () => {
-    setIsDraggingV(false);
-    setIsDraggingTree(false);
-    setIsDraggingH(false);
-    setIsDraggingAi(false);
-  };
-
-  const formatTotalSize = (bytes: number) => {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  const passivePanelProps = (side: Side): React.ComponentProps<typeof MainFilePanel> => {
+    const pick = (item: FileItem) => switchTo(side, { select: [item.path] });
+    return {
+      ...filePanelProps,
+      active: false,
+      items: otherLayout.flat,
+      rows: otherLayout.rows,
+      selectedPaths: new Set(otherPane?.selected ?? []),
+      selectionCount: otherPane?.selected.length ?? 0,
+      zipSelectionCount: 0,
+      basketMode: null,
+      currentPath: otherPane?.path ?? '',
+      onItemClick: pick,
+      onItemContextSelect: pick,
+      onClearSelection: () => switchTo(side, { select: [] }),
+      onOpenDirectory: (path) => switchTo(side, { path }),
+      onOpenFile: (item) => {
+        pick(item);
+        if (!isBasket(item) && !item.state) invoke('open_in_default_app', { path: item.path }).catch(() => {});
+      },
+      onSelectGroup: (groupItems) => switchTo(side, { select: groupItems.map((i) => i.path) }),
+      onCollapseAll: () => setCollapsed(new Set(topGroupIds(otherLayout.rows))),
+    };
   };
 
   const handleGlobalContextMenu = (e: React.MouseEvent) => {
@@ -1669,24 +1292,22 @@ export function App() {
         searchOpen={showSearch && showFilePanel}
         onToggleSearch={toggleSearch}
         viewMode={viewMode}
-        onViewModeChange={(mode) => {
-          setViewMode(mode);
-          localStorage.setItem('boonsh_view_mode', mode);
-        }}
+        onViewModeChange={setViewMode}
         showPreview={showPreview}
         onTogglePreview={() => setShowPreview(!showPreview)}
         showFilePanel={showFilePanel}
         onToggleFilePanel={() => setShowFilePanel(!showFilePanel)}
         showTerminal={showTerminal}
         onToggleTerminal={() => setShowTerminal(!showTerminal)}
+        dualPane={dual}
+        onToggleDualPane={() => {
+          if (!dual && !showFilePanel) setShowFilePanel(true);
+          toggleDual();
+        }}
         showAssistant={showAssistant}
         onToggleAssistant={() => toggleAssistant()}
         theme={theme}
-        onToggleTheme={() => {
-          const next = theme === 'dark' ? 'light' : 'dark';
-          setTheme(next);
-          localStorage.setItem('boonsh_theme', next);
-        }}
+        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         onNavigate={(p) => handleNavigate(p)}
         basketTrail={
           basketView
@@ -1700,12 +1321,13 @@ export function App() {
               ]
             : null
         }
-        onUp={basketView ? basketUp : undefined}
+        onUp={basketView ? basketUp : !thisPC && !parentPath && currentPath ? openThisPC : undefined}
+        thisPC={thisPCShown}
         onRefresh={refreshView}
         showSettings={showSettings}
         onOpenSettings={() => openSettings()}
         selectionCount={selectedItems.length}
-        clipboard={clipboard}
+        clipboard={thisPCShown ? null : clipboard}
         onCut={() => clipboardSelection('cut')}
         onCopy={() => clipboardSelection('copy')}
         onPaste={pasteClipboard}
@@ -1716,7 +1338,7 @@ export function App() {
         <SettingsPanel
           groups={commandGroups}
           onChange={handleCommandGroupsChange}
-          onReset={() => setCommandGroups(resetCommandGroups())}
+          onReset={resetCommands}
           initialSection={settingsStart}
           qaShown={quickAccess}
           qaCandidates={qaCandidates}
@@ -1735,6 +1357,7 @@ export function App() {
           onGlobalVarsReset={() => handleGlobalVarsChange(resetGlobalVars())}
           constVars={constVars}
           onConstVarsChange={handleConstVarsChange}
+          onCheckUpdate={updater.checkNow}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -1748,6 +1371,16 @@ export function App() {
           onClose={() => setBulkRenamePaths(null)}
           onApplied={handleBulkRenamed}
         />
+      )}
+
+      {clashPrompt && (
+        <PasteConflictDialog clashes={clashPrompt.clashes} destName={clashPrompt.destName} onDone={clashPrompt.resolve} />
+      )}
+
+      <PasteProgress jobs={pasteJobs} onCancel={cancelJob} onPause={pauseJob} onStartNow={startJobNow} />
+
+      {updater.update && (
+        <UpdateNotice update={updater.update} installing={updater.installing} onInstall={updater.install} onLater={updater.later} />
       )}
 
       {renameToast && (
@@ -1782,6 +1415,8 @@ export function App() {
             <div
               style={{
                 width: showFilePanel ? treeWidthPx : '100%',
+                // A narrow window squeezes the tree before the file panel: the files keep at least 200 px
+                maxWidth: showFilePanel ? 'max(120px, calc(100% - 200px))' : undefined,
                 height: '100%',
                 flexShrink: 0,
                 display: 'flex',
@@ -1793,7 +1428,7 @@ export function App() {
                   items={topFolders(freqStats, freqSettings.count)}
                   currentPath={currentPath}
                   onNavigate={handleNavigate}
-                  onRemove={(path) => updateFreqStats(removeVisit(freqStats, path))}
+                  onRemove={forgetFolder}
                 />
               )}
               <div style={{ flex: '1 1 0%', minHeight: 0 }}>
@@ -1806,6 +1441,9 @@ export function App() {
                 listing={treeListing}
                 onAddQuickAccess={handleAddQuickAccess}
                 onRefresh={refreshView}
+                drives={drives}
+                onOpenThisPC={openThisPC}
+                thisPCOpen={thisPCShown}
               />
               </div>
             </div>
@@ -1814,7 +1452,7 @@ export function App() {
             {showFilePanel && (
               <div
                 className={`split-handle-v ${isDraggingTree ? 'dragging' : ''}`}
-                onMouseDown={() => setIsDraggingTree(true)}
+                onMouseDown={startTree}
                 title="Drag to resize folder tree width"
               />
             )}
@@ -1822,68 +1460,66 @@ export function App() {
             {/* Middle Sub-pane: Main File Explorer Table / Grid */}
             {showFilePanel && (
               <div className="file-panel-column">
-              <MainFilePanel
-                items={sortedItems}
-                selectedPaths={selectedPaths}
-                onItemClick={handleItemClick}
-                onItemContextSelect={handleItemContextSelect}
-                cutPaths={clipboard?.mode === 'cut' ? clipboard.paths : []}
-                selectionCount={selectedItems.length}
-                canPaste={!!clipboard}
-                onCut={() => clipboardSelection('cut')}
-                onCopy={() => clipboardSelection('copy')}
-                onPaste={pasteClipboard}
-                onDeleteSelection={deleteSelection}
-                onBulkRename={openBulkRename}
-                renameTrigger={renameTrigger}
-                zipSelectionCount={selectedZips.length}
-                isBusy={!!busyMessage}
-                onCompress={compressSelection}
-                onExtract={extractSelectedZips}
-                onClearSelection={() => selectSingle(null)}
-                onOpenDirectory={openDirectory}
-                onOpenFile={handleOpenFile}
-                basketMode={basketView ? { atTop: basketView.trail.length === 0 } : null}
-                onCreateBasket={createBasket}
-                onPasteIntoBasket={pasteIntoBasket}
-                onDropOnBasket={addToBasket}
-                onRenamed={handleRenamed}
-                onOpenLocation={(item) => handleNavigate(parentDir(item.path), [item.path])}
-                onBasketDeleteFiles={() => deleteBasketFiles(selectedItems)}
-                onBasketLink={linkInBasket}
-                onBasketClear={removeFromBasket}
-                onBasketRelink={relinkInBasket}
-                viewMode={viewMode}
-                colPrefs={colPrefs}
-                sortLevels={sortLevels}
-                details={details}
-                appByExt={appByExt}
-                rows={layout.rows}
-                groups={groups}
-                onGroupColumn={groupColumn}
-                onUngroupColumn={(col) => updateGroups(groups.filter((g) => g.column !== col))}
-                onUngroupAll={() => updateGroups([])}
-                onToggleGroup={toggleGroup}
-                onSelectGroup={(groupItems) => {
-                  setSelectedItem(groupItems[0] ?? null);
-                  setSelectedPaths(new Set(groupItems.map((i) => i.path)));
-                  selectionAnchorRef.current = groupItems[0]?.path ?? null;
-                }}
-                onCollapseAll={() => setCollapsed(new Set(topGroupIds(layout.rows)))}
-                onExpandAll={() => setCollapsed(new Set())}
-                onSortClick={(col, additive) => updateSort(sortClick(sortLevels, col, additive))}
-                onSortSet={(col, order, mode) => updateSort(sortSet(sortLevels, col, order, mode))}
-                onSortRemove={(col) => updateSort(sortRemove(sortLevels, col))}
-                onDateMode={setDateMode}
-                onHideColumn={hideColumn}
-                onOpenColumnSettings={() => openSettings('columns')}
-                onAddQuickAccess={handleAddQuickAccess}
-                currentPath={currentPath}
-                onRefresh={refreshView}
-                globalVars={globalVars}
-                pathVars={pathVars}
-                onAssignPathVar={assignPathVar}
-              />
+              {!dual ? (
+                <>
+                  {thisPCShown && <ThisPCView drives={drives} onOpen={(p) => handleNavigate(p)} />}
+                  {/* kept mounted (column widths, scroll) while This PC is shown */}
+                  <div style={{ display: thisPCShown ? 'none' : 'contents' }}>
+                    <MainFilePanel {...filePanelProps} />
+                  </div>
+                </>
+              ) : (
+                <div className="dual-panes" ref={dualBoxRef}>
+                  {(['left', 'right'] as Side[]).map((side) => {
+                    const isActive = side === activeSide;
+                    const title = isActive
+                      ? thisPCShown
+                        ? 'This PC'
+                        : basketView
+                        ? `${basketName(basketView.path)} (basket)`
+                        : searchQuery.trim()
+                        ? `Search in ${currentPath}`
+                        : currentPath
+                      : otherPane?.path ?? '';
+                    return (
+                      <div key={side} style={{ display: 'contents' }}>
+                        {side === 'right' && (
+                          <div
+                            className="split-handle-v dual-divider"
+                            onMouseDown={startDualDrag}
+                            onDoubleClick={() => {
+                              setDualRatio(0.5);
+                              saveDualRatio();
+                            }}
+                            title="Drag to resize the panes (double-click: half and half)"
+                          />
+                        )}
+                        <div
+                          className={`file-pane ${isActive ? 'active' : ''}`}
+                          style={side === 'left' ? { width: `${dualRatio * 100}%` } : { flex: '1 1 0%' }}
+                          onDragOver={(e) => {
+                            if (!e.dataTransfer.types.includes('application/x-boonsh-paths')) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = e.shiftKey ? 'move' : 'copy';
+                          }}
+                          onDrop={(e) => dropOnPane(side, e)}
+                          onContextMenuCapture={isActive ? undefined : () => switchTo(side)}
+                        >
+                          <div className="file-pane-head" onClick={() => switchTo(side)} title={title}>
+                            <span className="file-pane-path">
+                              <bdi dir="ltr">{title}</bdi>
+                            </span>
+                          </div>
+                          {isActive && thisPCShown && <ThisPCView drives={drives} onOpen={(p) => handleNavigate(p)} />}
+                          <div style={{ display: isActive && thisPCShown ? 'none' : 'contents' }}>
+                            <MainFilePanel {...(isActive ? filePanelProps : passivePanelProps(side))} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {showSearch && (
                 <SearchBar
                   searchQuery={searchQuery}
@@ -1904,7 +1540,7 @@ export function App() {
           {showPreview && (
             <div
               className={`split-handle-h ${isDraggingH ? 'dragging' : ''}`}
-              onMouseDown={() => setIsDraggingH(true)}
+              onMouseDown={startH}
             />
           )}
 
@@ -1925,7 +1561,7 @@ export function App() {
         {rightShown && (
           <div
             className={`split-handle-v ${isDraggingV ? 'dragging' : ''}`}
-            onMouseDown={() => setIsDraggingV(true)}
+            onMouseDown={startV}
           />
         )}
 
@@ -1942,6 +1578,7 @@ export function App() {
             onNewTab={newTab}
             onCloseTab={closeTab}
             onSplitTab={splitTab}
+            onSplitPane={splitPane}
             onClosePane={closePane}
             onCloseAllTabs={closeAllTabs}
             onRenameTab={renameTab}
@@ -1973,7 +1610,7 @@ export function App() {
           {showAssistant && showTerminal && (
             <div
               className={`split-handle-h ${isDraggingAi ? 'dragging' : ''}`}
-              onMouseDown={() => setIsDraggingAi(true)}
+              onMouseDown={startAi}
               title="Drag to resize the AI Assistant panel"
             />
           )}
@@ -1996,13 +1633,16 @@ export function App() {
       <StatusBar
         totalFiles={totalFiles}
         totalFolders={totalFolders}
-        totalSizeFormatted={formatTotalSize(totalSize)}
-        selectedItem={selectedItem}
+        totalSizeFormatted={sizeStatus().text}
+        totalSizeNote={sizeStatus().note}
+        totalSizeTitle={sizeStatus().title}
+        selectedItem={(selectedItem && selectedItems.find((i) => i.path === selectedItem.path)) || selectedItem}
         selectionCount={selectedItems.length}
         selectionSizeFormatted={formatSelectedSize()}
         busyMessage={busyMessage}
         shellEngine={shellEngine}
         basketCounts={basketView && !searchQuery.trim() ? basketCounts : null}
+        drivesCount={thisPCShown ? drives.length : null}
       />
     </div>
   );

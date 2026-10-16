@@ -35,7 +35,13 @@ export const FrequentPanel: React.FC<FrequentPanelProps> = ({ items, currentPath
               setMenu({ x: ev.clientX, y: ev.clientY, entry: e });
             }}
           >
-            <Folder size={14} style={{ color: 'var(--text-main)', flexShrink: 0 }} />
+            {/* the file panel's folder: 16 px, filled yellow, a one-screen-pixel line */}
+            <Folder
+              size={16}
+              strokeWidth={1 / Math.max(1, window.devicePixelRatio || 1)}
+              absoluteStrokeWidth
+              style={{ color: 'var(--folder-stroke)', fill: 'var(--folder-fill)', flexShrink: 0 }}
+            />
             <span className="frequent-name">{folderLabel(e.path)}</span>
           </div>
         ))}

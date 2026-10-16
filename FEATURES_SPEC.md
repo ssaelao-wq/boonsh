@@ -1,10 +1,21 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.3**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.4**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
 **License.** boonsh is **free software under the MIT License**: anyone may use, copy, change and share it, for free, as long as the copyright line and the license text stay with it. There is no warranty. The text is in the file `LICENSE` ("Copyright (c) 2026 Somboon L."), it is shown by the Windows installer, and it is in the app under Settings, **About** (section 10). The licenses of the libraries boonsh is built with are in `THIRD_PARTY_LICENSES.txt`, which the installer puts next to the app. Downloads (the installers) are on the project's GitHub **Releases** page: https://github.com/ssaelao-wq/boonsh/releases.
+
+> **New in 0.10.4**
+> - [Folder tree](#folder-tree): drives show their space (**OS (C:) Used 211GB/463GB**), folder colours tell when a folder was last changed (orange = today, yellow, dim yellow, grey), only folders with sub-folders have a `>`, and a click on a name opens the folder without expanding it.
+> - [This PC](#this-pc): every drive with a meter and **Used / Free / Total**.
+> - [Folder sizes](#folder-sizes): folders in the file panel show their whole size.
+> - [Status bar](#12-status-bar): the folder's whole size and its share of the parent folder.
+> - [File icons](#file-icons): each file shows the icon of the program that opens it, as in Explorer.
+> - Split Screen up to four screens (section 9), and boonsh can be snapped to half of the screen.
+> - [Two panes](#two-panes): a second file list beside the first; F5 copies, F6 moves to it, Tab switches.
+> - [Paste](#5-working-with-files): when a name is already taken, choose **Replace**, **Keep Both** (`readme-02.txt`) or **Skip**; big copies show their progress, wait in a queue one at a time, and can be paused or cancelled.
+> - [Updates](#13-appearance-and-saved-settings): boonsh checks GitHub for a newer version and installs it on request.
 
 ## Contents
 
@@ -53,7 +64,7 @@ This document describes everything boonsh can do, how to use it, and where its l
   - Up, Refresh | Cut, Copy, Paste, Delete
   - the path bar
   - Search (and the `?` help button when search is open)
-  - Details, Tiles and Thumbnails views | file panel toggle, Preview (Eye), terminal show/hide | Settings (gear) | Theme (sun or moon), AI Assistant show/hide (sparkles, the last icon on the right; see section 16)
+  - Details, Tiles and Thumbnails views | file panel toggle, **Two file panes** (two columns, see [Two panes](#two-panes)), Preview (Eye), terminal show/hide | Settings (gear) | Theme (sun or moon), AI Assistant show/hide (sparkles, the last icon on the right; see section 16)
 
 ## 2. Starting the app
 
@@ -64,15 +75,37 @@ This document describes everything boonsh can do, how to use it, and where its l
 ## 3. Navigating
 
 ### Header buttons and path bar
-- **Up** (folder-up icon) goes to the parent folder. It is greyed out at the top of a drive.
-- **Refresh** (or F5) reloads the current folder.
+- **Up** (folder-up icon) goes to the parent folder. At the top of a drive (`C:\`) it opens **This PC** (all drives); in This PC it is greyed out.
+- **Refresh** (or F5, or Ctrl+R; with two panes F5 copies, so use Ctrl+R) reloads the current folder (and measures its folder sizes again); in This PC it reads the drives' space again.
 - **Path bar:** shows the current path as clickable pieces (`C:\ > Users > ...`). Click any piece to jump there. Click the empty part or the pencil icon to **type a path**: Enter goes there, Esc cancels.
 
 ### Folder tree
-- Shows **This PC** with all your drives, each in its own icon color (the same as in Quick Access). Baskets show under their folder with a violet basket icon; a click opens one (section 17). Click the arrow to expand a folder, or click the name to open it and expand it.
+- Shows **This PC** with all your drives, each in its own icon color (the same as in Quick Access). Each drive shows its name as in Explorer and how full it is, for example **OS (C:) Used 211GB/463GB** (hover it for the free space and the file system; a drive with no disc or a disconnected network drive says "not ready"). The numbers are read again when you come back to boonsh.
+- **Click This PC** to see the drives in the file panel (see "This PC" below). Baskets show under their folder with a violet basket icon; a click opens one (section 17). Folders are exactly the same filled yellow folder as in the file panel (same size and thin line, whether expanded or not); Frequently Accessed uses it too.
+- **Click the name** to open the folder in the file panel; the tree does not expand it. **Click the arrow** (`>`) to expand or fold it in the tree (this does not change the open folder).
+- Only a folder that has sub-folders (or a basket) inside has an arrow; an empty folder, or one with only files, has none. The arrows stay true as folders are made or removed in the open folder.
+- **The folder's colour shows when it was last modified.** This is the folder's own Date Modified, as in Explorer: it changes when something directly inside it is added, removed or renamed (not when a file inside is only edited).
+
+  | Folder colour in the tree | Last modified |
+  | --- | --- |
+  | **Orange** | today |
+  | **Yellow** (the normal folder) | 1 to 30 days ago |
+  | **Dim yellow** | more than 30 days ago |
+  | **Grey** | more than 365 days ago |
+
+  Hover a folder to see its path and Date Modified. Only the tree is coloured this way; the file panel keeps the normal yellow folder for every folder.
 - The tree follows you: when you open a folder elsewhere, the tree expands to it and scrolls it into view, and folds away the folders (and drives) you left: open something on D: and C: folds up.
 - It stays current for the open folder: a sub-folder renamed, added or deleted there (in boonsh, in the terminal or by another program) changes in the tree too. A folder elsewhere in the tree that was renamed or deleted since it was shown is reloaded when you click it: nothing opens, its parent's list is refreshed and the terminal gets no `cd` to a folder that no longer exists. When you open a folder that was made after the tree listed its parent (from the path bar, a `cd` in the terminal, Quick Access), that list is reloaded too, so the tree still finds and highlights it.
 - Right-click a folder: New (Folder, Text Document, Shortcut, Basket), Open, Add to Quick Access, Refresh. Right-clicking also opens that folder.
+- When the tree is made narrow, long names are shortened with "…" (hover a folder for its full path); the arrows and icons keep their size. The tree and Frequently Accessed have the same background as the file panel.
+- In a narrow window (for example boonsh snapped to half of the screen; the window can be as small as 480 x 400) the tree gives way first, so the file panel keeps at least 200 px. When the window is wide again the tree goes back to the width you gave it.
+
+### This PC
+Click **This PC** at the top of the Folder Tree, or press **Up** at the top of a drive, to see every drive in the file panel, like Explorer's "This PC":
+- Each drive is a card with its icon, its name (`OS (C:)`), a **meter** of how full it is (red when 90% or more is used) and **Used 211GB / Free 252GB / Total 463GB**. Hover a card for the percentage and the file system.
+- **Double-click** a drive (or select it and press Enter) to open it. Opening any folder, from anywhere, leaves This PC.
+- The path bar says **This PC**, the status bar counts the drives, and **F5** reads the space again. The terminal stays in the folder it was in.
+- The file keys (Delete, Ctrl+A, Ctrl+C / X / V, F2) and Paste do nothing here, since the view lists drives, not files.
 
 ### Frequently Accessed (above the Folder Tree)
 A short list of the folders you open most, so you can jump back to them in one click.
@@ -114,6 +147,12 @@ The open folder updates by itself when another program changes it: a file saved 
 | **Details** | A table with Name, Date Modified, Type and Size. Folders have a filled yellow icon in every view; folder and file icons are drawn with a hairline (one screen pixel, whatever the Windows display scaling). When the Name column is too narrow, the end of the name is cut with "..." and the icon stays; point at the name to see all of it. |
 | **Tiles** | An icon with name, type, size and date. |
 | **Thumbnails** | Large cards. Image files show a real thumbnail; other files show an icon. |
+
+### File icons
+**As in Windows Explorer:** in every view a file shows the icon Windows gives it: the icon of the program that opens that file type on your PC (a `.pdf` you open with Brave shows the Brave icon, `.csv` the Excel icon, `.html` the Chrome icon, and so on). Programs (`.exe`), shortcuts (`.lnk`, `.url`) and icon files (`.ico`) show their own icon, file by file. A file type no program opens shows Windows' plain page. Folders keep boonsh's yellow folder, and baskets their violet basket. The icons are drawn sharp at your display scaling. If you change a default app in Windows while boonsh is open, the icons update when you come back to boonsh. To go back to boonsh's own simple line icons, untick **Show file icons from Windows** in Settings > Files Column.
+
+### Folder sizes
+When you open a folder, boonsh measures the folders in it in the background, everything inside each one (all sub-folders), and shows the result in the **Size** column ("…" while it is still measuring; the biggest folders take longest). Sorting by Size then sorts folders by their real size too. boonsh remembers what it measured, so going into a sub-folder or back up is quick. A change anywhere inside the open folder, at any depth and by any program (a file added, copied into one of its folders, deleted), is measured again by itself within a few seconds; only the folders that changed are measured again. Changes outside the open folder (for example in a folder next to it, which affects the parent's %) show after **Refresh (F5)**, which measures everything again, or after 10 minutes. Links and junctions inside a folder are not followed, so nothing is counted twice; a folder Windows does not let you read counts as empty. Opening a whole drive (for example `C:\`) measures the entire drive, which can take a while; it stops as soon as you open another folder. Search results and baskets do not measure folders. Turn it off with **Calculate folder sizes** in Settings > Files Column.
 
 ### Sorting and columns (Details view)
 
@@ -265,6 +304,18 @@ Besides Name, Date Modified, Type and Size, the file panel can show: **Date Crea
 ### Dragging into the terminal
 Drag a file or folder onto the terminal to type its quoted path there. Drag one of several selected items and **all selected** paths are typed, separated by spaces.
 
+### Two panes
+The **Two file panes** button in the header (two columns, orange) shows a second file list beside the first, as in two-pane file managers. Click it again to go back to one pane. boonsh remembers whether it is on, the other pane's folder and the width of the panes.
+
+- **One pane is active**: its head (the line with its folder above the list) has a coloured line and bold text. The header's path bar, Up, the folder tree, Quick Access, Frequently Accessed, the search bar, the preview, the status bar, the terminal and every key and menu work on the active pane, exactly as with one pane.
+- **Switch** by clicking anywhere in the other pane (a click on a file also selects it, a right-click opens its menu there, a double-click on a folder opens it there) or by pressing **Tab**. Each pane keeps its own folder and selection.
+- **The terminal stays where it is** when you switch panes (no `cd` is typed). Opening a folder in the active pane still takes the terminal there, and a `cd` typed in the terminal still moves the active pane. Commands with `{SELEC}` / `{DEST}` write paths relative to the terminal's own folder, so they stay right when the two differ.
+- **F5 copies** the selected items to the other pane's folder, **F6 moves** them. boonsh asks first (`Copy "report.pdf" to D:\Backup?`); Enter or OK goes ahead. Then it works like Paste: the clash window for names already there, the copy queue, the progress card with Pause and Cancel. The copies are selected in the other pane. In an open basket, F5 / F6 take only its linked items.
+- **Ctrl+R refreshes** (in two-pane mode F5 copies; Ctrl+R works with one pane too).
+- **Drag** files from one pane onto the other: they are copied; hold **Shift** while dropping to move them. Dropping onto a basket in a list still adds links.
+- Both panes update by themselves when something changes in their folder.
+- boonsh refuses to copy or move when both panes show the same folder, or a folder into itself.
+
 ## 5. Working with files
 
 | Action | How | Details |
@@ -280,9 +331,20 @@ Drag a file or folder onto the terminal to type its quoted path there. Drag one 
 | **Extract ZIP** | Right-click a `.zip`, *Extract ZIP* | See below. |
 
 **Paste rules**
-- Nothing is ever overwritten. A clash gets a new name: `report - Copy.txt`, `report - Copy (2).txt` when copying, and `report (2).txt` when moving.
+- **When a name is already taken**, a window asks what to do, one item at a time: it shows the name, both items (size, date and time, with the newer one marked) and three choices:
+  - **Replace** (key R): the pasted item takes the place of the one in the folder. For two **folders** this is a merge: the files inside with the same name are replaced and all other files are kept. When one is a file and the other a folder, the one in the folder goes to the **Recycle Bin** first.
+  - **Keep Both** (key K): the pasted item gets a number: `readme.txt` becomes `readme-02.txt`, or `readme-03.txt` if that name is taken too (the first free number). A folder `Photos` becomes `Photos-02`.
+  - **Skip** (key S): that item is not pasted.
+  - **Do this for the remaining clashes** applies your next choice to all the clashes left. **Cancel paste** (Esc) pastes nothing at all.
+  - Two items in the same paste with the same name (from search results, say) count as a clash too.
+- Nothing is overwritten without that window. **Copy and paste into the same folder** needs no question: the copy is Keep Both (`readme-02.txt`).
 - Cut then paste moves the items (across drives too). Pasting a cut item into its own folder does nothing. Pasting a folder into itself is refused with a message.
-- After a paste, the pasted items are selected. Large copies run in the background.
+- **Progress:** a paste that takes more than a moment shows a card at the bottom right: `Copying 12 items to Downloads`, a bar, `1.20 GB of 4.00 GB · 45.0 MB/s · about 1 min left`, the file being copied, **Pause** and **Cancel**. You can keep working meanwhile. The speed and time left are taken over the last few seconds, so they follow a drive that slows down. While boonsh is still measuring a big folder the bar runs without a length.
+- **Queue:** copies run **one at a time**, in the order you pasted them (two copies at once only slow each other down). A paste started while another one copies shows `Waiting: 1 paste before this one` and starts by itself when the ones before it are done. **Start now** on a waiting card runs it at once, beside the others. A move within one drive is only a rename and never waits.
+- **Pause** holds a copy, also in the middle of a big file; the card says **Paused** and the button becomes **Resume**. A paused copy keeps its place: the pastes behind it go on waiting (use **Start now** to run one meanwhile). Cancel also works while paused.
+- **Cancel** stops the paste (a waiting one is simply dropped, nothing is written): items already pasted stay, the one being copied is removed again (no half-written file is left), and nothing after it is pasted. A message says how many items were pasted. After a cancelled or partly failed **cut**, the items that did not move can still be pasted.
+- Files keep their dates and attributes. A replaced file is first copied under a temporary name, so a Cancel or an error leaves the old file as it was.
+- After a paste, the pasted items are selected (if you are still in that folder). A message says how many were skipped.
 - Cut and Copy stay **inside boonsh**: you can't copy in Windows Explorer and paste here, or the other way round.
 
 **Compress to ZIP**
@@ -860,22 +922,23 @@ The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pws
   - **Rename:** right-click the tab, **Rename Tab**, type the name, press Enter (Esc cancels, an empty name is ignored). The name is not saved when you close boonsh.
   - **Tabs and the file panel:** the file panel follows the **active** tab. Click another tab and the file panel switches to the folder that tab's shell is in. Open a folder in the file panel and only the active tab gets the `cd`. A `cd` typed in a background tab does not move the file panel; it is remembered for when you switch to that tab.
   - Each tab keeps its own history, running program and scrollback. Hiding the terminal (below) keeps all tabs running.
-  - **Split Screen:** right-click a tab and choose **Split Screen** to show two command lines side by side in that tab, half and half. The right screen is a new command line, started the same way as a new tab (your app's login, the tab's folder). It belongs to the same tab: there is still one tab header (with a split icon), and a small bar above the screens names them **Left** and **Right** with the folder each one is in.
-    - **The active screen:** click in a screen (or on its name in the bar) to make it active; its name is underlined in the tab color. The active screen is the one that gets your commands, the `cd` when you open a folder, and the one the file panel follows, the same as switching tabs. The **User** button shows and switches the login of the active screen. Clicking the tab header goes back to the screen you used last in it.
-    - **Resize:** drag the line between the two screens (from 15% to 85%); double-click it to go back to half and half. The size is not saved when you close boonsh.
-    - **Close one screen:** the **x** next to its name in the bar, or right-click the tab and choose **Close Left Screen** / **Close Right Screen**. The other screen stays and becomes the tab's only screen (it keeps the tab's name and color). Typing `exit` in a screen closes that screen. If a program is running in it, boonsh asks first.
-    - **Close the tab** (its **x**, or **Close Tab**) closes both screens. Dragging the tab moves both screens with it.
-    - A split tab **cannot be split again**: its right-click menu offers the two close items instead of Split Screen.
+  - **Split Screen (up to four screens):** right-click a tab and choose **Split Screen Left-Right** (two screens side by side) or **Split Screen Top-Bottom** (one above the other), half and half. The new screen is a new command line, started the same way as a new tab (your app's login, the folder of the screen it came from). It belongs to the same tab: there is still one tab header (its icon shows the split: columns, rows, or a grid for three or four screens), and each screen has its own small **header bar** on top with its name, the folder it is in and an **x**.
+    - **Split once more:** right-click the header bar of a screen and choose the split it offers. Each of the two screens can be split **once more, the other way only**: after a Left-Right split a screen offers only **Split Screen Top-Bottom**; after a Top-Bottom split only **Split Screen Left-Right**. So a tab has at most **four** screens, and a quarter cannot be split further.
+    - **Screen names:** two screens are **Left** / **Right** or **Top** / **Bottom**; a split half becomes two quarters: **Top-Left**, **Top-Right**, **Bottom-Left**, **Bottom-Right**.
+    - **The active screen:** click in a screen (or on its header bar) to make it active; its header is underlined in the tab color. The active screen is the one that gets your commands, the `cd` when you open a folder, and the one the file panel follows, the same as switching tabs. The **User** button shows and switches the login of the active screen. Clicking the tab header goes back to the screen you used last in it.
+    - **Resize:** drag any line between screens (from 15% to 85%): the main line moves both halves, the line inside a half moves only that half's two screens. Double-click a line to go back to half and half. The sizes are not saved when you close boonsh.
+    - **Close one screen:** the **x** on its header bar, the header bar's right-click **Close ... Screen**, or right-click the tab and choose **Close <name> Screen**. The others take its room: a closed quarter gives its space to the other quarter of that half; a closed half gives the whole tab to the other half (if that half was split, its two screens become the new halves, so a Left-Right tab can turn into a Top-Bottom one). A lone screen left is a normal tab again (it keeps the tab's name and color). Typing `exit` in a screen closes that screen. If a program is running in it, boonsh asks first.
+    - **Close the tab** (its **x**, or **Close Tab**) closes all its screens. Dragging the tab moves all its screens with it.
   - **Find Text:** right-click a tab and choose **Find Text**. A small box floats over the top right of the command line. Type a word: every match in the output (all 50,000 lines of history, not just what is on screen) gets a **yellow** background (dark brown on the black theme) and the current match an **orange** one; boonsh starts from the newest output at the bottom. The box shows where you are (`12 of 40`, or **No results**). Step with the **up arrow** (the match above, older output; also **Enter**) and the **down arrow** (the match below; also **Shift+Enter**), with the keys or the buttons; at the top or bottom it wraps around. Matching ignores upper and lower case. **Esc** or the **x** closes the box and removes the highlights. The box opens with the last text you searched.
   - **Export Screen:** right-click a tab and choose **Export Screen** to save everything the command line holds (its history, up to **50,000 lines**; older lines are no longer kept) to a **.txt** file. Windows asks where to save it; the suggested name is the tab name with the date and time (`Surface 2026-10-12 1530.txt`). Long lines that wrapped on screen are saved as one line. The file is UTF-8 (Thai and other text open correctly in Notepad). A note at the bottom of the terminal says how many lines were saved and where.
-  - **On a split tab** these two work on **one screen**: right-click the **Left** or **Right** name in the bar above the screens and choose **Find Text** or **Export Screen** (that menu also has **Close Left/Right Screen**). In the tab's own right-click menu they are greyed out. The suggested export name says which screen it was (`Surface Right 2026-10-12 1530.txt`).
+  - **On a split tab** these two work on **one screen**: right-click that screen's header bar and choose **Find Text** or **Export Screen** (that menu also has the split it offers, if any, and **Close <name> Screen**). The Find box opens inside that screen. In the tab's own right-click menu they are greyed out. The suggested export name says which screen it was (`Surface Top-Right 2026-10-12 1530.txt`).
 - **Show / hide the terminal:** the green terminal icon in the top-right toolbar (before the gear) hides the whole terminal side so the file panel gets the full width, and shows it again. The terminal is only hidden, not closed: the shell and any program in it keep running, and the folder `cd` still follows you. It is shown when boonsh starts.
 - Everything you can do in PowerShell works. Drop files onto the terminal to type their paths.
 - Folder sync works both ways (see [section 3](#two-way-sync-with-the-terminal)).
 - Keys like Ctrl+A, Ctrl+C, Ctrl+V and Del go **to the terminal**, not the file panel, while you are typing in it.
 
 ### History Commands (the clock button)
-The clock button in front of **Commands** (icon only; hover for its name) lists the commands you ran in the **active screen**: the selected tab, or on a split tab the Left or Right screen you last clicked (each screen keeps its own list; the list's top right says which one).
+The clock button in front of **Commands** (icon only; hover for its name) lists the commands you ran in the **active screen**: the selected tab, or on a split tab the screen you last clicked (each screen keeps its own list; the list's top right says which one).
 - The **last 20** commands are kept; about **10** are in view with the **newest at the bottom**, and you scroll up for the older ones. Long commands wrap onto more lines.
 - **Click one** to put it on the command line, replacing anything typed there. It is **not run**: check or change it, then press Enter.
 - Running a command again moves it to the bottom instead of listing it twice. Upper and lower case do not matter here (`ls` then `LS` is one entry, shown the way you typed it last); spaces inside the command do (`ls -Force` and `ls  -Force` are two).
@@ -950,6 +1013,8 @@ Choose what the file panel's Details view shows. Changes apply at once and are s
 - **Up / down arrows** move a column to the left or right of its neighbours.
 - **Date Modified** and **Date Created** have two choices each: **Show** (date and time, or date only) and **Sort by** (date and time, or date only; see section 4).
 - **Keep folders above files when sorting** (on by default). Turn it off to let folders mix in with the files according to the sort.
+- **Calculate folder sizes** (on by default): folders in the file panel show their whole size (everything inside), and the status bar shows the folder's total and its share of the parent (section 12). Turn it off on slow network drives or for very large folders.
+- **Show file icons from Windows** (on by default): each file shows the icon of the program that opens it, as in Explorer (section 4, "File icons"). Turn it off for boonsh's own simple line icons.
 - The choices include Dimensions, Length, Album, Artist, Actor, Genre and Rating, which come from the file's properties (section 4, "More columns").
 - **Reset columns** (bottom left) brings back Name, Date Modified, Type and Size, and the default date options.
 
@@ -973,6 +1038,7 @@ Information about boonsh itself. Nothing here can be changed.
 - **Project page on GitHub** opens the project's page in your browser.
 - **Open the licenses of the libraries inside boonsh** opens `THIRD_PARTY_LICENSES.txt` in your text editor: the license texts and copyright notices of the open-source libraries boonsh uses (Tauri, React, xterm.js, the Rust crates and so on). The installer puts this file next to the app.
 - A short list of the main open-source components and the license of each.
+- **Updates:** **Check for updates** asks GitHub whether a newer boonsh is out; when there is one, the update notice appears (see section 13). **Check automatically** (on by default) checks once a day, a few seconds after boonsh starts.
 - The *Reset* button at the bottom is not shown on this page.
 
 ### Frequently Accessed
@@ -1042,7 +1108,10 @@ Click the **trash icon** on its row and confirm. This works on the built-in comm
 | Del | Delete the selection (to the Recycle Bin); inside a basket it removes the links only |
 | F2 | Rename: opens the Rename box for one selected item, or Bulk Rename for 2 or more |
 | Ctrl+Z | Undo the last bulk rename (asks first) |
-| F5 | Refresh the folder (or the open basket) |
+| F5 | Refresh the folder (or the open basket). With two panes: copy the selection to the other pane |
+| F6 | With two panes: move the selection to the other pane |
+| Tab | With two panes: switch to the other pane |
+| Ctrl+R | Refresh the folder (also with two panes) |
 | Ctrl+P | Show or hide the preview drawer |
 | Ctrl+Shift+F | Show or hide the file panel (leaves the folder tree and terminal) |
 | Home, End, Left, Right, PageUp, PageDown | Move between images (when an image is previewed) |
@@ -1051,19 +1120,35 @@ Click the **trash icon** on its row and confirm. This works on the built-in comm
 | Esc | Exit full-screen preview; close Settings or its open form; cancel path editing |
 | Enter / Esc in the path bar | Go to the typed path / cancel |
 
-The file keys (Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+Z, F2, Del) are ignored while you are typing in the terminal or any text box, so they keep their normal text meaning there.
+The file keys (Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+Z, Ctrl+R, F2, Del, and with two panes F5, F6 and Tab) are ignored while you are typing in the terminal or any text box, so they keep their normal text meaning there.
 
 ## 12. Status bar
 
 The thin bar at the bottom shows, from left to right:
-- The number of **folders and files** in the current folder and their **total size** (files directly inside the folder). In an open basket: `Basket: 12 links · 1 gone · 2 new`.
-- A progress note while a zip task runs (for example "Compressing 3 item(s)...").
-- On the right, the **selection** (the name and size of one item, or "N items" and their total size) and the active **shell**.
+
+| Part | Example | Meaning |
+| --- | --- | --- |
+| Counts | `7 folders, 12 files` | What is **directly** in the current folder (not inside its sub-folders). |
+| Total Size | `Total Size: 4.20 GB (12.3% of Users)` | Everything inside the current folder, **all sub-folders included**, and how much of its **parent folder** (here `Users`) it takes. Hover it for the number of files and folders inside and the parent's size. |
+| (while measuring) | `Total Size: 15.2 MB (files only, measuring folders…)` | boonsh is still measuring the folders; until then only the files directly inside are counted. Then `(measuring the parent folder…)` until the % is known. |
+| Busy note | `Compressing 3 item(s)...` | A zip task is running. |
+| Selection (right) | `Selected: Photos (1.25 GB)` | The selected item and its size (a folder's whole size once measured), or `Selected: 3 items (2.1 GB)`. |
+| Shell (right) | `Shell: PowerShell 7 (Active)` | The shell the terminal runs. |
+
+- At the top of a drive (`C:\`) there is no parent folder, so no %.
+- In **search results**, and with **Calculate folder sizes** off (Settings > Files Column), Total Size is the size of the files in view.
+- In **This PC**: `This PC: 3 drives`. In an open **basket**: `Basket: 12 links · 1 gone · 2 new`.
 
 ## 13. Appearance and saved settings
 
 - **Theme:** the sun and moon icon switches between the **dark** (black) and **light** (white) theme. The terminal follows it.
 - The right-click menu of the browser is turned off everywhere except in text boxes.
+
+**Updates**
+- Once a day, a few seconds after it starts, boonsh asks the project's GitHub releases whether a newer version is out (turn this off in Settings, **About**, where **Check for updates** also checks at once).
+- When there is one, a notice appears at the **bottom left**: `boonsh 0.10.5 is available (you have 0.10.4)`, with **What's new** (the release notes), **Install and restart** and **Later**.
+- **Install and restart** downloads the new installer, checks its signature (boonsh only installs updates signed by the project), closes boonsh, installs it with a small progress window and starts boonsh again. If a program is still running in a command line tab, boonsh asks first, since it will be stopped.
+- **Later** hides the notice; that version is not offered again by itself (Check for updates still finds it). An update installed this way keeps the kind of install you have: the setup `.exe` (per user) or the `.msi` (per machine, which asks Windows for permission).
 
 **What is remembered between runs**
 
@@ -1078,6 +1163,8 @@ The thin bar at the bottom shows, from left to right:
 | Sort levels, the columns shown and their order, the date options, the grouping | Yes |
 | Frequently Accessed: the visit counts, on / off and the number of folders | Yes |
 | AI Assistant: shown or hidden | Yes |
+| Two panes: on or off, the other pane's folder, the width of the panes | Yes |
+| Updates: check automatically, a version put off with Later | Yes |
 | AI Assistant: the API key | Yes, in Windows Credential Manager (not in a file) |
 | AI Assistant: the conversation | While boonsh is open, also when the panel is hidden (cleared by the eraser button or when boonsh closes) |
 | Panel sizes, column widths, preview open or closed, search box and Subfolders switch | No (reset on each start) |
@@ -1087,14 +1174,16 @@ The thin bar at the bottom shows, from left to right:
 **By design**
 - Windows only.
 - **Quick Access:** 6 items at most. **Search:** 8 levels deep, 300 results, regular expressions without look-around. **Zip:** Deflate only, so zips made with LZMA, Zstandard or similar can't be extracted.
-- **Cut/Copy** work only inside boonsh, and **Paste** always goes into the folder you are viewing, even if you right-clicked a subfolder.
-- **Command groups** can't be added, renamed or deleted.
+- **Cut/Copy** work only inside boonsh, and **Paste** always goes into the folder you are viewing, even if you right-clicked a subfolder. Replace overwrites a file for good (like Explorer); only an item of the other kind (a file in place of a folder, or the other way) goes to the Recycle Bin.
+- **Updates** need an internet connection and come from the project's GitHub releases. Installing closes boonsh (and whatever runs in its command line tabs) and starts it again.
+- **Command groups:** the four built-in groups (Basic, Network, System, Customize) can't be renamed or deleted; groups you make yourself can (up to 30 characters, no duplicate names; section 10).
 - **File columns:** Dimensions, Length, Album, Artist, Actor, Genre and Rating depend on what Windows can read from the file (a property handler or codec for the file type must be installed), exactly as in Explorer. The sort by these columns works on the files whose properties have been read; reading goes on in the background for big folders. There is no Actor property in Windows: videos use the "Contributing artists" tag.
 - **Global variables:** their values are kept only while boonsh is open (the list of variables is saved). The AND in `input:` compares file names, not file contents. `path:` and `input:` do not allow two words next to each other without a comma or `+`.
 - **Bulk rename:** up to 20,000 items and 30 rules at a time. The extension is the text after the last dot, so for `archive.tar.gz` the extension is `gz` and the name part is `archive.tar`. A very long list of undo steps may not be kept after a restart (the stored history is limited to about 2 MB, oldest batches first). Undo can't help if the files were changed outside boonsh in the meantime; those parts are skipped and reported.
 - Folder-size totals skip folders you can't read, and count real size, not size on disk.
-- Switching between normal and Administrator mode restarts the app. If Windows can't relaunch it as a normal user directly, it falls back to a method that can't pass the folder, so the app opens in the default folder.
+- Switching a tab between normal and Administrator restarts **that tab's shell** (in the same folder), not the app; whatever was running in it ends. An Administrator tab needs the Windows permission prompt to be accepted each time.
 - **AI Assistant:** needs an internet connection and your own API key from Anthropic (Claude), OpenAI or Google Gemini (each request is billed to that key). Other services are not supported. It only acts on the folder that is open and only on boonsh features; it does not read the contents of files.
+- **Two panes:** the other pane (not the active one) shows a plain folder listing: folder sizes and the media columns (Dimensions, Length ...) fill in once you switch to it, and search results, an open basket or This PC are only shown in the active pane (switching away from one leaves it).
 - The "1:1" image button toggles an enlarged view, which is not guaranteed to be the image's exact pixel size.
 
 **Known issues**

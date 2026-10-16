@@ -252,6 +252,48 @@ textarea.search-input-error:focus {
   flex-direction: column;
 }
 
+/* Two file panes (App.tsx, hooks/useDualPane.ts): each pane has a one-line head with its folder; the active one
+   is marked with a coloured line and full-strength text. */
+.dual-panes {
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+.file-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.file-pane-head {
+  flex-shrink: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--bg-panel);
+  border-bottom: 2px solid var(--border-color);
+  cursor: pointer;
+  overflow: hidden;
+}
+.file-pane.active .file-pane-head {
+  border-bottom-color: var(--meter-fill);
+}
+.app-container span.file-pane-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* a long path keeps its end (the folder name) in view */
+  text-align: left;
+  color: var(--text-muted);
+}
+.app-container .file-pane.active span.file-pane-path {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
 /* Search bar at the bottom of the file panel (SearchBar.tsx): a one-line box, ? and Subfolders. The message
    bubbles and the cheat sheet open upwards over the files. */
 .search-bar {
@@ -535,7 +577,7 @@ input.search-bar-input:focus {
 /* Folder Tree View */
 .folder-tree-container {
   height: 100%;
-  background: var(--bg-panel-secondary);
+  background: var(--bg-panel); /* the same as the file panel */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -586,7 +628,26 @@ input.search-bar-input:focus {
   font-weight: 400;
 }
 
+/* A narrow panel shortens the name only: the caret and icons keep their size */
+.tree-node-item > svg,
+.tree-node-item > .tree-caret {
+  flex-shrink: 0;
+}
+.tree-caret {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* no sub-folders: an empty space as wide as the arrow (13 px + 2 px padding each side), so names stay lined up */
+.tree-caret-none {
+  width: 17px;
+  height: 13px;
+  box-sizing: border-box;
+}
+
 .tree-node-label {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -804,6 +865,14 @@ input.search-bar-input:focus {
 .tile-card.selected {
   background: var(--bg-selected);
   border-color: var(--accent);
+}
+
+/* a file icon drawn by Windows (fileIcons.ts): fixed size, not a drag source of its own (the row is) */
+.file-icon-img {
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .tile-icon {
@@ -1869,6 +1938,16 @@ input.search-bar-input:focus {
   --drive-7: #22d3ee;
   --folder-stroke: #fcd34d;
   --folder-fill: #f59e0b;
+  /* Folder Tree folders by Date Modified (FolderTree folderAge): today = orange, within 30
+     days = the usual folder, 30+ days = dim yellow, a year+ = grey */
+  --tree-folder-today-fill: #f97316;
+  --tree-folder-today-stroke: #fdba74;
+  --tree-folder-recent-fill: var(--folder-fill);
+  --tree-folder-recent-stroke: var(--folder-stroke);
+  --tree-folder-old-fill: #8a6f2e;
+  --tree-folder-old-stroke: #b59a55;
+  --tree-folder-ancient-fill: #52525b;
+  --tree-folder-ancient-stroke: #a1a1aa;
 }
 .app-container.light-theme {
   --drive-0: #0369a1;
@@ -1881,6 +1960,14 @@ input.search-bar-input:focus {
   --drive-7: #0e7490;
   --folder-stroke: #b45309;
   --folder-fill: #fcd34d;
+  --tree-folder-today-fill: #fb923c;
+  --tree-folder-today-stroke: #c2410c;
+  --tree-folder-recent-fill: var(--folder-fill);
+  --tree-folder-recent-stroke: var(--folder-stroke);
+  --tree-folder-old-fill: #f3e6b8;
+  --tree-folder-old-stroke: #b8a066;
+  --tree-folder-ancient-fill: #d4d4d8;
+  --tree-folder-ancient-stroke: #71717a;
 }
 .app-container .status-bar span.status-count { color: var(--status-count); }
 .app-container .status-bar span.status-selected-item { color: var(--status-select); }
@@ -2123,7 +2210,7 @@ input.search-bar-input:focus {
   max-height: 45%;
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel-secondary);
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border-color);
 }
 .frequent-list {
@@ -2738,16 +2825,11 @@ input.search-bar-input:focus {
   cursor: pointer;
 }
 /* Split Screen: the bar naming the left / right screens, and the separator between them */
-.split-bar {
-  display: flex;
-  justify-content: space-between;
-  height: 22px;
-  min-height: 22px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-color);
-  --tab-color: #2563eb;
-}
-.split-bar-pane {
+/* Split Screen: the header bar on top of each screen (placed by TerminalPanel's split layout) */
+.split-pane-head {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -2755,13 +2837,15 @@ input.search-bar-input:focus {
   padding: 0 4px 0 8px;
   font-size: 11px;
   color: var(--text-muted);
-  border-bottom: 2px solid transparent;
+  background: var(--bg-panel);
+  border-bottom: 2px solid var(--border-color);
   cursor: pointer;
+  --tab-color: #2563eb;
 }
-.split-bar-pane:hover {
+.split-pane-head:hover {
   background: var(--bg-hover);
 }
-.split-bar-pane.active {
+.split-pane-head.active {
   color: var(--text-main);
   border-bottom-color: var(--tab-color);
 }
@@ -2778,23 +2862,40 @@ input.search-bar-input:focus {
 }
 .split-divider {
   position: absolute;
-  top: 0;
-  bottom: 0;
   z-index: 5;
-  cursor: col-resize;
   display: flex;
   justify-content: center;
+  align-items: center;
+}
+.split-divider.col {
+  cursor: col-resize;
+}
+.split-divider.row {
+  cursor: row-resize;
 }
 .split-divider::after {
   content: '';
+  background: var(--border-color);
+}
+.split-divider.col::after {
   width: 1px;
   height: 100%;
-  background: var(--border-color);
+}
+.split-divider.row::after {
+  height: 1px;
+  width: 100%;
 }
 .split-divider:hover::after,
 .split-divider.dragging::after {
-  width: 2px;
   background: var(--accent);
+}
+.split-divider.col:hover::after,
+.split-divider.col.dragging::after {
+  width: 2px;
+}
+.split-divider.row:hover::after,
+.split-divider.row.dragging::after {
+  height: 2px;
 }
 .terminal-empty {
   flex: 1;
@@ -3229,4 +3330,340 @@ input.search-bar-input:focus {
 .app-container span.group-order {
   color: var(--bg-main);
   background: var(--accent);
+}
+
+/* ---- This PC (ThisPCView.tsx) and the drive rows of the Folder Tree ---- */
+.app-container {
+  --meter-fill: #38bdf8;
+  --meter-full: #f87171;
+}
+.app-container.light-theme {
+  --meter-fill: #0284c7;
+  --meter-full: #dc2626;
+}
+.this-pc {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-panel);
+  padding: 12px 16px;
+}
+.this-pc-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  color: var(--text-main);
+}
+.app-container span.this-pc-count {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.this-pc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.this-pc-drive {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 0;
+  outline: none;
+}
+.this-pc-drive:hover {
+  background: var(--bg-hover);
+}
+.this-pc-drive.selected,
+.this-pc-drive:focus-visible {
+  background: var(--bg-selected);
+  border-color: var(--border-light);
+}
+.this-pc-drive.not-ready {
+  opacity: 0.6;
+  cursor: default;
+}
+.this-pc-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.this-pc-name {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.this-pc-meter {
+  height: 12px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-panel-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.this-pc-meter-fill {
+  height: 100%;
+  background: var(--meter-fill);
+}
+.this-pc-meter-fill.full {
+  background: var(--meter-full);
+}
+.app-container div.this-pc-usage {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* "Used 211GB/463GB" after a drive's name in the tree; the name keeps the main colour */
+.app-container span.tree-drive-usage {
+  color: var(--text-dim);
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+/* ---- Paste: name clash pop-up (PasteConflictDialog.tsx) and progress cards (PasteProgress.tsx) ---- */
+.paste-clash-dialog {
+  width: 480px;
+}
+.paste-clash-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.paste-clash-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.paste-clash-side {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.paste-clash-side-title {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.paste-clash-side-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.paste-clash-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.paste-clash-side-when {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.app-container span.paste-clash-newer {
+  color: var(--status-shell);
+}
+.paste-clash-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+button.paste-clash-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-panel-secondary);
+  color: var(--text-main);
+  cursor: pointer;
+}
+button.paste-clash-choice:hover,
+button.paste-clash-choice:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  outline: none;
+}
+button.paste-clash-choice b {
+  font-size: 12px;
+  font-weight: 600;
+}
+.app-container button.paste-clash-choice span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.paste-clash-forall {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.paste-progress-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 84px; /* above the toast (bottom 36px), which reports how a paste ended */
+  z-index: 2900;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+}
+.paste-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-main);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.paste-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.paste-progress-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+button.paste-progress-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.paste-progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-panel-secondary);
+  overflow: hidden;
+  position: relative;
+}
+.paste-progress-bar > div {
+  height: 100%;
+  background: var(--meter-fill);
+  transition: width 0.2s linear;
+}
+.paste-progress-bar.busy > div {
+  position: absolute;
+  width: 30%;
+  animation: paste-busy 1.2s ease-in-out infinite;
+}
+.paste-progress-bar.paused > div {
+  background: var(--text-dim);
+}
+.app-container .paste-progress.waiting span.paste-progress-label {
+  color: var(--text-muted);
+}
+@keyframes paste-busy {
+  from { left: -30%; }
+  to { left: 100%; }
+}
+.paste-progress-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.app-container .paste-progress-text span {
+  color: var(--text-muted);
+}
+.app-container div.paste-progress-current {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Update notice (UpdateNotice.tsx), bottom left ---- */
+.update-notice {
+  position: fixed;
+  left: 16px;
+  bottom: 36px;
+  z-index: 2950;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-main);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.update-notice-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.update-notice-icon {
+  flex-shrink: 0;
+  color: var(--meter-fill);
+}
+.update-notice-notes {
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-family);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-panel-secondary);
+  border-radius: 4px;
+  padding: 6px 8px;
+  user-select: text;
+}
+.update-notice-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-container span.update-notice-progress {
+  color: var(--text-muted);
+}
+.about-updates {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+.about-updates label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
 }

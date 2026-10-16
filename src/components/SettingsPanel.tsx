@@ -15,6 +15,7 @@ import { QuickAccessItem } from '../types';
 import { QA_MAX, isShown, settingsRows } from '../quickAccess';
 import { FrequentSettings, MIN_COUNT, MAX_COUNT, DEFAULT_SETTINGS as DEFAULT_FREQUENT } from '../frequent';
 import { COLUMN_BY_ID, ColumnId, ColumnPrefs, DateColumn, DateMode, isDateColumn } from '../columns';
+import { autoCheckOn, setAutoCheck } from '../updater';
 
 interface SettingsPanelProps {
   groups: CommandGroup[];
@@ -39,6 +40,8 @@ interface SettingsPanelProps {
   qaCandidates: QuickAccessItem[];
   onQaToggle: (item: QuickAccessItem, on: boolean) => void;
   onQaReset: () => void;
+  /** Settings > About, Check for updates: resolves with the sentence to show */
+  onCheckUpdate: () => Promise<string>;
 }
 
 export type Section = 'commands' | 'vars' | 'consts' | 'columns' | 'frequent' | 'quickaccess' | 'manual' | 'about';
@@ -93,10 +96,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   qaCandidates,
   onQaToggle,
   onQaReset,
+  onCheckUpdate,
 }) => {
   const [qaMessage, setQaMessage] = useState<string>('');
   const [version, setVersion] = useState<string>('');
   const [aboutMessage, setAboutMessage] = useState<string>('');
+  const [updateMessage, setUpdateMessage] = useState<string>('');
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateAuto, setUpdateAuto] = useState<boolean>(autoCheckOn);
   useEffect(() => {
     getVersion().then(setVersion).catch(() => {});
   }, []);
@@ -869,6 +876,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 </div>
                 {aboutMessage && <div className="settings-error">{aboutMessage}</div>}
 
+                <div className="about-updates">
+                  <button
+                    disabled={updateChecking}
+                    onClick={() => {
+                      setUpdateChecking(true);
+                      setUpdateMessage('Checking…');
+                      onCheckUpdate()
+                        .then(setUpdateMessage)
+                        .finally(() => setUpdateChecking(false));
+                    }}
+                    title="Ask GitHub for a newer boonsh"
+                  >
+                    Check for updates
+                  </button>
+                  <label title="Once a day, a few seconds after boonsh starts">
+                    <input
+                      type="checkbox"
+                      checked={updateAuto}
+                      onChange={(e) => {
+                        setUpdateAuto(e.target.checked);
+                        setAutoCheck(e.target.checked);
+                      }}
+                    />
+                    Check automatically
+                  </label>
+                </div>
+                {updateMessage && <div className="about-line">{updateMessage}</div>}
+
                 <div className="about-heading">MIT License</div>
                 <pre className="about-license">{licenseText}</pre>
 
@@ -1085,6 +1120,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       onChange={(e) => onColPrefsChange({ ...colPrefs, foldersFirst: e.target.checked })}
                     />
                     <span className="terminal-cmd-name">Keep folders above files when sorting</span>
+                  </label>
+                </div>
+
+                <div className="settings-cmd-row">
+                  <label className="settings-col-check">
+                    <input
+                      type="checkbox"
+                      checked={colPrefs.windowsIcons}
+                      onChange={(e) => onColPrefsChange({ ...colPrefs, windowsIcons: e.target.checked })}
+                    />
+                    <span className="terminal-cmd-name">
+                      Show file icons from Windows (the icon of the program that opens each file, as in Explorer)
+                    </span>
+                  </label>
+                </div>
+
+                <div className="settings-cmd-row">
+                  <label className="settings-col-check">
+                    <input
+                      type="checkbox"
+                      checked={colPrefs.folderSizes}
+                      onChange={(e) => onColPrefsChange({ ...colPrefs, folderSizes: e.target.checked })}
+                    />
+                    <span className="terminal-cmd-name">
+                      Calculate folder sizes (everything inside, for the Size column and the status bar)
+                    </span>
                   </label>
                 </div>
 

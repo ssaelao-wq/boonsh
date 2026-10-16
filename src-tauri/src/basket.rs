@@ -19,6 +19,7 @@ use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
 
 use crate::fs_ops::{self, FileItem};
+use crate::paste;
 use crate::search;
 
 pub const EXT: &str = "basket";
@@ -722,82 +723,39 @@ fn update_paths(basket: &Path, pairs: &[(String, String)]) -> Result<(), String>
     b.save()
 }
 
-fn paste_out(basket: &Path, paths: &[String], dest_dir: &str, is_move: bool) -> Result<Vec<String>, String> {
+/// Copy / move a basket's items out into a real folder (paste.rs does the work, with the user's clash choices and
+/// progress): a whole linked item as it is, a partly linked folder as a folder of the same name holding only its
+/// linked items, in their places. A move takes this basket's links along.
+fn paste_out(
+    basket: &Path,
+    paths: &[String],
+    dest_dir: &str,
+    is_move: bool,
+    choices: &HashMap<String, paste::Choice>,
+    ctx: &mut paste::Ctx,
+) -> Result<paste::PasteResult, String> {
     let b = Opened::open(basket)?;
-    let dest = PathBuf::from(dest_dir);
-    if !dest.is_dir() {
-        return Err(format!("Destination is not a folder: {}", dest_dir));
-    }
-    let mut pasted = Vec::new();
-    let mut moves = Vec::new();
-    let mut errors = Vec::new();
+    let mut items = Vec::new();
+    let mut refused = Vec::new();
     for p in paths {
         let parts = b.parts_of(p);
         let item = PathBuf::from(tidy(p));
         if parts.is_empty() {
-            errors.push(format!("'{}': not linked or not found", p));
-            continue;
-        }
-        if parts.len() == 1 && parts[0].0 == item {
-            // the whole item: the normal copy / move
-            match fs_ops::paste_items_blocking(vec![p.clone()], dest_dir.to_string(), is_move) {
-                Ok(mut v) => {
-                    if let Some(t) = v.first() {
-                        if is_move {
-                            moves.push((p.clone(), t.clone()));
-                        }
-                    }
-                    pasted.append(&mut v);
-                }
-                Err(e) => errors.push(e),
-            }
-            continue;
-        }
-        // a partly linked folder: only its linked items, in the same places under a folder of the same name
-        let name = item.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let target = fs_ops::unique_target(&dest, &name, !is_move);
-        let result = (|| -> Result<(), String> {
-            fs::create_dir_all(&target).map_err(|e| e.to_string())?;
-            for (part, _) in &parts {
-                let rel = part.strip_prefix(&item).map_err(|e| e.to_string())?;
-                let dst = target.join(rel);
-                if let Some(parent) = dst.parent() {
-                    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                }
-                if is_move {
-                    if fs::rename(part, &dst).is_err() {
-                        fs_ops::copy_recursive(part, &dst).map_err(|e| e.to_string())?;
-                        if part.is_dir() {
-                            fs::remove_dir_all(part).map_err(|e| e.to_string())?;
-                        } else {
-                            fs::remove_file(part).map_err(|e| e.to_string())?;
-                        }
-                    }
-                } else {
-                    fs_ops::copy_recursive(part, &dst).map_err(|e| e.to_string())?;
-                }
-            }
-            Ok(())
-        })();
-        match result {
-            Ok(()) => {
-                let t = target.to_string_lossy().to_string();
-                if is_move {
-                    moves.push((p.clone(), t.clone()));
-                }
-                pasted.push(t);
-            }
-            Err(e) => errors.push(format!("'{}': {}", p, e)),
+            refused.push(format!("'{}': not linked or not found", p));
+        } else if parts.len() == 1 && parts[0].0 == item {
+            items.push(paste::Item { src: PathBuf::from(p), parts: None });
+        } else {
+            items.push(paste::Item { src: PathBuf::from(p), parts: Some(parts.into_iter().map(|(part, _)| part).collect()) });
         }
     }
-    if !moves.is_empty() {
-        update_paths(basket, &moves)?;
+    drop(b);
+    let mut res = paste::paste_blocking(items, Path::new(dest_dir), is_move, choices, ctx);
+    if !res.moved.is_empty() {
+        update_paths(basket, &res.moved)?;
     }
-    if errors.is_empty() {
-        Ok(pasted)
-    } else {
-        Err(format!("Some items could not be pasted:\n{}", errors.join("\n")))
-    }
+    refused.append(&mut res.errors);
+    res.errors = refused;
+    Ok(res)
 }
 
 fn zip(basket: &Path, paths: &[String], dest_dir: &str) -> Result<String, String> {
@@ -919,10 +877,20 @@ pub fn basket_update_paths(basket: String, pairs: Vec<(String, String)>) -> Resu
 }
 
 #[tauri::command]
-pub async fn basket_paste_out(basket: String, paths: Vec<String>, dest_dir: String, mode: String) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || paste_out(Path::new(&basket), &paths, &dest_dir, mode == "cut"))
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn basket_paste_out(
+    app: tauri::AppHandle,
+    basket: String,
+    paths: Vec<String>,
+    dest_dir: String,
+    mode: String,
+    choices: HashMap<String, paste::Choice>,
+    job: u64,
+) -> Result<paste::PasteResult, String> {
+    paste::run_job(app, job, true, move |ctx| match paste_out(Path::new(&basket), &paths, &dest_dir, mode == "cut", &choices, ctx) {
+        Ok(r) => r,
+        Err(e) => paste::PasteResult { errors: vec![e], ..Default::default() },
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1129,6 +1097,12 @@ mod tests {
         p.to_string_lossy().to_string()
     }
 
+    fn paste_out_test(basket: &Path, paths: &[String], dest: &str, is_move: bool) -> paste::PasteResult {
+        let emit = |_: paste::Progress| {};
+        let mut ctx = paste::Ctx::new(0, std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)), &emit);
+        paste_out(basket, paths, dest, is_move, &HashMap::new(), &mut ctx).unwrap()
+    }
+
     fn states(v: &BasketView) -> Vec<(String, Option<String>)> {
         let mut out: Vec<_> = v.items.iter().map(|i| (i.name.clone(), i.state.clone())).collect();
         out.sort();
@@ -1225,7 +1199,7 @@ mod tests {
 
         let out = d.join("out");
         fs::create_dir_all(&out).unwrap();
-        let pasted = paste_out(&basket, &[s(&f)], &s(&out), false).unwrap();
+        let pasted = paste_out_test(&basket, &[s(&f)], &s(&out), false).pasted;
         assert_eq!(pasted, vec![s(&out.join("F"))]);
         assert!(out.join("F\\a.txt").exists() && out.join("F\\deep\\b.txt").exists());
         assert!(!out.join("F\\deep\\unlinked.txt").exists(), "the unlinked new file is not copied");
@@ -1242,7 +1216,8 @@ mod tests {
         // move: only linked items move, the link follows them, the unlinked file stays behind
         let moved = d.join("moved");
         fs::create_dir_all(&moved).unwrap();
-        paste_out(&basket, &[s(&f)], &s(&moved), true).unwrap();
+        let res = paste_out_test(&basket, &[s(&f)], &s(&moved), true);
+        assert!(res.errors.is_empty(), "{:?}", res.errors);
         assert!(moved.join("F\\deep\\b.txt").exists() && f.join("deep\\unlinked.txt").exists());
         assert_eq!(expand(&basket).unwrap(), vec![s(&moved.join("F"))]);
         let _ = fs::remove_dir_all(&d);

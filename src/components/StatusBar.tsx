@@ -5,29 +5,39 @@ interface StatusBarProps {
   totalFiles: number;
   totalFolders: number;
   totalSizeFormatted: string;
+  totalSizeNote?: string; // "12.3% of Users", "measuring folders…"
+  totalSizeTitle?: string;
   selectedItem: FileItem | null;
   selectionCount: number;
   selectionSizeFormatted: string;
   busyMessage: string;
   shellEngine: string;
   basketCounts?: { links: number; gone: number; new: number } | null; // shown instead of the folder totals in a basket
+  drivesCount?: number | null; // the This PC view: shown instead of the folder totals
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
   totalFiles,
   totalFolders,
   totalSizeFormatted,
+  totalSizeNote,
+  totalSizeTitle,
   selectedItem,
   selectionCount,
   selectionSizeFormatted,
   busyMessage,
   shellEngine,
   basketCounts,
+  drivesCount,
 }) => {
   return (
     <div className="status-bar">
       <div className="status-bar-left">
-        {basketCounts ? (
+        {drivesCount != null ? (
+          <span className="status-count">
+            This PC: {drivesCount} drive{drivesCount === 1 ? '' : 's'}
+          </span>
+        ) : basketCounts ? (
           <span className="status-count">
             Basket: {basketCounts.links} link{basketCounts.links === 1 ? '' : 's'}
             {basketCounts.gone > 0 && ` · ${basketCounts.gone} gone`}
@@ -37,7 +47,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           <>
             <span className="status-count">{totalFolders} folders, {totalFiles} files</span>
             <span className="status-divider">|</span>
-            <span className="status-count">Total Size: {totalSizeFormatted}</span>
+            <span className="status-count" title={totalSizeTitle}>
+              Total Size: {totalSizeFormatted}
+              {totalSizeNote ? ` (${totalSizeNote})` : ''}
+            </span>
           </>
         )}
         {busyMessage && (

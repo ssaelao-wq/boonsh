@@ -37,6 +37,7 @@ import {
   Unlink,
 } from 'lucide-react';
 import { isBasket, shownName } from '../basket';
+import { useFileIcons } from '../fileIcons';
 import { FileItem, ViewMode, SortOrder, ItemDetails } from '../types';
 import { BUCKETS, BUCKET_LABEL, BUCKET_EXAMPLE, GroupSpec, Bucket, Row, formatBytes, itemsInGroup, toggleBucket } from '../grouping';
 import {
@@ -70,6 +71,8 @@ interface MainFilePanelProps {
   onClearSelection: () => void;
   onBulkRename: () => void;
   renameTrigger: number;
+  /** two-pane mode: false for the pane that is not active (F2 must not open Rename there) */
+  active?: boolean;
   zipSelectionCount: number;
   isBusy: boolean;
   onCompress: () => void;
@@ -183,6 +186,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   onClearSelection,
   onBulkRename,
   renameTrigger,
+  active = true,
   zipSelectionCount,
   isBusy,
   onCompress,
@@ -300,7 +304,12 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
     };
   }, [resizing]);
 
+  // the icon Windows shows for each file (the program that opens it), at the size this view draws icons
+  const windowsIcon = useFileIcons(items, viewMode === 'thumbnails' ? 36 : viewMode === 'tiles' ? 28 : 16, colPrefs.windowsIcons);
+
   const getFileIcon = (item: FileItem, size = 16) => {
+    const url = windowsIcon(item);
+    if (url) return <img className="file-icon-img" src={url} width={size} height={size} alt="" draggable={false} />;
     // hairline: one physical screen pixel at every icon size (lucide's default is a thick line that grows with the
     // icon). At 175% Windows scaling that is 0.57 CSS px; on a 100% screen it stays 1 px.
     const thin = { size, strokeWidth: 1 / Math.max(1, window.devicePixelRatio || 1), absoluteStrokeWidth: true };
@@ -544,7 +553,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
 
   // F2 with exactly one item selected (App bumps renameTrigger) opens the same box as right-click, Rename
   useEffect(() => {
-    if (renameTrigger === 0) return;
+    if (renameTrigger === 0 || !active) return;
     const selected = items.filter((i) => selectedPaths.has(i.path));
     if (selected.length === 1) handleOpenRenameModal(selected[0]);
   }, [renameTrigger]);

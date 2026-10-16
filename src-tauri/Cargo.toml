@@ -1,6 +1,6 @@
 [package]
 name = "boonsh"
-version = "0.10.3"
+version = "0.10.4"
 description = "boonsh - Standalone Hybrid PowerShell & File Manager"
 authors = ["Somboon L."]
 license = "MIT"
@@ -32,13 +32,22 @@ dirs = "5"
 base64 = "0.22"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 regex-lite = "0.1.9"
+# File icons go to the page as PNG (shell_icons.rs); Tauri already builds this version
+png = "0.18"
+tauri-plugin-updater = { version = "2.14", default-features = false, features = ["native-tls"] }
+tauri-plugin-process = "2.4"
 
 # File properties (Dimensions, Length, Album ...) from the Windows property system, as in Explorer. The same
 # windows 0.61 is already pulled in by Tauri, so this only switches on a few more of its modules.
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
   "Win32_System_Com",
+  "Win32_System_IO",
+  "Win32_System_Threading",
   "Win32_System_Com_StructuredStorage",
   "Win32_System_Variant",
   "Win32_UI_Shell",
@@ -47,6 +56,11 @@ windows = { version = "0.61", features = [
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+# No incremental cache for debug builds: it kept a new copy for every change of build settings
+# (target\debug\incremental grew past 23 GB). Debug rebuilds of boonsh's own code are a little slower instead.
+[profile.dev]
+incremental = false
+
 [profile.release]
 codegen-units = 1
 lto = true

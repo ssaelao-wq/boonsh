@@ -8,6 +8,7 @@ export const REPO_URL = 'https://github.com/ssaelao-wq/boonsh';
 /** The main open-source libraries inside boonsh, and the license each is used under. */
 export const COMPONENTS: { name: string; license: string }[] = [
   { name: 'Tauri (app framework)', license: 'MIT or Apache-2.0' },
+  { name: 'Tauri updater and process plugins (updates)', license: 'MIT or Apache-2.0' },
   { name: 'React', license: 'MIT' },
   { name: 'marked (shows the manual)', license: 'MIT' },
   { name: 'Anthropic TypeScript SDK (AI Assistant)', license: 'MIT' },

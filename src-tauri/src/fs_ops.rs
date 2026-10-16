@@ -78,6 +78,24 @@ pub(crate) fn quote_path_arg(path: &str) -> String {
     }
 }
 
+/// Whether the folder tree would list anything under `path`: a sub-folder or a basket (the same entries the
+/// tree takes from `list_directory`). Stops at the first one; a folder that cannot be read has none.
+pub fn has_tree_children(path: &str) -> bool {
+    let Ok(entries) = fs::read_dir(path) else { return false };
+    entries.flatten().any(|e| {
+        e.metadata().map(|m| m.is_dir()).unwrap_or(false)
+            || e.file_name().to_string_lossy().to_lowercase().ends_with(".basket")
+    })
+}
+
+/// `has_tree_children` for each path, in order: the tree shows the expand arrow only where it is true.
+#[tauri::command]
+pub async fn tree_has_children(paths: Vec<String>) -> Result<Vec<bool>, String> {
+    tauri::async_runtime::spawn_blocking(move || paths.iter().map(|p| has_tree_children(p)).collect())
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn list_directory(target_path: Option<String>) -> Result<FileListResult, String> {
     let raw_path = match target_path {
@@ -361,75 +379,6 @@ pub fn delete_items(paths: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
-/// Paste (copy or move) items into `dest_dir`. Returns the new paths.
-/// Name clashes get Explorer-style names ("a - Copy.txt" / "a (2).txt") instead of overwriting.
-/// Runs off the main thread so large copies don't freeze the window.
-#[tauri::command]
-pub async fn paste_items(paths: Vec<String>, dest_dir: String, mode: String) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || paste_items_blocking(paths, dest_dir, mode == "cut"))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-pub(crate) fn paste_items_blocking(paths: Vec<String>, dest_dir: String, is_move: bool) -> Result<Vec<String>, String> {
-    let dest = PathBuf::from(&dest_dir);
-    if !dest.is_dir() {
-        return Err(format!("Destination is not a folder: {}", dest_dir));
-    }
-    let dest_canon = fs::canonicalize(&dest).map_err(|e| e.to_string())?;
-
-    let mut pasted = Vec::new();
-    let mut errors = Vec::new();
-
-    for p in paths {
-        let src = PathBuf::from(&p);
-        let result = (|| -> Result<Option<PathBuf>, String> {
-            if !src.exists() {
-                return Err("no longer exists".to_string());
-            }
-            let src_canon = fs::canonicalize(&src).map_err(|e| e.to_string())?;
-            if src.is_dir() && dest_canon.starts_with(&src_canon) {
-                return Err("cannot paste a folder into itself".to_string());
-            }
-            let name = src.file_name().ok_or("invalid name")?.to_string_lossy().to_string();
-
-            if is_move {
-                // Cut + paste into the same folder is a no-op
-                if src_canon.parent() == Some(dest_canon.as_path()) {
-                    return Ok(None);
-                }
-                let target = unique_target(&dest, &name, false);
-                if fs::rename(&src, &target).is_err() {
-                    // Different drive: copy then remove the original
-                    copy_recursive(&src, &target).map_err(|e| e.to_string())?;
-                    if src.is_dir() {
-                        fs::remove_dir_all(&src).map_err(|e| e.to_string())?;
-                    } else {
-                        fs::remove_file(&src).map_err(|e| e.to_string())?;
-                    }
-                }
-                Ok(Some(target))
-            } else {
-                let target = unique_target(&dest, &name, true);
-                copy_recursive(&src, &target).map_err(|e| e.to_string())?;
-                Ok(Some(target))
-            }
-        })();
-
-        match result {
-            Ok(Some(target)) => pasted.push(target.to_string_lossy().to_string()),
-            Ok(None) => {}
-            Err(e) => errors.push(format!("'{}': {}", p, e)),
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(pasted)
-    } else {
-        Err(format!("Some items could not be pasted:\n{}", errors.join("\n")))
-    }
-}
-
 pub(crate) fn unique_target(dir: &Path, name: &str, is_copy: bool) -> PathBuf {
     let first = dir.join(name);
     if !first.exists() {
@@ -454,19 +403,6 @@ pub(crate) fn unique_target(dir: &Path, name: &str, is_copy: bool) -> PathBuf {
         }
     }
     unreachable!()
-}
-
-pub(crate) fn copy_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
-    if src.is_dir() {
-        fs::create_dir_all(dst)?;
-        for entry in fs::read_dir(src)? {
-            let entry = entry?;
-            copy_recursive(&entry.path(), &dst.join(entry.file_name()))?;
-        }
-        Ok(())
-    } else {
-        fs::copy(src, dst).map(|_| ())
-    }
 }
 
 /// Compress items into a new .zip in `dest_dir` ("name.zip", named after the first item; never overwrites).
@@ -1643,6 +1579,24 @@ fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tree_children_are_folders_or_baskets() {
+        let base = std::env::temp_dir().join(format!("boonsh-treekids-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        for d in ["empty", "files", "sub\\inner", "bask"] {
+            fs::create_dir_all(base.join(d)).unwrap();
+        }
+        fs::write(base.join("files\\a.txt"), "x").unwrap();
+        fs::write(base.join("bask\\Tax.basket"), "{}").unwrap();
+        let p = |d: &str| base.join(d).to_string_lossy().to_string();
+        assert!(!has_tree_children(&p("empty")));
+        assert!(!has_tree_children(&p("files")));
+        assert!(has_tree_children(&p("sub")));
+        assert!(has_tree_children(&p("bask")));
+        assert!(!has_tree_children(&p("missing")));
+        fs::remove_dir_all(&base).unwrap();
+    }
 
     #[test]
     fn single_rename_allows_case_only_change_but_not_overwrites() {

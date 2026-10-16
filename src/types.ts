@@ -1,3 +1,5 @@
+import type { SplitCell, SplitDir } from './splitLayout';
+
 export interface FileItem {
   name: string;
   path: string;
@@ -53,7 +55,10 @@ export interface TermTab {
   cwd: string;
   level: 'admin' | 'normal'; // the login this tab's shell runs with
   color: string; // the tab header color (one of TAB_COLORS)
-  // Split Screen: set on the right screen, the id of the tab (left screen) it sits beside. It has no header of its
-  // own, always comes right after that tab in the list, and cannot be split again.
+  // Split Screen (up to four screens, see splitLayout.ts): every screen but the first has `splitOf` = the id of the
+  // first one, which owns the tab header; they have no header of their own and always come right after it in the
+  // list. `cell` is set on every screen of a split tab, `splitDir` (how the first split runs) on the first one.
   splitOf?: string;
+  splitDir?: SplitDir;
+  cell?: SplitCell;
 }

@@ -57,6 +57,8 @@ export interface ColumnPrefs {
   dateShow: Record<DateColumn, DateMode>; // show the time too, or the date only
   dateSort: Record<DateColumn, DateMode>; // compare the time too, or the date only
   foldersFirst: boolean;
+  windowsIcons: boolean; // file icons from Windows (the program that opens each type), else boonsh's own
+  folderSizes: boolean; // measure folders (everything inside) for the Size column and the status bar
 }
 
 export const DEFAULT_PREFS: ColumnPrefs = {
@@ -65,6 +67,8 @@ export const DEFAULT_PREFS: ColumnPrefs = {
   dateShow: { modified: 'datetime', created: 'datetime' },
   dateSort: { modified: 'datetime', created: 'datetime' },
   foldersFirst: true,
+  windowsIcons: true,
+  folderSizes: true,
 };
 
 const PREFS_KEY = 'boonsh_columns';
@@ -97,6 +101,8 @@ export function normalizePrefs(raw: any): ColumnPrefs {
       dateShow: { modified: asMode(raw?.dateShow?.modified), created: asMode(raw?.dateShow?.created) },
       dateSort: { modified: asMode(raw?.dateSort?.modified), created: asMode(raw?.dateSort?.created) },
       foldersFirst: raw?.foldersFirst === false ? false : true,
+      windowsIcons: raw?.windowsIcons === false ? false : true,
+      folderSizes: raw?.folderSizes === false ? false : true,
     };
   } catch {
     return { ...d, order: [...d.order], visible: [...d.visible] };

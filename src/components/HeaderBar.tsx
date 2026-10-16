@@ -12,6 +12,7 @@ import {
   FolderTree,
   ChevronRight,
   Edit2,
+  Monitor,
   Settings,
   Scissors,
   Copy,
@@ -20,6 +21,7 @@ import {
   Terminal,
   Sparkles,
   ShoppingBasket,
+  Columns2,
 } from 'lucide-react';
 import { ViewMode } from '../types';
 
@@ -64,6 +66,8 @@ interface HeaderBarProps {
   onToggleFilePanel: () => void;
   showTerminal: boolean;
   onToggleTerminal: () => void;
+  dualPane: boolean;
+  onToggleDualPane: () => void;
   showAssistant: boolean;
   onToggleAssistant: () => void;
   theme: 'dark' | 'light';
@@ -72,6 +76,7 @@ interface HeaderBarProps {
   // an open basket: its name and the linked folders opened inside it, after the folder path (click = go there)
   basketTrail?: { label: string; title: string; onClick: () => void }[] | null;
   onUp?: () => void; // replaces "up to the parent folder" (in a basket: one level back, then out of it)
+  thisPC?: boolean; // the This PC view is shown: the path bar says so
   onRefresh: () => void;
   showSettings: boolean;
   onOpenSettings: () => void;
@@ -97,6 +102,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onToggleFilePanel,
   showTerminal,
   onToggleTerminal,
+  dualPane,
+  onToggleDualPane,
   showAssistant,
   onToggleAssistant,
   theme,
@@ -104,6 +111,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onNavigate,
   basketTrail,
   onUp,
+  thisPC,
   onRefresh,
   showSettings,
   onOpenSettings,
@@ -166,9 +174,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         {/* Up directory button */}
         <button
           onClick={() => (onUp ? onUp() : parentPath && onNavigate(parentPath))}
-          disabled={!onUp && !parentPath}
-          title={onUp ? 'Up: one level back in the basket, then out of it' : 'Go Up Directory'}
-          style={{ opacity: onUp || parentPath ? 1 : 0.4 }}
+          disabled={thisPC || (!onUp && !parentPath)}
+          title={
+            onUp && basketTrail
+              ? 'Up: one level back in the basket, then out of it'
+              : onUp
+                ? 'Up: This PC (all drives)'
+                : 'Go Up Directory'
+          }
+          style={{ opacity: !thisPC && (onUp || parentPath) ? 1 : 0.4 }}
         >
           <FolderUp size={16} style={{ color: '#f59e0b' }} />
         </button>
@@ -235,7 +249,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </form>
         ) : (
           <div ref={crumbsRef} className="path-breadcrumbs" onClick={handleStartEditingPath} title="Click to edit path">
-            {segments.length === 0 ? (
+            {thisPC ? (
+              <span className="breadcrumb-segment" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Monitor size={13} />
+                This PC
+              </span>
+            ) : segments.length === 0 ? (
               <span className="breadcrumb-segment">C:\</span>
             ) : (
               segments.map((seg, idx) => (
@@ -320,6 +339,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title="Toggle Middle File Panel (Ctrl+Shift+F)"
         >
           <FolderTree size={14} style={{ color: '#84cc16' }} />
+        </button>
+
+        {/* Two panes: a second file list beside the first (F5 copies, F6 moves to the other one) */}
+        <button
+          className={dualPane ? 'active' : ''}
+          onClick={onToggleDualPane}
+          title={dualPane ? 'Back to one file pane' : 'Two file panes (F5 copies, F6 moves to the other pane, Tab switches)'}
+        >
+          <Columns2 size={14} style={{ color: '#f59e0b' }} />
         </button>
 
         {/* Toggle Bottom Preview Drawer */}

@@ -4,7 +4,6 @@ import {
   ChevronRight,
   ChevronDown,
   Folder,
-  FolderOpen,
   HardDrive,
   Monitor,
   BookmarkPlus,
@@ -16,14 +15,27 @@ import {
   RefreshCw,
   ShoppingBasket,
 } from 'lucide-react';
-import { FileItem, FileListResult, QuickAccessItem } from '../types';
+import { FileItem, FileListResult } from '../types';
 import { useMenuPosition } from '../useMenuPosition';
 import { driveColor } from '../driveColors';
+import { DriveInfo, driveName, fullUsage, treeUsage } from '../drives';
 import { basketName, isBasket } from '../basket';
 
 type Listing = { path: string; items: FileItem[] } | null;
 
 const cleanOf = (p: string) => p.toLowerCase().replace(/\\+$/, '');
+
+/** How long ago a folder was modified, for its colour in the tree: today, within 30 days, older, over a year. */
+export type FolderAge = 'today' | 'recent' | 'old' | 'ancient';
+export function folderAge(modifiedSecs: number | undefined, now = new Date()): FolderAge {
+  if (!modifiedSecs) return 'recent'; // not known (a drive's own folder): the usual yellow
+  const d = new Date(modifiedSecs * 1000);
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) return 'today';
+  const days = (now.getTime() - d.getTime()) / 86_400_000;
+  if (days > 365) return 'ancient';
+  if (days > 30) return 'old';
+  return 'recent';
+}
 
 interface FolderTreeNodeProps {
   name: string;
@@ -36,6 +48,12 @@ interface FolderTreeNodeProps {
   onContextMenu: (e: React.MouseEvent, path: string, name: string) => void;
   // this folder could not be opened (renamed or deleted elsewhere): the parent reloads its list
   onGone?: () => void;
+  // whether this folder has anything for the tree (the parent asked; undefined = not known yet)
+  hasKids?: boolean;
+  modified?: number; // the folder's Date Modified (seconds), for its colour
+  modifiedText?: string;
+  usage?: string; // a drive: "Used 211GB/463GB" after its name
+  tooltip?: string; // replaces the path as the row's tooltip
   depth?: number;
   isDrive?: boolean;
 }
@@ -50,39 +68,65 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   openBasketPath,
   onContextMenu,
   onGone,
+  hasKids,
+  modified,
+  modifiedText,
+  usage,
+  tooltip,
   depth = 0,
   isDrive = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [children, setChildren] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [loaded, setLoaded] = useState<boolean>(false); // `children` holds this folder's real list
+  // which of the child folders have sub-folders of their own (they show the expand arrow only then)
+  const [kidsOf, setKidsOf] = useState<Record<string, boolean>>({});
+  const [checkGen, setCheckGen] = useState(0);
 
   const cleanPath = cleanOf(path);
   const cleanCurrent = cleanOf(currentPath);
   const isSelected = cleanCurrent === cleanPath;
 
-  // Auto-expand if currentPath is inside this folder; collapse if user clicked higher or outside folder (drives too:
-  // opening D: folds C: away, like folders)
+  // Auto-expand when the open folder is below this one, so the tree shows the way to it; collapse when it is
+  // outside (drives too: opening D: folds C: away, like folders). Opening this folder itself does not expand it:
+  // only its arrow does.
   useEffect(() => {
-    if (cleanCurrent === cleanPath || cleanCurrent.startsWith(cleanPath + '\\')) {
-      // the open folder is below this one, but this list (loaded earlier) does not have the way down: a folder
-      // made since then (path bar, terminal cd, another program). Load the list again.
-      const below = cleanCurrent !== cleanPath;
-      const missing = below && !children.some((c) => cleanCurrent === cleanOf(c.path) || cleanCurrent.startsWith(cleanOf(c.path) + '\\'));
+    if (cleanCurrent.startsWith(cleanPath + '\\')) {
+      // this list (loaded earlier) does not have the way down: a folder made since then (path bar, terminal cd,
+      // another program). Load the list again.
+      const missing = !children.some((c) => cleanCurrent === cleanOf(c.path) || cleanCurrent.startsWith(cleanOf(c.path) + '\\'));
       if ((!isExpanded && children.length === 0) || missing) {
         fetchSubfolders();
       }
       setIsExpanded(true);
-    } else if (isExpanded) {
+    } else if (isExpanded && cleanCurrent !== cleanPath) {
       setIsExpanded(false);
     }
   }, [currentPath]);
+
+  // Ask which child folders have sub-folders, whenever the list changes or this folder is listed again (F5,
+  // a change on disk), so the arrows stay true.
+  useEffect(() => {
+    const folders = children.filter((c) => c.is_dir);
+    if (folders.length === 0) return;
+    let stale = false;
+    invoke<boolean[]>('tree_has_children', { paths: folders.map((c) => c.path) })
+      .then((res) => {
+        if (!stale) setKidsOf(Object.fromEntries(folders.map((c, i) => [c.path, res[i]])));
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [children, checkGen]);
 
   const fetchSubfolders = () => {
     setLoading(true);
     invoke<FileListResult>('list_directory', { targetPath: path })
       .then((res) => {
         setChildren(res.items.filter((item) => item.is_dir || isBasket(item)));
+        setLoaded(true);
       })
       .catch((err) => console.error('Tree load error:', err))
       .finally(() => setLoading(false));
@@ -94,8 +138,13 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
     if (!listing || cleanOf(listing.path) !== cleanPath) return;
     const subdirs = listing.items.filter((item) => item.is_dir || isBasket(item));
     setChildren((prev) =>
-      prev.length === subdirs.length && prev.every((c, i) => c.path === subdirs[i].path) ? prev : subdirs
+      prev.length === subdirs.length &&
+      prev.every((c, i) => c.path === subdirs[i].path && c.modified_timestamp === subdirs[i].modified_timestamp)
+        ? prev
+        : subdirs
     );
+    setLoaded(true);
+    setCheckGen((g) => g + 1);
   }, [listing]);
 
   const handleToggleExpand = (e: React.MouseEvent) => {
@@ -106,15 +155,17 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
     setIsExpanded(!isExpanded);
   };
 
+  // a click on the name only opens the folder in the file panel; the arrow expands it here
   const handleFolderClick = () => {
     Promise.resolve(onNavigate(path)).then((ok) => {
       if (ok === false) onGone?.();
     });
-    if (!isExpanded) {
-      if (children.length === 0) fetchSubfolders();
-      setIsExpanded(true);
-    }
   };
+
+  const age = folderAge(modified);
+
+  // the arrow only when there is something to expand (drives always have one)
+  const showCaret = isDrive || (loaded ? children.length > 0 : hasKids !== false);
 
   return (
     <div className="tree-node-wrapper">
@@ -123,25 +174,37 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
         style={{ paddingLeft: `${depth * 12 + 6}px` }}
         onClick={handleFolderClick}
         onContextMenu={(e) => onContextMenu(e, path, name)}
-        title={path}
+        title={tooltip ?? (modifiedText ? `${path}\nModified: ${modifiedText}` : path)}
       >
-        <span
-          className="tree-caret"
-          onClick={handleToggleExpand}
-          style={{ cursor: 'pointer', padding: '0 2px' }}
-        >
-          {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        </span>
+        {showCaret ? (
+          <span
+            className="tree-caret"
+            onClick={handleToggleExpand}
+            style={{ cursor: 'pointer', padding: '0 2px' }}
+          >
+            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </span>
+        ) : (
+          <span className="tree-caret tree-caret-none" />
+        )}
 
         {isDrive ? (
           <HardDrive size={13} style={{ color: driveColor(path) }} />
-        ) : isExpanded ? (
-          <FolderOpen size={13} style={{ color: 'var(--text-main)' }} />
         ) : (
-          <Folder size={13} style={{ color: 'var(--text-muted)' }} />
+          // the file panel's folder (MainFilePanel getFileIcon): 16 px, a one-screen-pixel line; coloured by when it
+          // was last modified (today: orange, 30+ days: dim yellow, a year+: grey)
+          <Folder
+            size={16}
+            strokeWidth={1 / Math.max(1, window.devicePixelRatio || 1)}
+            absoluteStrokeWidth
+            style={{ color: `var(--tree-folder-${age}-stroke)`, fill: `var(--tree-folder-${age}-fill)` }}
+          />
         )}
 
-        <span className="tree-node-label">{name}</span>
+        <span className="tree-node-label">
+          {name}
+          {usage && <span className="tree-drive-usage">{usage}</span>}
+        </span>
       </div>
 
       {isExpanded && (
@@ -167,7 +230,7 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
                   onClick={() => onOpenBasket(child.path)}
                   title={`Basket: ${child.path}`}
                 >
-                  <span className="tree-caret" style={{ padding: '0 2px', width: 13, display: 'inline-block' }} />
+                  <span className="tree-caret tree-caret-none" />
                   <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
                   <span className="tree-node-label">{basketName(child.name)}</span>
                 </div>
@@ -183,6 +246,9 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
                   openBasketPath={openBasketPath}
                   onContextMenu={onContextMenu}
                   onGone={fetchSubfolders}
+                  hasKids={kidsOf[child.path]}
+                  modified={child.modified_timestamp}
+                  modifiedText={child.modified}
                   depth={depth + 1}
                 />
               )
@@ -203,6 +269,9 @@ interface FolderTreeProps {
   onAddQuickAccess?: (item: { label: string; path: string; icon_type?: string }) => void;
   onRefresh?: () => void;
   onCreateBasket?: (folder: string) => void; // New -> Basket in the right-clicked folder
+  drives: DriveInfo[]; // App loads them (also for the This PC view)
+  onOpenThisPC: () => void;
+  thisPCOpen: boolean;
 }
 
 export const FolderTree: React.FC<FolderTreeProps> = ({
@@ -214,8 +283,10 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   onAddQuickAccess,
   onRefresh,
   onCreateBasket,
+  drives,
+  onOpenThisPC,
+  thisPCOpen,
 }) => {
-  const [drives, setDrives] = useState<QuickAccessItem[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -232,14 +303,6 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
 
   const contentRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    invoke<QuickAccessItem[]>('get_quick_access')
-      .then((items) => {
-        const driveItems = items.filter((item) => item.icon_type === 'drive');
-        setDrives(driveItems);
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     const scrollToThirdLine = () => {
@@ -351,15 +414,23 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
     <div className="folder-tree-container">
       <div className="folder-tree-header">Folder Tree</div>
       <div className="folder-tree-content" ref={contentRef}>
-        <div className="tree-node-item" style={{ fontWeight: 400, paddingLeft: 4 }}>
+        {/* a click shows the drives with their space in the file panel */}
+        <div
+          className={`tree-node-item ${thisPCOpen ? 'selected' : ''}`}
+          style={{ fontWeight: 400, paddingLeft: 4 }}
+          onClick={onOpenThisPC}
+          title="This PC: the drives and their free space"
+        >
           <Monitor size={14} style={{ color: 'var(--text-main)' }} />
-          <span>This PC</span>
+          <span className="tree-node-label">This PC</span>
         </div>
 
         {drives.map((drive) => (
           <FolderTreeNode
             key={drive.path}
-            name={drive.label}
+            name={driveName(drive)}
+            usage={treeUsage(drive)}
+            tooltip={`${drive.path}\n${fullUsage(drive)}${drive.file_system ? ` · ${drive.file_system}` : ''}`}
             path={drive.path}
             currentPath={currentPath}
             listing={listing}

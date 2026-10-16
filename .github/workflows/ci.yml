@@ -1,0 +1,50 @@
+# Checks every push to main and every pull request: the frontend tests (Vitest), the type-check and build, and
+# the Rust unit tests. Windows only, like boonsh itself.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Unit tests (Vitest)
+        run: npm test
+      - name: Type-check and build
+        run: npm run build
+
+  rust:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # tauri::generate_context! reads the built frontend (frontendDist = ../dist) at compile time
+      - run: npm ci
+      - run: npm run build
+      # The skipped tests need a desktop Windows set up by a user: sample media files with their properties, a
+      # default app for .txt, installed programs, and Windows Credential Manager. A build server has none of these.
+      - name: Unit tests (cargo)
+        shell: bash
+        run: >
+          cargo test --manifest-path src-tauri/Cargo.toml --lib --
+          --skip file_props::tests::reads_real_files
+          --skip file_props::tests::default_apps
+          --skip file_props::handler_tests
+          --skip file_props::installed_tests
+          --skip secrets::tests

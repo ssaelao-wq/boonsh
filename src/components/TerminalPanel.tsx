@@ -23,6 +23,8 @@ import {
   Sparkles,
   MessageSquare,
   Columns2,
+  Rows2,
+  Grid2x2,
   Search,
   FileDown,
   ChevronUp,
@@ -37,6 +39,18 @@ import { ConstVar } from '../constVars';
 import { hotkeyFromEvent } from '../hotkey';
 import { TermTab } from '../types';
 import { TAB_COLORS } from '../tabColors';
+import {
+  SplitDir,
+  SplitRatios,
+  DIR_LABEL,
+  canSplitCell,
+  cellRect,
+  crossDir,
+  dividers,
+  edgeCss,
+  paneName,
+  spanCss,
+} from '../splitLayout';
 
 interface TerminalPanelProps {
   currentPath: string;
@@ -46,8 +60,9 @@ interface TerminalPanelProps {
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onNewTab: () => void;
-  onCloseTab: (id: string) => void; // the whole tab (both screens when split)
-  onSplitTab: (id: string) => void; // Split Screen: a second shell on the right of this tab
+  onCloseTab: (id: string) => void; // the whole tab (all its screens when split)
+  onSplitTab: (id: string, dir: SplitDir) => void; // Split Screen: a second shell beside or under this tab's
+  onSplitPane: (id: string) => void; // split one half of a split tab again, across the first split
   onClosePane: (id: string) => void; // one screen of a split tab
   onCloseAllTabs: () => void;
   onRenameTab: (id: string, name: string) => void;
@@ -204,6 +219,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onNewTab,
   onCloseTab,
   onSplitTab,
+  onSplitPane,
   onClosePane,
   onCloseAllTabs,
   onRenameTab,
@@ -280,7 +296,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       if (!d) return;
       if (!d.moved && Math.abs(ev.clientX - d.x) < 5) return;
       d.moved = true;
-      const list = tabsRef.current.filter((t) => !t.splitOf); // the headers (a right screen has none)
+      const list = tabsRef.current.filter((t) => !t.splitOf); // the headers (the other screens of a split tab have none)
       const over = list.findIndex((t) => {
         const r = tabElsRef.current[t.id]?.getBoundingClientRect();
         return r && ev.clientX >= r.left && ev.clientX <= r.right;
@@ -309,12 +325,25 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   // The Admin / normal user button shows the login of the active tab (the active screen of a split tab)
   const isAdmin = tabs.find((t) => t.id === activeTabId)?.level === 'admin';
 
-  // Split Screen: only left screens have a tab header; a right screen belongs to the header of its `splitOf`
+  // Split Screen: only the first screen of a tab has a tab header; the others belong to the header of their `splitOf`
   const heads = tabs.filter((t) => !t.splitOf);
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeMainId = activeTab ? activeTab.splitOf ?? activeTab.id : null;
   const activeMain = heads.find((t) => t.id === activeMainId);
-  const activeRight = activeMainId ? tabs.find((t) => t.splitOf === activeMainId) : undefined;
+  // the screens of the active tab when it is split (two to four), else empty
+  const activePanes = activeMain?.cell ? tabs.filter((t) => t.id === activeMain.id || t.splitOf === activeMain.id) : [];
+  const paneCount = (headId: string) => tabs.filter((x) => x.id === headId || x.splitOf === headId).length;
+  // "Top-Left" ... for a screen of a split tab, '' for a tab that is not split
+  const sideOf = (t: TermTab | undefined): string => {
+    if (!t?.cell) return '';
+    const head = t.splitOf ? tabs.find((x) => x.id === t.splitOf) : t;
+    return paneName(head?.splitDir ?? 'lr', t.cell);
+  };
+  const splitIcon = (head: TermTab, size: number, color?: string) => {
+    const style = { flexShrink: 0, color };
+    if (paneCount(head.id) > 2) return <Grid2x2 size={size} style={style} />;
+    return head.splitDir === 'tb' ? <Rows2 size={size} style={style} /> : <Columns2 size={size} style={style} />;
+  };
   // The screen last used in each split tab, so clicking its header goes back to that screen
   const lastPaneRef = useRef<Record<string, string>>({});
   if (activeTab && activeMainId) lastPaneRef.current[activeMainId] = activeTab.id;
@@ -366,14 +395,23 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
 
-  // Split Screen: the left/right share of each split tab (key = the tab's id), half and half at first; memory only
+  // Split Screen: where the separators of each split tab sit, half and half at first; memory only. Keys:
+  // `<tab id>:<dir>` for the first split, `<tab id>:<dir>:a` / `:b` for the split inside a half (a new direction
+  // after a close starts at half and half again).
   const [splitRatio, setSplitRatio] = useState<Record<string, number>>({});
   const splitRatioRef = useRef(splitRatio);
   splitRatioRef.current = splitRatio;
+  const ratioKey = (head: TermTab, which: 'main' | 'a' | 'b') =>
+    `${head.id}:${head.splitDir ?? 'lr'}${which === 'main' ? '' : `:${which}`}`;
+  const ratiosOf = (head: TermTab, map: Record<string, number>): SplitRatios => ({
+    main: map[ratioKey(head, 'main')] ?? 0.5,
+    a: map[ratioKey(head, 'a')] ?? 0.5,
+    b: map[ratioKey(head, 'b')] ?? 0.5,
+  });
   const onSelectTabRef = useRef(onSelectTab);
   onSelectTabRef.current = onSelectTab;
 
-  // The screens shown for the active tab: its own, plus the right screen when it is split (left first)
+  // The screens shown for the active tab: its own, plus the others when it is split
   const shownIds = (): string[] => {
     const id = activeIdRef.current;
     if (!id) return [];
@@ -395,27 +433,34 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
   };
 
-  // Place the terminals: the active tab's screen(s) are shown, side by side when split, the rest hidden
-  const SPLIT_GAP = 3; // half the width of the separator between the two screens
+  // Place the terminals: the active tab's screen(s) are shown, each in its box under its own header bar when the
+  // tab is split, the rest hidden
+  const SPLIT_GAP = 3; // half the width of the separator between two screens
+  const PANE_HEAD = 22; // the header bar on top of each screen of a split tab
   const layout = () => {
     const ids = shownIds();
-    const ratio = ids.length === 2 ? splitRatioRef.current[ids[0]] ?? 0.5 : 1;
+    const list = tabsRef.current;
+    const first = list.find((t) => t.id === ids[0]);
+    const head = first?.splitOf ? list.find((t) => t.id === first.splitOf) : first;
+    const split = ids.length > 1 && head?.cell;
+    const ratios = head ? ratiosOf(head, splitRatioRef.current) : null;
     sessionsRef.current.forEach((s, id) => {
-      const at = ids.indexOf(id);
-      s.el.style.display = at < 0 ? 'none' : 'block';
-      if (ids.length < 2) {
-        s.el.style.left = '0';
-        s.el.style.right = '0';
-        s.el.style.width = '';
-      } else if (at === 0) {
-        s.el.style.left = '0';
-        s.el.style.right = '';
-        s.el.style.width = `calc(${ratio * 100}% - ${SPLIT_GAP}px)`;
-      } else if (at === 1) {
-        s.el.style.left = `calc(${ratio * 100}% + ${SPLIT_GAP}px)`;
-        s.el.style.right = '0';
-        s.el.style.width = '';
+      const shown = ids.includes(id);
+      s.el.style.display = shown ? 'block' : 'none';
+      const cell = list.find((t) => t.id === id)?.cell;
+      if (!shown || !split || !cell || !head || !ratios) {
+        Object.assign(s.el.style, { left: '0', top: '0', right: '0', bottom: '0', width: '', height: '' });
+        return;
       }
+      const r = cellRect(head.splitDir ?? 'lr', cell, ratios, SPLIT_GAP);
+      Object.assign(s.el.style, {
+        left: edgeCss(r.x0),
+        top: edgeCss(r.y0, PANE_HEAD),
+        width: spanCss(r.x0, r.x1),
+        height: spanCss(r.y0, r.y1, -PANE_HEAD),
+        right: '',
+        bottom: '',
+      });
     });
   };
 
@@ -589,29 +634,31 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     return () => clearTimeout(timer);
   }, [activeTabId, visible, tabIds]);
 
-  // The separator was dragged: place and refit both screens
+  // A separator was dragged or the screens of a tab moved: place and refit the shown screens
+  const layoutSig = tabs.map((t) => `${t.id}:${t.cell ?? ''}:${t.splitDir ?? ''}`).join('|');
   useEffect(() => {
     layout();
     refit();
-  }, [splitRatio]);
+  }, [splitRatio, layoutSig]);
 
-  // Drag the separator between the two screens of a split tab
+  // Drag a separator between the screens of a split tab (`vertical` lines move sideways, the others up and down)
   const splitBoxRef = useRef<HTMLDivElement>(null);
-  const [draggingSplit, setDraggingSplit] = useState(false);
-  const startSplitDrag = (e: React.MouseEvent, mainId: string) => {
+  const [draggingSplit, setDraggingSplit] = useState<{ key: string; vertical: boolean } | null>(null);
+  const startSplitDrag = (e: React.MouseEvent, key: string, vertical: boolean) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    setDraggingSplit(true);
+    setDraggingSplit({ key, vertical });
     const move = (ev: MouseEvent) => {
       const r = splitBoxRef.current?.getBoundingClientRect();
-      if (!r || r.width <= 0) return;
-      const ratio = Math.min(0.85, Math.max(0.15, (ev.clientX - r.left) / r.width));
-      setSplitRatio((m) => ({ ...m, [mainId]: ratio }));
+      if (!r || r.width <= 0 || r.height <= 0) return;
+      const share = vertical ? (ev.clientX - r.left) / r.width : (ev.clientY - r.top) / r.height;
+      const ratio = Math.min(0.85, Math.max(0.15, share));
+      setSplitRatio((m) => ({ ...m, [key]: ratio }));
     };
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
-      setDraggingSplit(false);
+      setDraggingSplit(null);
       sessionsRef.current.get(activeIdRef.current ?? '')?.term.focus();
     };
     window.addEventListener('mousemove', move);
@@ -695,7 +742,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     const t = setTimeout(() => setExportNote(null), 5000);
     return () => clearTimeout(t);
   }, [exportNote]);
-  const exportScreen = async (id: string, side?: 'Left' | 'Right') => {
+  const exportScreen = async (id: string, side?: string) => {
     const s = sessionsRef.current.get(id);
     const tab = tabsRef.current.find((t) => t.id === id);
     if (!s || !tab) return;
@@ -720,8 +767,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
   };
 
-  // Right-click on the Left / Right name of a split tab: Find Text / Export Screen on that screen
-  const [paneCtx, setPaneCtx] = useState<{ x: number; y: number; id: string; side: 'Left' | 'Right' } | null>(null);
+  // Right-click on the header bar of a screen of a split tab: Find Text / Export Screen / split it / close it
+  const [paneCtx, setPaneCtx] = useState<{ x: number; y: number; id: string; side: string } | null>(null);
   const paneCtxPos = useMenuPosition(paneCtx);
 
   // Synchronize terminal fit & scroll whenever usageBanner toggles
@@ -833,10 +880,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               setColorOpen(false);
               setTabCtx({ x: e.clientX, y: e.clientY, id: t.id });
             }}
-            title={tabs.some((x) => x.splitOf === t.id) ? `${t.name} (split screen)` : t.name}
+            title={t.cell ? `${t.name} (split screen: ${paneCount(t.id)} screens)` : t.name}
           >
-            {tabs.some((x) => x.splitOf === t.id) ? (
-              <Columns2 size={12} style={{ flexShrink: 0 }} />
+            {t.cell ? (
+              splitIcon(t, 12)
             ) : t.level === 'admin' ? (
               <ShieldCheck size={12} style={{ color: '#86efac', flexShrink: 0 }} />
             ) : (
@@ -863,7 +910,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             {heads.length > 1 && (
               <button
                 className="terminal-tab-close"
-                title={tabs.some((x) => x.splitOf === t.id) ? 'Close tab (both screens)' : 'Close tab'}
+                title={t.cell ? `Close tab (all ${paneCount(t.id)} screens)` : 'Close tab'}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1011,7 +1058,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
                 {(() => {
                   const t = tabs.find((x) => x.id === historyMenu.id);
                   if (!t) return null;
-                  const side = t.splitOf ? ' (Right)' : tabs.some((x) => x.splitOf === t.id) ? ' (Left)' : '';
+                  const side = t.cell ? ` (${sideOf(t)})` : '';
                   return <span className="terminal-history-tab">{`${tabs.find((x) => x.id === (t.splitOf ?? t.id))?.name ?? t.name}${side}`}</span>;
                 })()}
               </div>
@@ -1264,46 +1311,6 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           </button>
         </div>
       )}
-      {/* Split Screen: a bar naming the two screens, each with its own close button */}
-      {activeMain && activeRight && (
-        <div className="split-bar" style={{ '--tab-color': activeMain.color } as React.CSSProperties}>
-          {[activeMain, activeRight].map((p, i) => {
-            const share = splitRatio[activeMain.id] ?? 0.5;
-            return (
-              <div
-                key={p.id}
-                className={`split-bar-pane ${p.id === activeTabId ? 'active' : ''}`}
-                style={{ width: `calc(${(i === 0 ? share : 1 - share) * 100}% - ${SPLIT_GAP}px)` }}
-                onClick={() => onSelectTab(p.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setPaneCtx({ x: e.clientX, y: e.clientY, id: p.id, side: i === 0 ? 'Left' : 'Right' });
-                }}
-                title={`${i === 0 ? 'Left' : 'Right'} screen: ${p.cwd} (right-click: Find Text, Export Screen)`}
-              >
-                {p.level === 'admin' ? (
-                  <ShieldCheck size={11} style={{ color: '#22c55e', flexShrink: 0 }} />
-                ) : (
-                  <TermIcon size={11} style={{ flexShrink: 0 }} />
-                )}
-                <span className="split-bar-label">{i === 0 ? 'Left' : 'Right'}</span>
-                <span className="split-bar-folder">{folderName(p.cwd)}</span>
-                <button
-                  className="terminal-tab-close"
-                  title={`Close the ${i === 0 ? 'left' : 'right'} screen`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClosePane(p.id);
-                  }}
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
       <div
         ref={splitBoxRef}
         style={{
@@ -1319,7 +1326,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           style={{ background: theme === 'light' ? '#f4f4f5' : '#000000' }}
           onContextMenu={(e) => {
             e.preventDefault();
-            // the screen that was right-clicked (a split tab has two)
+            // the screen that was right-clicked (a split tab has two to four)
             let id = activeIdRef.current;
             sessionsRef.current.forEach((s, sid) => {
               if (s.el.contains(e.target as Node)) id = sid;
@@ -1328,25 +1335,85 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
             setTermMenu({ x: e.clientX, y: e.clientY, hasSel: !!s?.term.hasSelection(), id: id ?? '' });
           }}
         />
-        {activeMain && activeRight && (
-          <div
-            className={`split-divider ${draggingSplit ? 'dragging' : ''}`}
-            style={{ left: `calc(${(splitRatio[activeMain.id] ?? 0.5) * 100}% - ${SPLIT_GAP}px)`, width: SPLIT_GAP * 2 }}
-            onMouseDown={(e) => startSplitDrag(e, activeMain.id)}
-            onDoubleClick={() => setSplitRatio((m) => ({ ...m, [activeMain.id]: 0.5 }))}
-            title="Drag to resize the screens (double-click: half and half)"
-          />
-        )}
+        {/* Split Screen: a header bar on top of each screen (its name, folder and close button) and the separators */}
+        {activeMain?.cell && activePanes.length > 1 && (() => {
+          const dir = activeMain.splitDir ?? 'lr';
+          const ratios = ratiosOf(activeMain, splitRatio);
+          return (
+            <>
+              {activePanes.map((p) => {
+                if (!p.cell) return null;
+                const r = cellRect(dir, p.cell, ratios, SPLIT_GAP);
+                const name = paneName(dir, p.cell);
+                return (
+                  <div
+                    key={p.id}
+                    className={`split-pane-head ${p.id === activeTabId ? 'active' : ''}`}
+                    style={{
+                      '--tab-color': activeMain.color,
+                      left: edgeCss(r.x0),
+                      top: edgeCss(r.y0),
+                      width: spanCss(r.x0, r.x1),
+                      height: PANE_HEAD,
+                    } as React.CSSProperties}
+                    onClick={() => onSelectTab(p.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setPaneCtx({ x: e.clientX, y: e.clientY, id: p.id, side: name });
+                    }}
+                    title={`${name} screen: ${p.cwd} (right-click: Find Text, Export Screen${canSplitCell(p.cell) ? ', Split' : ''})`}
+                  >
+                    {p.level === 'admin' ? (
+                      <ShieldCheck size={11} style={{ color: '#22c55e', flexShrink: 0 }} />
+                    ) : (
+                      <TermIcon size={11} style={{ flexShrink: 0 }} />
+                    )}
+                    <span className="split-bar-label">{name}</span>
+                    <span className="split-bar-folder">{folderName(p.cwd)}</span>
+                    <button
+                      className="terminal-tab-close"
+                      title={`Close the ${name} screen`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClosePane(p.id);
+                      }}
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                );
+              })}
+              {dividers(dir, activePanes.flatMap((p) => (p.cell ? [p.cell] : [])), ratios, SPLIT_GAP).map((d) => {
+                const key = ratioKey(activeMain, d.key);
+                const pos = { f: d.at, px: -SPLIT_GAP };
+                const style: React.CSSProperties = d.vertical
+                  ? { left: edgeCss(pos), width: SPLIT_GAP * 2, top: edgeCss(d.from), height: spanCss(d.from, d.to) }
+                  : { top: edgeCss(pos), height: SPLIT_GAP * 2, left: edgeCss(d.from), width: spanCss(d.from, d.to) };
+                return (
+                  <div
+                    key={d.key}
+                    className={`split-divider ${d.vertical ? 'col' : 'row'} ${draggingSplit?.key === key ? 'dragging' : ''}`}
+                    style={style}
+                    onMouseDown={(e) => startSplitDrag(e, key, d.vertical)}
+                    onDoubleClick={() => setSplitRatio((m) => ({ ...m, [key]: 0.5 }))}
+                    title="Drag to resize the screens (double-click: half and half)"
+                  />
+                );
+              })}
+            </>
+          );
+        })()}
         {find && (() => {
-          // over the top right of its own screen (the left one of a split tab ends at the separator)
-          const ids = shownIds();
-          const ratio = activeMain ? splitRatio[activeMain.id] ?? 0.5 : 0.5;
-          const split = ids.length === 2;
-          const onLeft = split && ids[0] === find.id;
-          const right = onLeft ? `calc(${(1 - ratio) * 100}% + ${SPLIT_GAP + 18}px)` : '18px';
-          // never wider than its own screen
-          const share = !split ? 1 : onLeft ? ratio : 1 - ratio;
-          const maxWidth = `calc(${share * 100}% - ${split ? SPLIT_GAP + 30 : 30}px)`;
+          // over the top right of its own screen, under its header bar when the tab is split, never wider than it
+          const ft = tabs.find((t) => t.id === find.id);
+          const r =
+            ft?.cell && activeMain?.cell && activePanes.length > 1
+              ? cellRect(activeMain.splitDir ?? 'lr', ft.cell, ratiosOf(activeMain, splitRatio), SPLIT_GAP)
+              : null;
+          const right = r ? `calc(${(1 - r.x1.f) * 100}% + ${18 - r.x1.px}px)` : '18px';
+          const top = r ? edgeCss(r.y0, PANE_HEAD + 6) : undefined;
+          const maxWidth = r ? spanCss(r.x0, r.x1, -30) : 'calc(100% - 30px)';
           const status = !find.text
             ? ''
             : !findResult || findResult.count === 0
@@ -1355,7 +1422,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
                 ? `${findResult.count.toLocaleString()}+ found`
                 : `${findResult.index + 1} of ${findResult.count.toLocaleString()}`;
           return (
-            <div className="term-find" style={{ right, maxWidth }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="term-find" style={{ right, top, maxWidth }} onMouseDown={(e) => e.stopPropagation()}>
               <Search size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
               <input
                 ref={findInputRef}
@@ -1402,7 +1469,9 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           </div>
         )}
         {/* keeps the pointer from selecting terminal text while the separator is dragged */}
-        {draggingSplit && <div style={{ position: 'fixed', inset: 0, zIndex: 2000, cursor: 'col-resize' }} />}
+        {draggingSplit && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 2000, cursor: draggingSplit.vertical ? 'col-resize' : 'row-resize' }} />
+        )}
       </div>
 
       {tabCtx && (
@@ -1428,45 +1497,49 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               <span>Close Tab</span>
             </div>
             {(() => {
-              const right = tabs.find((x) => x.splitOf === tabCtx.id);
-              if (!right) {
-                return (
+              const head = tabs.find((x) => x.id === tabCtx.id);
+              if (!head?.cell) {
+                return (['lr', 'tb'] as const).map((dir) => (
                   <div
+                    key={dir}
                     className="context-menu-item"
                     onClick={() => {
                       const id = tabCtx.id;
                       setTabCtx(null);
-                      onSplitTab(id);
+                      onSplitTab(id, dir);
                     }}
                   >
-                    <Columns2 size={13} style={{ color: '#06b6d4' }} />
-                    <span>Split Screen</span>
+                    {dir === 'lr' ? (
+                      <Columns2 size={13} style={{ color: '#06b6d4' }} />
+                    ) : (
+                      <Rows2 size={13} style={{ color: '#06b6d4' }} />
+                    )}
+                    <span>Split Screen {DIR_LABEL[dir]}</span>
                   </div>
-                );
+                ));
               }
-              // already split (a split tab is not split again): close one of its screens instead
-              return ([
-                ['Close Left Screen', tabCtx.id],
-                ['Close Right Screen', right.id],
-              ] as const).map(([label, id]) => (
-                <div
-                  key={label}
-                  className="context-menu-item"
-                  onClick={() => {
-                    setTabCtx(null);
-                    onClosePane(id);
-                  }}
-                >
-                  <Columns2 size={13} style={{ color: '#ef4444' }} />
-                  <span>{label}</span>
-                </div>
-              ));
+              // already split (further splits are on the screens' own header bars): close one of its screens
+              return tabs
+                .filter((x) => x.id === head.id || x.splitOf === head.id)
+                .map((p) => (
+                  <div
+                    key={p.id}
+                    className="context-menu-item"
+                    onClick={() => {
+                      setTabCtx(null);
+                      onClosePane(p.id);
+                    }}
+                  >
+                    <X size={13} style={{ color: '#ef4444' }} />
+                    <span>Close {sideOf(p)} Screen</span>
+                  </div>
+                ));
             })()}
             <div className="context-menu-divider" />
             {(() => {
-              // A split tab has two screens: these are on the Left / Right names above the screens instead
-              const split = tabs.some((x) => x.splitOf === tabCtx.id);
-              const tip = split ? 'This tab is split: right-click the Left or Right name above a screen' : undefined;
+              // A split tab has several screens: these are on the header bar above each screen instead
+              const split = !!tabs.find((x) => x.id === tabCtx.id)?.cell;
+              const tip = split ? 'This tab is split: right-click the header bar above a screen' : undefined;
               return (
                 <>
                   <div
@@ -1568,6 +1641,30 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               <span>Export Screen</span>
             </div>
             <div className="context-menu-divider" />
+            {(() => {
+              // a half that is not split yet can be split once more, the other way than the tab's first split
+              const p = tabs.find((x) => x.id === paneCtx.id);
+              const head = p?.splitOf ? tabs.find((x) => x.id === p.splitOf) : p;
+              if (!p || !head || !canSplitCell(p.cell)) return null;
+              const dir = crossDir(head.splitDir ?? 'lr');
+              return (
+                <div
+                  className="context-menu-item"
+                  onClick={() => {
+                    const id = paneCtx.id;
+                    setPaneCtx(null);
+                    onSplitPane(id);
+                  }}
+                >
+                  {dir === 'lr' ? (
+                    <Columns2 size={13} style={{ color: '#06b6d4' }} />
+                  ) : (
+                    <Rows2 size={13} style={{ color: '#06b6d4' }} />
+                  )}
+                  <span>Split Screen {DIR_LABEL[dir]}</span>
+                </div>
+              );
+            })()}
             <div
               className="context-menu-item"
               onClick={() => {

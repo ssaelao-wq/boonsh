@@ -8,6 +8,8 @@ Browse your folders on the left, type commands on the right, and the two stay in
 - **Sort and group your way:** sort by several columns at once, and group the list by month, year, file type, size and more, with one line per group such as `2026 September > Images`.
 - **A search box that understands folders:** find files by name, size, type, date, or by the folders they sit in (`path:invoices +2026`), and search only the places you choose (`input:.\clients, d:\work`).
 - **Your own shortcuts for the terminal:** pick files in the panel, and fill them into commands with `{SELEC}` and `{DEST}`.
+- **Two file panes:** a second file list beside the first, like classic two-pane file managers: **F5** copies and **F6** moves the selection to the other pane, **Tab** switches.
+- **Safe copying:** when a name is already taken, choose Replace, Keep Both or Skip; big copies show a progress bar with speed and time left, wait in a queue one at a time, and can be paused or cancelled.
 - **Preview drawer:** view images, and play videos with a timing bar, 10-second steps, picture capture, WebM recording, A-B repeat, subtitles and full screen.
 - **More:** bulk rename with undo, ZIP and extract, Quick Access and Frequently Accessed folders, a preview drawer, dark and light themes.
 
@@ -95,7 +97,8 @@ boonsh opens in your **Downloads** folder. To open it in a folder of your choice
 - **Click a column name** to sort; **Shift+click** another column name to add a second sort level (numbers 1, 2, 3 show the order).
 - **Group the list:** right-click a column name, **Group by**. Click the `>` in a group line to fold that group.
 - **Search:** click the magnifier. Try `report filetype:pdf`, `path:invoices +2026`, or `filedate:7d`. Click the **?** button for all options.
-- **Settings (the gear):** your terminal command list, global variables, which columns to show, Quick Access, Frequently Accessed and *About*.
+- **Two panes:** click the two-columns button in the header. Click a pane (or press Tab) to work in it; F5 copies and F6 moves the selection to the other pane; Ctrl+R refreshes.
+- **Settings (the gear):** your terminal command list, global variables, which columns to show, Quick Access, Frequently Accessed, the full **Manual** and *About*.
 - **Terminal:** it is a real PowerShell (PowerShell 7 if you have it, otherwise Windows PowerShell, otherwise `cmd`). The **Commands** button lists handy commands you can edit.
 
 The complete manual, with every feature explained, is in **[FEATURES_SPEC.md](FEATURES_SPEC.md)**.

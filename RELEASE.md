@@ -6,6 +6,38 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 Nothing yet.
 
+## 0.10.4 (2026-10-16)
+
+### Added
+- **Two file panes:** the new **Two file panes** button in the header shows a second file list beside the first. Click a pane (or press **Tab**) to make it the active one; everything (path bar, folder tree, search, keys, menus, terminal) works on the active pane. Switching panes does not move the terminal (opening a folder or typing `cd` still does), and `{SELEC}` / `{DEST}` paths are relative to the terminal's own folder. **F5** copies and **F6** moves the selection to the other pane's folder (after a question, with the clash window, queue and progress card), **Ctrl+R** refreshes, and files dragged onto the other pane are copied (Shift: moved). The panes update by themselves; on/off, the other folder and the width are remembered.
+- **Copy queue:** copies now run one at a time, in the order they were pasted, instead of all at once fighting over the disk. A paste started meanwhile shows **Waiting: 1 paste before this one** and starts by itself; **Start now** runs it at once. A move within one drive never waits.
+- **Pause / Resume** on the paste card, also in the middle of a big file.
+- **Paste asks when a name is already taken:** a window shows both items (size, date, which is newer) and offers **Replace** (folders are merged; an item of the other kind goes to the Recycle Bin), **Keep Both** (`readme.txt` becomes `readme-02.txt`, or the next free number) and **Skip**, one item at a time, with **Do this for the remaining clashes** and **Cancel paste** (Esc). Keys R / K / S. Nothing is overwritten without it; a copy into the same folder is Keep Both by itself. Also for copying out of a basket.
+- **Paste progress and Cancel:** a paste that takes more than a moment shows a card at the bottom right with a bar, bytes done, speed and time left (over the last few seconds) and the file being copied. **Cancel** stops it: what is pasted stays, the half-copied file is removed. Files keep their dates and attributes; a replaced file is only swapped in once its copy is complete.
+- **Updates:** boonsh checks the GitHub releases once a day (Settings > About: **Check for updates**, **Check automatically**) and shows a notice with the release notes, **Install and restart** and **Later**. Updates are signed and checked before they are installed.
+- **File icons as in Windows Explorer:** every file in the file panel (Details, Tiles and Thumbnails) shows the icon of the program that opens it on your PC: a `.pdf` opened by Brave shows the Brave icon, `.csv` the Excel icon, `.html` the Chrome icon. Programs, shortcuts and `.ico` files show their own icon. Folders and baskets keep boonsh's icons. Sharp at any display scaling; updates when a default app is changed in Windows. Settings > Files Column > **Show file icons from Windows** (on by default) turns it off.
+- **Folder sizes:** folders in the file panel show their whole size (everything inside, all sub-folders), measured in the background ("…" until ready) and sortable. The status bar's **Total Size** is now the folder's whole size plus its share of the parent folder, e.g. `Total Size: 4.20 GB (12.3% of Users)`. Measured folders are remembered, so moving around is quick; a change anywhere inside the open folder (any depth, any program) is measured again by itself, and Refresh (F5) measures everything again. Settings > Files Column > **Calculate folder sizes** (on by default).
+- **Drive space in the Folder Tree:** each drive shows its name and how full it is, as in Explorer: **OS (C:) Used 211GB/463GB** (hover for the free space and file system).
+- **This PC view:** clicking **This PC** in the Folder Tree (or Up at the top of a drive) shows every drive in the file panel with a meter bar and **Used / Free / Total**; double-click a drive to open it.
+- **Folder Tree colours by Date Modified:** today = orange, within 30 days = the usual yellow, more than 30 days = dim yellow, more than a year = grey. Hovering a folder shows its Date Modified.
+
+### Changed
+- A clash no longer becomes `report - Copy.txt` / `report (2).txt`; Keep Both names are `report-02.txt`, `report-03.txt` ...
+- After a long paste, boonsh no longer jumps back to the folder it pasted into if you went elsewhere meanwhile.
+- **Security:** the app window now has a Content Security Policy (only boonsh's own scripts run; the page may only connect to the three AI services), and the file protocol used for thumbnails and videos refuses known secret folders (`.ssh`, `.aws`, browser profiles, Windows credentials ...).
+- **Split Screen, up to four screens:** a tab's right-click menu now offers **Split Screen Left-Right** and **Split Screen Top-Bottom** (with icons). Each of the two screens can be split once more, the other way only, from the right-click menu of its own header bar, giving at most four screens (Top-Left, Top-Right, Bottom-Left, Bottom-Right). Every screen has its own header bar (name, folder, close); every line between screens can be dragged (double-click: half and half). Closing a screen gives its room to the others. Find Text, Export Screen, History Commands, the User button and the file panel work per screen as before.
+- **Folder Tree and Frequently Accessed background:** now the same as the file panel (it was a darker grey).
+- **Folder Tree:** folders are exactly the file panel's folder (filled yellow, same size and thin line, also when expanded); Frequently Accessed uses it too. A folder without sub-folders has no `>` arrow. Clicking a folder's name only opens it in the file panel; only the arrow expands it in the tree.
+
+### Fixed
+- The manual's *Limits* section still said command groups can't be added, renamed or deleted, and that switching to Administrator restarts the app (both changed in earlier versions).
+- **Folder Tree icons shrank when the panel was made narrow** (only on some rows). Now only the folder name is shortened (with "…"); arrows and icons keep their size.
+- **boonsh could not be snapped to half of the screen** (Windows Snap, Win+Left / Right): the window had a minimum width of 900 px. The minimum is now 480 x 400. When the window gets narrow, the Folder Tree gives way first so the file panel keeps at least 200 px; the tree goes back to its width when the window is wide again.
+
+### Under the hood
+- `App.tsx` is split into hooks (`src/hooks/`: command line tabs, commands and variables, view settings, file details, folder sizes, paste, updater, smaller panels).
+- Frontend unit tests with Vitest (`npm test`, 35 tests) and a GitHub Actions workflow running them, the type-check and build, and the Rust tests on every push.
+
 ## 0.10.3 (2026-10-12)
 
 ### Added
