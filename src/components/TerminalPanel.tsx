@@ -76,6 +76,8 @@ interface TerminalPanelProps {
   commandGroups: CommandGroup[];
   onOpenSettings: () => void;
   onPickCommand: (template: string) => Promise<void>;
+  /** the command palette picked a saved command (or a variable): run it like a pick from the Commands menu */
+  paletteRequest?: { id: number; item: CommandItem } | null;
   onPickHistory: (command: string) => Promise<void>; // History Commands: put an earlier command on the prompt line
   hotkeysOn: boolean; // false while a dialog (Settings) is open
   onUserInput: () => void;
@@ -233,6 +235,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   commandGroups,
   onOpenSettings,
   onPickCommand,
+  paletteRequest,
   onPickHistory,
   hotkeysOn,
   onUserInput,
@@ -516,6 +519,9 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown' || !e.ctrlKey || e.altKey) return true;
       const key = e.key.toLowerCase();
+      // the app's own Ctrl+Shift keys (command palette, file panel): handled by App's window listener, not
+      // sent to the shell (Ctrl+P / Ctrl+F are PSReadLine keys)
+      if (e.shiftKey && (key === 'p' || key === 'f')) return false;
       if ((key === 'c' || key === 'x') && term.hasSelection()) {
         copySelection(term, key === 'x');
         e.preventDefault();
@@ -804,6 +810,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       }).catch(() => {});
     }
   };
+
+  useEffect(() => {
+    if (paletteRequest) handleSelectCommand(paletteRequest.item);
+  }, [paletteRequest?.id]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();

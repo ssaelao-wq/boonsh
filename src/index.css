@@ -252,6 +252,132 @@ textarea.search-input-error:focus {
   flex-direction: column;
 }
 
+/* Command palette (Ctrl+Shift+P, CommandPalette.tsx): a box near the top with one filtered list */
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 10vh;
+}
+.palette {
+  width: min(680px, calc(100vw - 32px));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+input.palette-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 14px;
+  padding: 2px 0;
+}
+.palette-list {
+  overflow-y: auto;
+  padding: 4px 0;
+  min-height: 0;
+}
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.palette-row.active {
+  background: var(--bg-selected);
+}
+.palette-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.palette-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.app-container span.palette-title {
+  color: var(--text-main);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-container span.palette-title span {
+  color: inherit;
+}
+.palette-title mark {
+  background: transparent;
+  color: var(--meter-fill);
+  font-weight: 700;
+}
+.app-container span.palette-detail {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+kbd.palette-key {
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+.app-container span.palette-kind {
+  flex-shrink: 0;
+  width: 92px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.app-container div.palette-empty {
+  padding: 14px 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.palette-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border-color);
+  font-size: 11px;
+}
+.app-container .palette-foot span {
+  color: var(--text-dim);
+}
+.app-container span.palette-prefix {
+  margin-left: 10px;
+}
+.app-container .palette-prefix b {
+  color: var(--text-muted);
+}
+
 /* Two file panes (App.tsx, hooks/useDualPane.ts): each pane has a one-line head with its folder; the active one
    is marked with a coloured line and full-strength text. */
 .dual-panes {
@@ -689,9 +815,13 @@ input.search-bar-input:focus {
   table-layout: fixed;
 }
 
+/* The column headers stay on top of the panel while the list scrolls (only the rows move). Keep `position`
+   out of the th's inline style: an inline `relative` would switch this off. */
 .file-table th {
   position: sticky;
   top: 0;
+  height: 28px; /* exactly the `top` of the sticky group lines below it (MainFilePanel), so no row shows between */
+  box-sizing: border-box;
   background: var(--bg-panel-secondary);
   color: var(--text-muted);
   font-weight: 400;

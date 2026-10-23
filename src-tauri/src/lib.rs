@@ -13,6 +13,7 @@ mod pty;
 mod search;
 mod secrets;
 mod shell_icons;
+mod tree_newest;
 
 use ai_chats::*;
 use basket::*;
@@ -52,6 +53,7 @@ pub fn run() {
             pty_close,
             list_directory,
             tree_has_children,
+            tree_newest::tree_newest,
             drives::get_drives,
             folder_size::folder_sizes,
             folder_size::folder_sizes_stop,

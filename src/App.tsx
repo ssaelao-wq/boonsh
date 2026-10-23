@@ -42,6 +42,10 @@ import { useFolderSizes, formatTotalSize } from './hooks/useFolderSizes';
 import { useDrives, useFrequent, useQuickAccess, useSplitters, useWindowSetup } from './hooks/usePanels';
 import { usePaste } from './hooks/usePaste';
 import { useDualPane } from './hooks/useDualPane';
+import { CommandPalette } from './components/CommandPalette';
+import { PaletteItem, loadRecent, pathFromQuery, pushRecent, saveRecent, splitPrefix } from './palette';
+import type { CommandItem } from './commands';
+import { lastName } from './folderSizes';
 import { Side, sameFolder, transferProblem, transferQuestion } from './dualPane';
 import { useUpdater } from './hooks/useUpdater';
 import { UpdateNotice } from './components/UpdateNotice';
@@ -1105,6 +1109,256 @@ export function App() {
     undoBulkRename: () => undoLastBulkRename(true),
   };
 
+  // ---- Command palette (Ctrl+Shift+P, components/CommandPalette.tsx, src/palette.ts) ----
+  // One list of actions, saved commands, Global Vars, CONSTs, Quick Access, recent folders, drives and tabs. The
+  // list is built on every render while it is open, so each entry acts on the current state.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteRecent, setPaletteRecent] = useState<string[]>(loadRecent);
+  // a saved command (or a variable) picked in the palette: TerminalPanel runs it like a Commands-menu pick
+  const [paletteRequest, setPaletteRequest] = useState<{ id: number; item: CommandItem } | null>(null);
+  const paletteFocusRef = useRef<Element | null>(null);
+  const openPalette = () => {
+    paletteFocusRef.current = document.activeElement;
+    setPaletteOpen(true);
+  };
+  const closePalette = () => {
+    setPaletteOpen(false);
+    const el = paletteFocusRef.current as HTMLElement | null;
+    if (el?.isConnected) el.focus?.();
+  };
+  const toast = (message: string) => setRenameToast({ message, undoable: false });
+  const typeAtPrompt = (item: CommandItem) => {
+    if (!showTerminal) setShowTerminal(true);
+    setPaletteRequest({ id: Date.now(), item });
+  };
+  // New folder / text document from the palette: a free name, selected, with the Rename box open
+  const createNew = async (kind: 'folder' | 'file') => {
+    const here = currentPathRef.current;
+    const [base, ext] = kind === 'folder' ? ['New folder', ''] : ['New Text Document', '.txt'];
+    const taken = new Set(rawItems.map((i) => i.name.toLowerCase()));
+    let name = base + ext;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} (${n})${ext}`;
+    try {
+      const path = await invoke<string>(kind === 'folder' ? 'create_new_folder' : 'create_new_file', { parentDir: here, name });
+      await fetchDirectory(here, [path]);
+      setRenameTrigger((t) => t + 1);
+    } catch (err) {
+      alert(String(err));
+    }
+  };
+  const paletteItems = (): PaletteItem[] => {
+    const here = currentPathRef.current;
+    const inFolder = !thisPC && !!here;
+    const sel = thisPC ? [] : selectedItems;
+    const hasSel = sel.length > 0;
+    const list: PaletteItem[] = [];
+    const act = (
+      id: string,
+      title: string,
+      run: () => void,
+      o: { shortcut?: string; keywords?: string; detail?: string; when?: boolean } = {}
+    ) => {
+      if (o.when === false) return;
+      list.push({ id: `act:${id}`, kind: 'action', title, run, shortcut: o.shortcut, keywords: o.keywords, detail: o.detail });
+    };
+    // folders and the file list
+    act('up', 'Go up one folder', () => (basketView ? basketUp() : parentPath ? handleNavigate(parentPath) : openThisPC()), {
+      when: !thisPC && !!(basketView || parentPath || here),
+      keywords: 'parent back',
+    });
+    act('thispc', 'Open This PC (all drives)', openThisPC, { when: !thisPC, keywords: 'drives computer' });
+    act('refresh', 'Refresh', refreshView, { shortcut: 'Ctrl+R', keywords: 'reload F5' });
+    act('explorer', 'Open this folder in Windows Explorer', () => invoke('open_in_default_app', { path: here }).catch((e) => alert(String(e))), {
+      when: inFolder,
+    });
+    act('copy-path', 'Copy the folder path', () => navigator.clipboard.writeText(here).then(() => toast(`Copied: ${here}`)), {
+      when: inFolder,
+      keywords: 'clipboard',
+    });
+    act('copy-sel-paths', 'Copy the paths of the selected items', () => {
+      const text = sel.map((i) => i.path).join('\r\n');
+      navigator.clipboard.writeText(text).then(() => toast(`Copied ${sel.length} path${sel.length === 1 ? '' : 's'}`));
+    }, { when: hasSel, keywords: 'clipboard' });
+    act('qa-add', 'Add this folder to Quick Access', () => handleAddQuickAccess({ label: lastName(here) || here, path: here }), {
+      when: inFolder && !basketView && !quickAccess.some((q) => samePath(q.path, here)),
+    });
+    act('new-folder', 'New folder', () => createNew('folder'), { when: inFolder && !basketView, keywords: 'create make directory' });
+    act('new-file', 'New text document', () => createNew('file'), { when: inFolder && !basketView, keywords: 'create make txt file' });
+    act('new-basket', 'New basket', () => createBasket(), { when: inFolder && !basketView, keywords: 'create links' });
+    act('select-all', 'Select all', selectAll, { shortcut: 'Ctrl+A', when: inFolder });
+    act('copy', 'Copy the selected items', () => clipboardSelection('copy'), { shortcut: 'Ctrl+C', when: hasSel });
+    act('cut', 'Cut the selected items', () => clipboardSelection('cut'), { shortcut: 'Ctrl+X', when: hasSel, keywords: 'move' });
+    act('paste', 'Paste', pasteClipboard, { shortcut: 'Ctrl+V', when: inFolder && !!clipboard });
+    act('delete', 'Delete the selected items (Recycle Bin)', deleteSelection, { shortcut: 'Del', when: hasSel, keywords: 'remove trash' });
+    act('rename', 'Rename', () => setRenameTrigger((t) => t + 1), { shortcut: 'F2', when: sel.length === 1 && !sel[0].state });
+    act('bulk-rename', 'Bulk rename the selected items', openBulkRename, {
+      shortcut: 'F2',
+      when: sel.length >= 2 || (sel.length === 1 && sel[0].is_dir),
+    });
+    act('undo-rename', 'Undo the last bulk rename', () => undoLastBulkRename(true), { shortcut: 'Ctrl+Z', when: renameHistory.length > 0 });
+    act('zip', 'Compress the selected items to a zip', compressSelection, { when: hasSel, keywords: 'archive' });
+    act('extract', 'Extract the selected zip files', extractSelectedZips, { when: selectedZips.length > 0, keywords: 'unzip' });
+    // two panes
+    act('dual', dual ? 'Back to one file pane' : 'Two file panes', () => {
+      if (!dual && !showFilePanel) setShowFilePanel(true);
+      toggleDual();
+    }, { keywords: 'dual split commander' });
+    act('dual-copy', 'Copy the selected items to the other pane', () => sendToOtherPane(false), { shortcut: 'F5', when: dual && hasSel });
+    act('dual-move', 'Move the selected items to the other pane', () => sendToOtherPane(true), { shortcut: 'F6', when: dual && hasSel });
+    act('dual-switch', 'Switch to the other pane', toggleActive, { shortcut: 'Tab', when: dual });
+    // view
+    act('view-details', 'Details view', () => setViewMode('details'), { when: viewMode !== 'details', keywords: 'list table' });
+    act('view-tiles', 'Tiles view', () => setViewMode('tiles'), { when: viewMode !== 'tiles' });
+    act('view-thumbs', 'Thumbnails view', () => setViewMode('thumbnails'), { when: viewMode !== 'thumbnails', keywords: 'pictures images grid' });
+    act('preview', showPreview ? 'Hide the preview drawer' : 'Show the preview drawer', () => setShowPreview((v) => !v), { shortcut: 'Ctrl+P' });
+    act('filepanel', showFilePanel ? 'Hide the file panel' : 'Show the file panel', () => setShowFilePanel((v) => !v), { shortcut: 'Ctrl+Shift+F' });
+    act('search', showSearch ? 'Close the search bar' : 'Search in this folder', toggleSearch, { keywords: 'find filter' });
+    act('terminal', showTerminal ? 'Hide the command line panel' : 'Show the command line panel', () => setShowTerminal((v) => !v), {
+      keywords: 'terminal shell powershell',
+    });
+    act('assistant', showAssistant ? 'Hide the AI Assistant' : 'Show the AI Assistant', () => toggleAssistant(), { keywords: 'ai chat' });
+    act('theme', theme === 'dark' ? 'Switch to the light theme' : 'Switch to the dark theme', () => setTheme(theme === 'dark' ? 'light' : 'dark'), {
+      keywords: 'dark light colour color white black',
+    });
+    // command line
+    const active = tabs.find((t) => t.id === activeTabId);
+    act('tab-new', 'New command line tab', () => newTab(), { keywords: 'terminal shell' });
+    act('split-lr', 'Split the command line Left-Right', () => active && splitTab(active.id, 'lr'), {
+      when: !!active && !active.splitOf && !active.cell,
+      keywords: 'screen terminal',
+    });
+    act('split-tb', 'Split the command line Top-Bottom', () => active && splitTab(active.id, 'tb'), {
+      when: !!active && !active.splitOf && !active.cell,
+      keywords: 'screen terminal',
+    });
+    act('tab-level', active?.level === 'admin' ? 'Switch this command line to the normal user' : 'Switch this command line to Administrator', switchTabLevel, {
+      when: !!active,
+      keywords: 'admin elevate',
+    });
+    // Settings and help
+    act('set-commands', 'Settings: Commands', () => openSettings('commands'), { keywords: 'gear' });
+    act('set-vars', 'Settings: Global Var', () => openSettings('vars'), { keywords: 'gear variables' });
+    act('set-consts', 'Settings: CONST Global Var', () => openSettings('consts'), { keywords: 'gear constants' });
+    act('set-columns', 'Settings: Files Column', () => openSettings('columns'), { keywords: 'gear columns icons sizes' });
+    act('set-qa', 'Settings: Quick Access', () => openSettings('quickaccess'), { keywords: 'gear' });
+    act('set-frequent', 'Settings: Frequently Accessed', () => openSettings('frequent'), { keywords: 'gear' });
+    act('manual', 'Open the manual', () => openSettings('manual'), { keywords: 'help documentation' });
+    act('about', 'About boonsh', () => openSettings('about'), { keywords: 'version license' });
+    act('update', 'Check for updates', () => updater.checkNow().then(toast), { keywords: 'upgrade version' });
+
+    // saved commands (the Commands menu)
+    for (const g of commandGroups) {
+      for (const c of g.items) {
+        list.push({
+          id: `cmd:${c.id}`,
+          kind: 'command',
+          title: c.name,
+          detail: `${g.category} · ${c.insertText.trim()}`,
+          keywords: c.description,
+          shortcut: c.hotkey,
+          run: () => typeAtPrompt(c),
+        });
+      }
+    }
+    // Global Vars: fill one from the selection, or type one that has a value
+    for (const d of globalVars) {
+      const paths = d.takes === 'selection' ? sel.map((i) => i.path) : selectedItem && hasSel ? [selectedItem.path] : [];
+      const target = paths.length > 0 ? (paths.length === 1 ? lastName(paths[0]) : `${paths.length} selected items`) : here && inFolder ? lastName(here) || here : '';
+      if (target) {
+        list.push({
+          id: `var:set:${d.name}`,
+          kind: 'var',
+          title: `Assign {${d.name}} = ${target}`,
+          detail: d.description,
+          run: () => assignPathVar(d.name, paths.length > 0 ? paths : [here]),
+        });
+      }
+      const value = pathVars[d.name];
+      if (value && value.length > 0) {
+        list.push({
+          id: `var:type:${d.name}`,
+          kind: 'var',
+          title: `Type {${d.name}} at the prompt`,
+          detail: value.length === 1 ? value[0] : `${value.length} items: ${value.map((p) => lastName(p)).join(', ')}`,
+          run: () =>
+            typeAtPrompt({ id: '', name: `{${d.name}}`, insertText: `{${d.name}}`, description: '', usage: `{${d.name}} = ${value.length} item${value.length === 1 ? '' : 's'}` }),
+        });
+      }
+    }
+    for (const c of constVars) {
+      list.push({
+        id: `const:${c.name}`,
+        kind: 'const',
+        title: `Type {${c.name}} at the prompt`,
+        detail: c.value,
+        keywords: c.description,
+        run: () => typeAtPrompt({ id: '', name: `{${c.name}}`, insertText: `{${c.name}}`, description: '', usage: c.value }),
+      });
+    }
+    // folders: Quick Access, the most recently visited ones, drives
+    for (const q of quickAccess) {
+      list.push({ id: `qa:${q.path.toLowerCase()}`, kind: 'quick', title: q.label, detail: q.path, run: () => handleNavigate(q.path) });
+    }
+    Object.values(freqStats)
+      .filter((e) => !quickAccess.some((q) => samePath(q.path, e.path)) && !samePath(e.path, here))
+      .sort((a, b) => b.last - a.last)
+      .slice(0, 15)
+      .forEach((e) =>
+        list.push({ id: `dir:${e.path.toLowerCase()}`, kind: 'recent', title: lastName(e.path) || e.path, detail: e.path, run: () => handleNavigate(e.path) })
+      );
+    for (const d of drives) {
+      if (!d.ready) continue;
+      list.push({
+        id: `drive:${d.letter}`,
+        kind: 'drive',
+        title: `${d.label || 'Local Disk'} (${d.letter}:)`,
+        detail: d.path,
+        run: () => handleNavigate(d.path),
+      });
+    }
+    // command line tabs
+    for (const t of tabs.filter((x) => !x.splitOf)) {
+      list.push({ id: `tab:${t.id}`, kind: 'tab', title: `Go to tab: ${t.name}`, detail: t.cwd, run: () => selectTab(t.id) });
+    }
+    return list;
+  };
+  // Made from the typed text: a folder path to open, or a search for the words
+  const paletteExtra = (query: string): PaletteItem[] => {
+    const out: PaletteItem[] = [];
+    const path = pathFromQuery(query, currentPathRef.current);
+    if (path) {
+      out.push({
+        id: `path:${path}`,
+        kind: 'path',
+        title: `Open ${path}`,
+        run: () => handleNavigate(path).then((ok) => !ok && alert(`Cannot open ${path}`)),
+      });
+      return out;
+    }
+    const { kinds, text } = splitPrefix(query);
+    if (!kinds && text && !thisPC) {
+      out.push({
+        id: `search:${text}`,
+        kind: 'search',
+        title: `Search this folder for "${text}"`,
+        run: () => {
+          setShowSearch(true);
+          setSearchQuery(text);
+        },
+      });
+    }
+    return out;
+  };
+  const runPaletteItem = (item: PaletteItem) => {
+    if (item.kind !== 'path' && item.kind !== 'search') {
+      const next = pushRecent(paletteRecent, item.id);
+      setPaletteRecent(next);
+      saveRecent(next);
+    }
+    closePalette();
+    setTimeout(item.run, 0); // after the box is gone and the focus is back
+  };
+
   // Keyboard Shortcuts (Ctrl+P, Ctrl+Shift+F, F5, Del, Ctrl+A/X/C/V).
   // Handler lives in a ref so the single window listener always sees current state.
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -1116,7 +1370,13 @@ export function App() {
     const key = e.key.toLowerCase();
     const ctrlOnly = e.ctrlKey && !e.shiftKey && !e.altKey;
 
-    if (e.ctrlKey && e.shiftKey && key === 'f') {
+    if (e.ctrlKey && e.shiftKey && !e.altKey && key === 'p') {
+      e.preventDefault();
+      if (paletteOpen) closePalette();
+      else openPalette();
+    } else if (paletteOpen) {
+      return; // the palette has the keys (it stops them itself; this covers keys from elsewhere)
+    } else if (e.ctrlKey && e.shiftKey && key === 'f') {
       e.preventDefault();
       setShowFilePanel((v) => !v);
     } else if (e.ctrlKey && key === 'p') {
@@ -1299,6 +1559,7 @@ export function App() {
         onToggleFilePanel={() => setShowFilePanel(!showFilePanel)}
         showTerminal={showTerminal}
         onToggleTerminal={() => setShowTerminal(!showTerminal)}
+        onOpenPalette={openPalette}
         dualPane={dual}
         onToggleDualPane={() => {
           if (!dual && !showFilePanel) setShowFilePanel(true);
@@ -1378,6 +1639,9 @@ export function App() {
       )}
 
       <PasteProgress jobs={pasteJobs} onCancel={cancelJob} onPause={pauseJob} onStartNow={startJobNow} />
+      {paletteOpen && (
+        <CommandPalette items={paletteItems()} extra={paletteExtra} recent={paletteRecent} onRun={runPaletteItem} onClose={closePalette} />
+      )}
 
       {updater.update && (
         <UpdateNotice update={updater.update} installing={updater.installing} onInstall={updater.install} onLater={updater.later} />
@@ -1590,6 +1854,7 @@ export function App() {
             onShellCwdChange={handleShellCwdChange}
             onPromptState={(id, atPrompt) => { atPromptRef.current[id] = atPrompt; }}
             onPickCommand={pickCommand}
+            paletteRequest={paletteRequest}
             onPickHistory={typeFromHistory}
             baskets={(treeListing && normalizePath(treeListing.path) === normalizePath(currentPath) ? treeListing.items : [])
               .filter(isBasket)

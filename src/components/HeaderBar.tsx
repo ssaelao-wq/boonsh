@@ -22,6 +22,7 @@ import {
   Sparkles,
   ShoppingBasket,
   Columns2,
+  Command,
 } from 'lucide-react';
 import { ViewMode } from '../types';
 
@@ -68,6 +69,7 @@ interface HeaderBarProps {
   onToggleTerminal: () => void;
   dualPane: boolean;
   onToggleDualPane: () => void;
+  onOpenPalette: () => void;
   showAssistant: boolean;
   onToggleAssistant: () => void;
   theme: 'dark' | 'light';
@@ -104,6 +106,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onToggleTerminal,
   dualPane,
   onToggleDualPane,
+  onOpenPalette,
   showAssistant,
   onToggleAssistant,
   theme,
@@ -366,6 +369,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title={showTerminal ? 'Hide the command line panel' : 'Show the command line panel'}
         >
           <Terminal size={14} style={{ color: '#22c55e' }} />
+        </button>
+
+        {/* Command palette: every action, command, variable and folder in one list */}
+        <button onClick={onOpenPalette} title="Command palette (Ctrl+Shift+P)">
+          <Command size={14} style={{ color: '#f43f5e' }} />
         </button>
 
         {/* Settings (Command Manager) */}

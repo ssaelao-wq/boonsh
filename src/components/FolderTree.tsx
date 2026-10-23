@@ -20,22 +20,12 @@ import { useMenuPosition } from '../useMenuPosition';
 import { driveColor } from '../driveColors';
 import { DriveInfo, driveName, fullUsage, treeUsage } from '../drives';
 import { basketName, isBasket } from '../basket';
+import { fileAge as folderAge, FileAge as FolderAge, startOfToday } from '../fileAge';
 
 type Listing = { path: string; items: FileItem[] } | null;
 
 const cleanOf = (p: string) => p.toLowerCase().replace(/\\+$/, '');
 
-/** How long ago a folder was modified, for its colour in the tree: today, within 30 days, older, over a year. */
-export type FolderAge = 'today' | 'recent' | 'old' | 'ancient';
-export function folderAge(modifiedSecs: number | undefined, now = new Date()): FolderAge {
-  if (!modifiedSecs) return 'recent'; // not known (a drive's own folder): the usual yellow
-  const d = new Date(modifiedSecs * 1000);
-  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) return 'today';
-  const days = (now.getTime() - d.getTime()) / 86_400_000;
-  if (days > 365) return 'ancient';
-  if (days > 30) return 'old';
-  return 'recent';
-}
 
 interface FolderTreeNodeProps {
   name: string;
@@ -51,6 +41,11 @@ interface FolderTreeNodeProps {
   // whether this folder has anything for the tree (the parent asked; undefined = not known yet)
   hasKids?: boolean;
   modified?: number; // the folder's Date Modified (seconds), for its colour
+  // the newest Date Modified found below this folder, not expanded here (the parent asked `tree_newest`)
+  bestBelow?: number;
+  // tells the parent the newest Date Modified anywhere in this folder's own subtree (itself included), so the
+  // colour it is shown with can carry on up to the parent, and the parent's parent, and so on to the drive
+  onBest?: (path: string, newest: number) => void;
   modifiedText?: string;
   usage?: string; // a drive: "Used 211GB/463GB" after its name
   tooltip?: string; // replaces the path as the row's tooltip
@@ -70,6 +65,8 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   onGone,
   hasKids,
   modified,
+  bestBelow,
+  onBest,
   modifiedText,
   usage,
   tooltip,
@@ -83,6 +80,15 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   // which of the child folders have sub-folders of their own (they show the expand arrow only then)
   const [kidsOf, setKidsOf] = useState<Record<string, boolean>>({});
   const [checkGen, setCheckGen] = useState(0);
+  // the newest Date Modified found below each child folder, not expanded here (asked with `tree_newest`)
+  const [newestOf, setNewestOf] = useState<Record<string, number>>({});
+  // the newest Date Modified reported live by a child that IS expanded (its own subtree, itself included).
+  // Kept when the child is folded away again (a timestamp already found cannot become wrong, only stale by a
+  // later change the folded child no longer reports), dropped only when the child leaves the list entirely.
+  const [hotKids, setHotKids] = useState<Record<string, number>>({});
+  const reportBest = (p: string, newest: number) => {
+    setHotKids((prev) => (prev[p] === newest ? prev : { ...prev, [p]: newest }));
+  };
 
   const cleanPath = cleanOf(path);
   const cleanCurrent = cleanOf(currentPath);
@@ -114,6 +120,11 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
     invoke<boolean[]>('tree_has_children', { paths: folders.map((c) => c.path) })
       .then((res) => {
         if (!stale) setKidsOf(Object.fromEntries(folders.map((c, i) => [c.path, res[i]])));
+      })
+      .catch(() => {});
+    invoke<number[]>('tree_newest', { paths: folders.map((c) => c.path), since: startOfToday() })
+      .then((res) => {
+        if (!stale) setNewestOf(Object.fromEntries(folders.map((c, i) => [c.path, res[i]])));
       })
       .catch(() => {});
     return () => {
@@ -162,7 +173,20 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
     });
   };
 
-  const age = folderAge(modified);
+  // the newest Date Modified anywhere in this folder's own subtree: its own date, the backend's answer for a
+  // child not expanded here (`newestOf`), or a shown child's own answer (`hotKids`, more complete once it has
+  // expanded further down). This is what carries a change's colour up through every parent to the drive.
+  const bestOfChildren = children.reduce(
+    (best, c) => (c.is_dir ? Math.max(best, c.modified_timestamp ?? 0, newestOf[c.path] ?? 0, hotKids[c.path] ?? 0) : best),
+    0
+  );
+  const newest = Math.max(modified ?? 0, bestBelow ?? 0, bestOfChildren);
+  const age: FolderAge = folderAge(newest || undefined);
+  // true once the shown colour comes from something below, not from this folder's own date
+  const fromBelow = newest > (modified ?? 0);
+  useEffect(() => {
+    onBest?.(path, newest);
+  }, [newest]);
 
   // the arrow only when there is something to expand (drives always have one)
   const showCaret = isDrive || (loaded ? children.length > 0 : hasKids !== false);
@@ -174,7 +198,11 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
         style={{ paddingLeft: `${depth * 12 + 6}px` }}
         onClick={handleFolderClick}
         onContextMenu={(e) => onContextMenu(e, path, name)}
-        title={tooltip ?? (modifiedText ? `${path}\nModified: ${modifiedText}` : path)}
+        title={
+          tooltip ??
+          (modifiedText ? `${path}\nModified: ${modifiedText}` : path) +
+            (fromBelow ? '\nA folder inside was modified more recently than this one' : '')
+        }
       >
         {showCaret ? (
           <span
@@ -248,6 +276,10 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
                   onGone={fetchSubfolders}
                   hasKids={kidsOf[child.path]}
                   modified={child.modified_timestamp}
+                  // the backend's answer for this child, or (at least as good) what it last reported itself
+                  // before being folded away, so re-expanding it shows the right colour before it re-asks
+                  bestBelow={Math.max(newestOf[child.path] ?? 0, hotKids[child.path] ?? 0) || undefined}
+                  onBest={reportBest}
                   modifiedText={child.modified}
                   depth={depth + 1}
                 />

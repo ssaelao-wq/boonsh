@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { isBasket, shownName } from '../basket';
 import { useFileIcons } from '../fileIcons';
+import { fileAge, isToday, startOfToday } from '../fileAge';
 import { FileItem, ViewMode, SortOrder, ItemDetails } from '../types';
 import { BUCKETS, BUCKET_LABEL, BUCKET_EXAMPLE, GroupSpec, Bucket, Row, formatBytes, itemsInGroup, toggleBucket } from '../grouping';
 import {
@@ -307,6 +308,36 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   // the icon Windows shows for each file (the program that opens it), at the size this view draws icons
   const windowsIcon = useFileIcons(items, viewMode === 'thumbnails' ? 36 : viewMode === 'tiles' ? 28 : 16, colPrefs.windowsIcons);
 
+  // whether this plain file or folder was modified today (not a basket, not a gone/new basket item: those
+  // already carry their own colour, which stays untouched)
+  const plainItem = (item: FileItem) => !item.state && !isBasket(item);
+  // the newest Date Modified anywhere below each folder shown (`tree_newest`, the same answer and cache the folder
+  // tree uses), so a folder gets exactly its tree row's colour (all four: orange / yellow / dim yellow / grey)
+  const [newestBelow, setNewestBelow] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const folders = items.filter((i) => i.is_dir && plainItem(i) && !isToday(i.modified_timestamp)).map((i) => i.path);
+    if (folders.length === 0) return;
+    let stale = false;
+    invoke<number[]>('tree_newest', { paths: folders, since: startOfToday() })
+      .then((res) => {
+        if (!stale) setNewestBelow(Object.fromEntries(folders.map((p, i) => [p, res[i]])));
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [items]);
+  // a folder's colour: its own date or the newest below it, whichever is newer (FolderTree's rule)
+  const folderAgeOf = (item: FileItem) =>
+    fileAge(Math.max(item.modified_timestamp ?? 0, newestBelow[item.path] ?? 0) || undefined);
+  const modifiedToday = (item: FileItem) =>
+    plainItem(item) && (item.is_dir ? folderAgeOf(item) === 'today' : isToday(item.modified_timestamp));
+  // a real Windows icon (a drawn bitmap) cannot be recoloured; a file shown with one is marked orange on its
+  // name instead (see the "name" column / tile-name / grid-card-name below), the same way the tree can't
+  // recolour a drive's icon and marks it some other way
+  const orangeIconUnavailable = (item: FileItem) => !item.is_dir && !!windowsIcon(item);
+  const nameIsOrange = (item: FileItem) => modifiedToday(item) && orangeIconUnavailable(item);
+
   const getFileIcon = (item: FileItem, size = 16) => {
     const url = windowsIcon(item);
     if (url) return <img className="file-icon-img" src={url} width={size} height={size} alt="" draggable={false} />;
@@ -317,19 +348,27 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
     if (item.state === 'gone') return <LogOut {...thin} style={{ color: 'var(--text-dim)' }} />;
     if (item.state === 'new') return <LogIn {...thin} style={{ color: 'var(--text-dim)' }} />;
     if (isBasket(item)) return <ShoppingBasket {...thin} style={{ color: 'var(--basket-color)' }} />;
-    // filled yellow folders so they stand out from the files (shades per theme in index.css)
-    if (item.is_dir) return <Folder {...thin} style={{ color: 'var(--folder-stroke)', fill: 'var(--folder-fill)' }} />;
+    const today = modifiedToday(item);
+    // filled folders so they stand out from the files (shades per theme in index.css), coloured by date exactly
+    // like the folder tree: orange today, yellow within 30 days, dim yellow older, grey over a year
+    if (item.is_dir) {
+      const age = folderAgeOf(item);
+      return <Folder {...thin} style={{ color: `var(--tree-folder-${age}-stroke)`, fill: `var(--tree-folder-${age}-fill)` }} />;
+    }
+    // a file with no real Windows icon (an unknown type, or the setting is off): its own lucide icon can be
+    // coloured orange too, same as a folder
+    const color = today ? 'var(--tree-folder-today-stroke)' : 'var(--text-muted)';
     const ext = item.ext.toLowerCase();
     if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'ico'].includes(ext)) {
-      return <FileImage {...thin} style={{ color: 'var(--text-muted)' }} />;
+      return <FileImage {...thin} style={{ color }} />;
     }
     if (['rs', 'js', 'ts', 'tsx', 'py', 'ps1', 'json', 'toml', 'yaml', 'html', 'css'].includes(ext)) {
-      return <FileCode {...thin} style={{ color: 'var(--text-muted)' }} />;
+      return <FileCode {...thin} style={{ color }} />;
     }
     if (['md', 'txt', 'log', 'doc', 'pdf'].includes(ext)) {
-      return <FileText {...thin} style={{ color: 'var(--text-muted)' }} />;
+      return <FileText {...thin} style={{ color }} />;
     }
-    return <FileIcon {...thin} style={{ color: 'var(--text-dim)' }} />;
+    return <FileIcon {...thin} style={{ color: today ? color : 'var(--text-dim)' }} />;
   };
 
   const cutSet = new Set(cutPaths);
@@ -655,7 +694,9 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     getFileIcon(item, 36)
                   )}
                 </div>
-                <div className="grid-card-name">{shownName(item)}</div>
+                <div className="grid-card-name" style={nameIsOrange(item) ? { color: 'var(--tree-folder-today-stroke)' } : undefined}>
+                  {shownName(item)}
+                </div>
               </div>
             );
           })}
@@ -685,7 +726,11 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               >
                 <div className="tile-icon">{getFileIcon(item, 28)}</div>
                 <div className="tile-info">
-                  <div className="tile-name" title={shownName(item)}>
+                  <div
+                    className="tile-name"
+                    title={shownName(item)}
+                    style={nameIsOrange(item) ? { color: 'var(--tree-folder-today-stroke)' } : undefined}
+                  >
                     {shownName(item)}
                   </div>
                   <div className="tile-detail">
@@ -709,7 +754,9 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 {columns.map((col) => (
                   <th
                     key={col.id}
-                    style={{ width: colWidths[col.id], textAlign: col.right ? 'right' : 'left', position: 'relative' }}
+                    // no inline position: the stylesheet makes headers sticky (they stay on top while the list
+                    // scrolls), which also anchors the absolutely placed column resizer
+                    style={{ width: colWidths[col.id], textAlign: col.right ? 'right' : 'left' }}
                     onClick={(e) => onSortClick(col.id, e.shiftKey || e.ctrlKey)}
                     onMouseDown={(e) => {
                       if (e.shiftKey) e.preventDefault(); // no text selection while adding a sort level
@@ -808,7 +855,11 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                             <span
                               style={{
                                 fontWeight: 400,
-                                color: item.state ? 'var(--text-dim)' : 'var(--text-main)',
+                                color: item.state
+                                  ? 'var(--text-dim)'
+                                  : nameIsOrange(item)
+                                    ? 'var(--tree-folder-today-stroke)'
+                                    : 'var(--text-main)',
                                 fontStyle: item.state ? 'italic' : undefined,
                                 minWidth: 0,
                                 overflow: 'hidden',

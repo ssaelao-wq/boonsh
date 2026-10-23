@@ -1,11 +1,17 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.4**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.5**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
 **License.** boonsh is **free software under the MIT License**: anyone may use, copy, change and share it, for free, as long as the copyright line and the license text stay with it. There is no warranty. The text is in the file `LICENSE` ("Copyright (c) 2026 Somboon L."), it is shown by the Windows installer, and it is in the app under Settings, **About** (section 10). The licenses of the libraries boonsh is built with are in `THIRD_PARTY_LICENSES.txt`, which the installer puts next to the app. Downloads (the installers) are on the project's GitHub **Releases** page: https://github.com/ssaelao-wq/boonsh/releases.
 
+> **New in 0.10.5**
+> - [Command palette](#command-palette) (**Ctrl+Shift+P**): every action, saved command, Global Var, folder and tab in one list you filter by typing.
+> - The column headers of the Details view stay at the top while the files scroll.
+> - [Folder tree](#folder-tree): a folder's colour now carries up through every parent to the drive, for all four colours, not only orange — so a change anywhere below, even a folder changed yesterday, shows on the way down to it with the tree folded.
+> - [File icons](#file-icons): folders in the file panel take the tree's four date colours (orange / yellow / dim yellow / grey, carried up from inside); a file modified **today** is marked orange (icon or, when the icon is a real Windows picture, the file name).
+>
 > **New in 0.10.4**
 > - [Folder tree](#folder-tree): drives show their space (**OS (C:) Used 211GB/463GB**), folder colours tell when a folder was last changed (orange = today, yellow, dim yellow, grey), only folders with sub-folders have a `>`, and a click on a name opens the folder without expanding it.
 > - [This PC](#this-pc): every drive with a meter and **Used / Free / Total**.
@@ -64,7 +70,7 @@ This document describes everything boonsh can do, how to use it, and where its l
   - Up, Refresh | Cut, Copy, Paste, Delete
   - the path bar
   - Search (and the `?` help button when search is open)
-  - Details, Tiles and Thumbnails views | file panel toggle, **Two file panes** (two columns, see [Two panes](#two-panes)), Preview (Eye), terminal show/hide | Settings (gear) | Theme (sun or moon), AI Assistant show/hide (sparkles, the last icon on the right; see section 16)
+  - Details, Tiles and Thumbnails views | file panel toggle, **Two file panes** (two columns, see [Two panes](#two-panes)), Preview (Eye), terminal show/hide | Command palette (⌘ icon, see [Command palette](#command-palette)) | Settings (gear) | Theme (sun or moon), AI Assistant show/hide (sparkles, the last icon on the right; see section 16)
 
 ## 2. Starting the app
 
@@ -78,6 +84,16 @@ This document describes everything boonsh can do, how to use it, and where its l
 - **Up** (folder-up icon) goes to the parent folder. At the top of a drive (`C:\`) it opens **This PC** (all drives); in This PC it is greyed out.
 - **Refresh** (or F5, or Ctrl+R; with two panes F5 copies, so use Ctrl+R) reloads the current folder (and measures its folder sizes again); in This PC it reads the drives' space again.
 - **Path bar:** shows the current path as clickable pieces (`C:\ > Users > ...`). Click any piece to jump there. Click the empty part or the pencil icon to **type a path**: Enter goes there, Esc cancels.
+
+### Command palette
+Press **Ctrl+Shift+P** (or click the ⌘ icon in the header, next to the gear) to open one list of everything you can do, and type a few letters to find it. It works with the cursor anywhere, also in the command line.
+
+- **What is in the list:** the app's actions (go up, This PC, refresh, new folder / text document / basket, copy, cut, paste, delete, rename, bulk rename, zip, extract, undo, two panes and F5 / F6, views, panels, theme, search, command line tabs and split screen, Administrator / normal user, every Settings page, the manual, Check for updates, copy the folder path, open the folder in Windows Explorer, add it to Quick Access), your **saved commands** (as in the Commands menu, with their hot keys), **Global Vars** (assign `{SELEC}` / `{DEST}` ... from the selection or the folder; type a variable that has a value), **CONSTs**, **Quick Access** folders, the folders you visited **most recently**, your **drives** and the **command line tabs**. Only what can be done right now is listed (Paste only with something copied, F5 / F6 only with two panes ...).
+- **Typing filters it, fuzzy:** the letters only have to appear in order, so `tfp` finds *Two file panes* and `ipc` finds *ipconfig*; whole words and the start of words count most, and the matched letters are highlighted. Several words must all match (in the name, or in the dimmer second line). What you picked lately comes first.
+- **Start with a character to see one kind only:** `>` actions, `/` folders, `$` saved commands, `{` variables (`{SELEC}` works as typed).
+- **Type a folder path** (`D:\Backup`, `\\server\share`, `.\sub`, `..`) and the first entry opens it. Plain words also offer **Search this folder for "…"** at the end of the list.
+- **Keys:** Up / Down (and Page Up / Page Down) choose, **Enter** runs, **Esc** (or a click outside, or Ctrl+Shift+P again) closes. While it is open, keys such as Delete or F5 act on the box, never on files.
+- A saved command or a variable is typed at the prompt exactly as from the Commands menu (with its usage line), and the cursor goes to the command line; nothing is run until you press Enter there.
 
 ### Folder tree
 - Shows **This PC** with all your drives, each in its own icon color (the same as in Quick Access). Each drive shows its name as in Explorer and how full it is, for example **OS (C:) Used 211GB/463GB** (hover it for the free space and the file system; a drive with no disc or a disconnected network drive says "not ready"). The numbers are read again when you come back to boonsh.
@@ -93,7 +109,9 @@ This document describes everything boonsh can do, how to use it, and where its l
   | **Dim yellow** | more than 30 days ago |
   | **Grey** | more than 365 days ago |
 
-  Hover a folder to see its path and Date Modified. Only the tree is coloured this way; the file panel keeps the normal yellow folder for every folder.
+  **The colour also marks the way to a change below:** a folder takes the colour of its most recently modified sub-folder, at any depth, whenever that is newer than its own date — not only orange for a change today, the same carries up for yellow and dim yellow too. So if a folder three levels down was modified yesterday, every folder above it up to the drive shows yellow, and you can follow the colours down to the change even with the tree folded (the tooltip then says *A folder inside was modified more recently than this one*). This looks at folders' dates only, like the colours above (a file that was only edited does not count), and links and junctions are not followed. Very large old folder trees are checked up to 100,000 folders, which can undercount in a huge tree with nothing recent near the top; a change made by another program deep inside a folder you have not expanded can take a couple of minutes to show, and expanding down to it shows it at once. Drives keep their own icon and colour. Busy system folders (for example your user folder, because of AppData) are orange almost every day.
+
+  Hover a folder to see its path and Date Modified. Only the tree carries a change's colour up through its parents this way; the file panel marks a folder orange only for its own "modified today" (see "File icons" below), not for a change further inside it.
 - The tree follows you: when you open a folder elsewhere, the tree expands to it and scrolls it into view, and folds away the folders (and drives) you left: open something on D: and C: folds up.
 - It stays current for the open folder: a sub-folder renamed, added or deleted there (in boonsh, in the terminal or by another program) changes in the tree too. A folder elsewhere in the tree that was renamed or deleted since it was shown is reloaded when you click it: nothing opens, its parent's list is refreshed and the terminal gets no `cd` to a folder that no longer exists. When you open a folder that was made after the tree listed its parent (from the path bar, a `cd` in the terminal, Quick Access), that list is reloaded too, so the tree still finds and highlights it.
 - Right-click a folder: New (Folder, Text Document, Shortcut, Basket), Open, Add to Quick Access, Refresh. Right-clicking also opens that folder.
@@ -151,10 +169,16 @@ The open folder updates by itself when another program changes it: a file saved 
 ### File icons
 **As in Windows Explorer:** in every view a file shows the icon Windows gives it: the icon of the program that opens that file type on your PC (a `.pdf` you open with Brave shows the Brave icon, `.csv` the Excel icon, `.html` the Chrome icon, and so on). Programs (`.exe`), shortcuts (`.lnk`, `.url`) and icon files (`.ico`) show their own icon, file by file. A file type no program opens shows Windows' plain page. Folders keep boonsh's yellow folder, and baskets their violet basket. The icons are drawn sharp at your display scaling. If you change a default app in Windows while boonsh is open, the icons update when you come back to boonsh. To go back to boonsh's own simple line icons, untick **Show file icons from Windows** in Settings > Files Column.
 
+**Folder colours by date:** a folder's icon in the file panel has exactly the colour of its [folder tree](#folder-tree) row, in every view: **orange** (modified today), **yellow** (within 30 days), **dim yellow** (older), **grey** (over a year), going by its own date or the newest change anywhere inside it, whichever is newer.
+
+**Files modified today, in orange:** files get only the orange, nothing for the other ages. A file modified today is marked when it isn't one of the icons above: its own simple line icon (an unrecognised type, or with Windows icons turned off) turns orange too. When a file shows a real Windows icon (a drawn picture, which can't be recoloured), its **file name** turns orange instead. Baskets and gone/new basket items keep their own colour either way.
+
 ### Folder sizes
 When you open a folder, boonsh measures the folders in it in the background, everything inside each one (all sub-folders), and shows the result in the **Size** column ("…" while it is still measuring; the biggest folders take longest). Sorting by Size then sorts folders by their real size too. boonsh remembers what it measured, so going into a sub-folder or back up is quick. A change anywhere inside the open folder, at any depth and by any program (a file added, copied into one of its folders, deleted), is measured again by itself within a few seconds; only the folders that changed are measured again. Changes outside the open folder (for example in a folder next to it, which affects the parent's %) show after **Refresh (F5)**, which measures everything again, or after 10 minutes. Links and junctions inside a folder are not followed, so nothing is counted twice; a folder Windows does not let you read counts as empty. Opening a whole drive (for example `C:\`) measures the entire drive, which can take a while; it stops as soon as you open another folder. Search results and baskets do not measure folders. Turn it off with **Calculate folder sizes** in Settings > Files Column.
 
 ### Sorting and columns (Details view)
+
+The column headers always stay at the top of the file panel: only the list of files scrolls under them (in both panes of two-pane mode, and with group lines, which stick right under the headers).
 
 **Basic sorting**
 - **Click** a column header to sort by that column alone; **click again** to reverse (the arrow shows the direction). This works like Explorer.
@@ -1113,6 +1137,7 @@ Click the **trash icon** on its row and confirm. This works on the built-in comm
 | Tab | With two panes: switch to the other pane |
 | Ctrl+R | Refresh the folder (also with two panes) |
 | Ctrl+P | Show or hide the preview drawer |
+| Ctrl+Shift+P | Open the command palette (one list of actions, commands, variables and folders); works in the command line too |
 | Ctrl+Shift+F | Show or hide the file panel (leaves the folder tree and terminal) |
 | Home, End, Left, Right, PageUp, PageDown | Move between images (when an image is previewed) |
 | `+`, `-`, `1`, `0` or `F`, `L`, Ctrl+G | Image zoom, 1:1, fit, lock zoom, go to image |
@@ -1164,6 +1189,7 @@ The thin bar at the bottom shows, from left to right:
 | Frequently Accessed: the visit counts, on / off and the number of folders | Yes |
 | AI Assistant: shown or hidden | Yes |
 | Two panes: on or off, the other pane's folder, the width of the panes | Yes |
+| Command palette: the entries you picked lately (they come first) | Yes |
 | Updates: check automatically, a version put off with Later | Yes |
 | AI Assistant: the API key | Yes, in Windows Credential Manager (not in a file) |
 | AI Assistant: the conversation | While boonsh is open, also when the panel is hidden (cleared by the eraser button or when boonsh closes) |

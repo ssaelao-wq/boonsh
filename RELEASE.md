@@ -4,7 +4,16 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 ## Unreleased
 
-Nothing yet.
+## 0.10.5 (2026-10-16)
+
+### Added
+- **File panel: folders and files coloured by date.** A folder's icon shows the same colour as its folder tree row, in every view: orange (today), yellow (30 days), dim yellow (older) or grey (over a year), counting changes anywhere inside it. A file modified today is marked orange: its icon when it is boonsh's own simple line icon, otherwise (a real Windows icon can't be recoloured) its name.
+- **Folder Tree: the way to a change carries all the way up.** A folder now shows the colour of its most recently modified descendant, at any depth, when that is newer than its own date, so every parent up to the drive reflects the freshest change below it (not only orange for a change today; yellow and dim yellow carry up the same way) and you can follow the colours down to it with the tree folded. Hover such a folder: *A folder inside was modified more recently than this one*.
+- **Command palette (Ctrl+Shift+P, or the ⌘ icon in the header):** one list of every action, saved command, Global Var, CONST, Quick Access folder, recent folder, drive and command line tab. Type a few letters to filter it (fuzzy: `tfp` finds *Two file panes*), start with `>` `/` `$` or `{` for actions, folders, saved commands or variables only, or type a folder path to open it. Up / Down and Enter run an entry; what you picked lately comes first. Works with the cursor in the command line too.
+
+### Fixed
+- Ctrl+Shift+F (show / hide the file panel) also sent Ctrl+F to the shell when the cursor was in the command line.
+- **Column headers scrolled away with the files** in the Details view. They now always stay at the top of the file panel and only the file list scrolls (also in two-pane mode); group lines stick right under them.
 
 ## 0.10.4 (2026-10-16)
 
