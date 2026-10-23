@@ -4,7 +4,7 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 ## Unreleased
 
-## 0.10.5 (2026-10-16)
+## 0.10.5 (2026-10-23)
 
 ### Added
 - **File panel: folders and files coloured by date.** A folder's icon shows the same colour as its folder tree row, in every view: orange (today), yellow (30 days), dim yellow (older) or grey (over a year), counting changes anywhere inside it. A file modified today is marked orange: its icon when it is boonsh's own simple line icon, otherwise (a real Windows icon can't be recoloured) its name.
