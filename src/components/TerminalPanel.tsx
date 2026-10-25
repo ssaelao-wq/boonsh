@@ -797,27 +797,12 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
     return () => clearTimeout(timer);
   }, [currentPath]);
 
-  // Handle Drag & Drop of file paths into terminal
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const textData = e.dataTransfer.getData('text/plain');
-    if (textData) {
-      invoke('pty_write', { id: activeIdRef.current, data: textData }).then(() => {
-        if (xtermRef.current) {
-          xtermRef.current.scrollToBottom();
-          xtermRef.current.focus();
-        }
-      }).catch(() => {});
-    }
-  };
+  // Files dropped on the command line (from boonsh or Explorer) are typed as quoted paths: App finds this panel
+  // under the pointer by its `data-drop-terminal` attribute (Tauri's drop event, see App `onDragDropEvent`)
 
   useEffect(() => {
     if (paletteRequest) handleSelectCommand(paletteRequest.item);
   }, [paletteRequest?.id]);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
 
   const handleSelectCommand = (item: CommandItem) => {
     setShowHelperMenu(false);
@@ -867,8 +852,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
         overflow: 'hidden',
         position: 'relative',
       }}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
+      data-drop-terminal=""
     >
       {/* Command line tabs: always shown, even for a single tab */}
       <div className="terminal-tabs">

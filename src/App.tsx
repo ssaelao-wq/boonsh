@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebview, type DragDropEvent } from '@tauri-apps/api/webview';
 import { HeaderBar } from './components/HeaderBar';
 import { SearchBar } from './components/SearchBar';
 import { QuickAccessBar } from './components/QuickAccessBar';
@@ -739,19 +740,15 @@ export function App() {
       alert(String(err));
     }
   };
-  // A drop of boonsh items on a pane: copy there (Shift: move). Nothing happens on its own folder.
-  const dropOnPane = (side: Side, e: React.DragEvent) => {
-    if (e.defaultPrevented) return; // a basket row took it
-    const raw = e.dataTransfer.getData('application/x-boonsh-paths');
-    if (!raw) return;
-    e.preventDefault();
-    const paths = JSON.parse(raw) as string[];
+  // A drop of files (dragged from boonsh or from Explorer) on a pane: copy there (Shift: move). Nothing happens
+  // on their own folder. Without two panes the file panel is the active side.
+  const dropOnPane = (side: Side, paths: string[], move: boolean) => {
     const dest = side === activeSide ? currentPathRef.current : otherPane?.path ?? '';
     if (!dest || paths.length === 0 || paths.every((p) => sameFolder(parentDir(p), dest))) return;
     if (side === activeSide) {
       if (basketViewRef.current) addToBasket(basketViewRef.current.path, paths);
       else if (!thisPCRef.current) {
-        transfer({ mode: e.shiftKey ? 'cut' : 'copy', paths }, dest)
+        transfer({ mode: move ? 'cut' : 'copy', paths }, dest)
           .then((res) => {
             const err = res && pasteError(res);
             if (err) alert(err.message);
@@ -760,18 +757,71 @@ export function App() {
       }
       return;
     }
-    const problem = transferProblem(paths, parentDir(paths[0]), dest, e.shiftKey);
+    const problem = transferProblem(paths, parentDir(paths[0]), dest, move);
     if (problem) {
       alert(problem);
       return;
     }
-    transfer({ mode: e.shiftKey ? 'cut' : 'copy', paths }, dest)
+    transfer({ mode: move ? 'cut' : 'copy', paths }, dest)
       .then((res) => {
         const err = res && pasteError(res);
         if (err) alert(err.message);
       })
       .catch((err) => alert(String(err)));
   };
+  // Files dropped on the window, dragged from boonsh itself (file_drag.rs) or from Explorer, arrive as Tauri's
+  // drag-drop event with real paths and the pointer position (physical pixels). Whatever is under the pointer
+  // takes them: a basket row (links), the command line (typed as quoted paths), or a file pane / the file panel
+  // (copy into its folder, Shift = move). The target is outlined while the files are over it.
+  const dropHoverRef = useRef<Element | null>(null);
+  const setDropHover = (el: Element | null) => {
+    if (dropHoverRef.current === el) return;
+    dropHoverRef.current?.classList.remove('drop-target');
+    el?.classList.add('drop-target');
+    dropHoverRef.current = el;
+  };
+  const dropTargetAt = (pos: { x: number; y: number }): Element | null => {
+    const dpr = window.devicePixelRatio || 1;
+    const el = document.elementFromPoint(pos.x / dpr, pos.y / dpr);
+    return el?.closest('[data-drop-basket], [data-drop-terminal], [data-drop-pane]') ?? null;
+  };
+  const nativeDropRef = useRef<(ev: DragDropEvent) => void>(() => {});
+  nativeDropRef.current = (ev) => {
+    if (ev.type === 'leave') return setDropHover(null);
+    const target = dropTargetAt(ev.position);
+    if (ev.type !== 'drop') return setDropHover(target);
+    setDropHover(null);
+    const paths = ev.paths;
+    if (!target || paths.length === 0) return;
+    const basket = target.getAttribute('data-drop-basket');
+    if (basket) {
+      const links = paths.filter((p) => p !== basket);
+      if (links.length) addToBasket(basket, links);
+      return;
+    }
+    if (target.hasAttribute('data-drop-terminal')) {
+      ptyWrite(paths.map((p) => `"${p}"`).join(' '));
+      return;
+    }
+    const side = target.getAttribute('data-drop-pane') as Side | null;
+    if (!side) return;
+    invoke<{ shift: boolean }>('drag_keys')
+      .then((k) => dropOnPane(side, paths, k.shift))
+      .catch(() => dropOnPane(side, paths, false));
+  };
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    let gone = false;
+    getCurrentWebview()
+      .onDragDropEvent((e) => nativeDropRef.current(e.payload))
+      .then((f) => (gone ? f() : (off = f)))
+      .catch(() => {});
+    return () => {
+      gone = true;
+      off?.();
+    };
+  }, []);
+
   const dualBoxRef = useRef<HTMLDivElement>(null);
   const startDualDrag = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1465,7 +1515,6 @@ export function App() {
     basketMode: basketView ? { atTop: basketView.trail.length === 0 } : null,
     onCreateBasket: createBasket,
     onPasteIntoBasket: pasteIntoBasket,
-    onDropOnBasket: addToBasket,
     onRenamed: handleRenamed,
     onOpenLocation: (item) => handleNavigate(parentDir(item.path), [item.path]),
     onBasketDeleteFiles: () => deleteBasketFiles(selectedItems),
@@ -1723,7 +1772,7 @@ export function App() {
 
             {/* Middle Sub-pane: Main File Explorer Table / Grid */}
             {showFilePanel && (
-              <div className="file-panel-column">
+              <div className="file-panel-column" data-drop-pane={dual ? undefined : activeSide}>
               {!dual ? (
                 <>
                   {thisPCShown && <ThisPCView drives={drives} onOpen={(p) => handleNavigate(p)} />}
@@ -1761,12 +1810,7 @@ export function App() {
                         <div
                           className={`file-pane ${isActive ? 'active' : ''}`}
                           style={side === 'left' ? { width: `${dualRatio * 100}%` } : { flex: '1 1 0%' }}
-                          onDragOver={(e) => {
-                            if (!e.dataTransfer.types.includes('application/x-boonsh-paths')) return;
-                            e.preventDefault();
-                            e.dataTransfer.dropEffect = e.shiftKey ? 'move' : 'copy';
-                          }}
-                          onDrop={(e) => dropOnPane(side, e)}
+                          data-drop-pane={side}
                           onContextMenuCapture={isActive ? undefined : () => switchTo(side)}
                         >
                           <div className="file-pane-head" onClick={() => switchTo(side)} title={title}>

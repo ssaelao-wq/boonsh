@@ -2213,6 +2213,12 @@ input.search-bar-input:focus {
   outline: 1px dashed var(--basket-color);
   outline-offset: -1px;
 }
+/* files dragged over a pane / the file panel / the command line (App `setDropHover`) */
+[data-drop-pane].drop-target,
+[data-drop-terminal].drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
 .terminal-vars-heading {
   display: flex;
   align-items: center;

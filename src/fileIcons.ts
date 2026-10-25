@@ -78,3 +78,45 @@ export function useFileIcons(items: FileItem[], cssSize: number, on: boolean): (
 
   return (item) => (on && !ownDrawing(item) ? cache.get(`${px}|${iconKey(item)}`) || undefined : undefined);
 }
+
+// Explorer's thumbnails (a frame of the movie) for video files in the Thumbnails view, instead of the player's
+// icon. Keyed by path + Date Modified, so a replaced file gets a new picture. '' = Windows could not make one.
+const thumbs = new Map<string, string>();
+const THUMB_CHUNK = 8; // a first-time video frame is slow; small chunks show the pictures as they come
+const thumbKey = (px: number, item: FileItem) => `${px}|${item.path.toLowerCase()}|${item.modified_timestamp ?? 0}`;
+
+/** Thumbnail lookup for the `wanted` items, fitted in `cssSize` px: asks Windows in the background. */
+export function useThumbnails(
+  items: FileItem[],
+  wanted: (item: FileItem) => boolean,
+  cssSize: number,
+  on: boolean
+): (item: FileItem) => string | undefined {
+  const [, redraw] = useState(0);
+  const px = Math.round(cssSize * Math.max(1, window.devicePixelRatio || 1));
+
+  useEffect(() => {
+    if (!on) return;
+    const want = items.filter((i) => !ownDrawing(i) && wanted(i) && !thumbs.has(thumbKey(px, i)));
+    if (want.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < want.length && !cancelled; i += THUMB_CHUNK) {
+        const part = want.slice(i, i + THUMB_CHUNK);
+        let res: Record<string, string>;
+        try {
+          res = await invoke<Record<string, string>>('get_thumbnails', { paths: part.map((p) => p.path), size: px });
+        } catch {
+          return; // outside Tauri, or the backend failed: the icons stay
+        }
+        for (const item of part) thumbs.set(thumbKey(px, item), res[item.path] ?? '');
+        if (!cancelled) redraw((n) => n + 1);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [items, px, on]);
+
+  return (item) => (on && !ownDrawing(item) && wanted(item) ? thumbs.get(thumbKey(px, item)) || undefined : undefined);
+}

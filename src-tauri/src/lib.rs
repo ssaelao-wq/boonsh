@@ -4,6 +4,7 @@ mod bulk_rename;
 mod cmdvars;
 mod dir_watch;
 mod drives;
+mod file_drag;
 mod file_props;
 mod folder_size;
 mod fs_ops;
@@ -93,6 +94,9 @@ pub fn run() {
             get_file_details,
             get_default_apps,
             shell_icons::get_file_icons,
+            shell_icons::get_thumbnails,
+            file_drag::start_file_drag,
+            file_drag::drag_keys,
             open_admin_terminal,
             is_admin,
             relaunch_as_admin,

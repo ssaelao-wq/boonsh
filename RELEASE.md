@@ -4,6 +4,16 @@ New features and fixes of each boonsh release, newest first. Changes go under **
 
 ## Unreleased
 
+## 0.10.6 (2026-10-25)
+
+### Added
+- **Drag files out of boonsh into other programs.** Files dragged from the file panel are now real Windows files, as from Explorer: drop a movie on VLC to play it, files on an Explorer folder, attachments on a mail.
+- **Drop files from Explorer into boonsh:** on the file panel or a pane (copied into its folder, Shift = move), on a basket (linked) or on the command line (paths typed). The spot you are about to drop on gets a dashed outline.
+- **Movie pictures in the Thumbnails view.** Video files now show a picture from the movie, the same one Windows Explorer shows, instead of the video player's icon (VLC's cone, for example). A video Windows cannot make a picture of keeps the icon.
+
+### Fixed
+- **Dragging between the two file panes did nothing** with a real mouse, and neither did dropping on a basket or on the command line: the window's own drop handling swallowed the page's drag. All of these now work.
+
 ## 0.10.5 (2026-10-23)
 
 ### Added

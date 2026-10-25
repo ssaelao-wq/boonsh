@@ -1,11 +1,15 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.5**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.6**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
 **License.** boonsh is **free software under the MIT License**: anyone may use, copy, change and share it, for free, as long as the copyright line and the license text stay with it. There is no warranty. The text is in the file `LICENSE` ("Copyright (c) 2026 Somboon L."), it is shown by the Windows installer, and it is in the app under Settings, **About** (section 10). The licenses of the libraries boonsh is built with are in `THIRD_PARTY_LICENSES.txt`, which the installer puts next to the app. Downloads (the installers) are on the project's GitHub **Releases** page: https://github.com/ssaelao-wq/boonsh/releases.
 
+> **New in 0.10.6**
+> - [Drag and drop](#drag-and-drop): files dragged from boonsh are real Windows files, so other programs take them (drop a movie on VLC to play it); files from Explorer can be dropped into boonsh; dragging between the two panes, onto a basket and onto the command line works again.
+> - [View modes](#view-modes-header-icons-remembered-between-runs): video files show a picture from the movie in the Thumbnails view.
+>
 > **New in 0.10.5**
 > - [Command palette](#command-palette) (**Ctrl+Shift+P**): every action, saved command, Global Var, folder and tab in one list you filter by typing.
 > - The column headers of the Details view stay at the top while the files scroll.
@@ -164,7 +168,7 @@ The open folder updates by itself when another program changes it: a file saved 
 | --- | --- |
 | **Details** | A table with Name, Date Modified, Type and Size. Folders have a filled yellow icon in every view; folder and file icons are drawn with a hairline (one screen pixel, whatever the Windows display scaling). When the Name column is too narrow, the end of the name is cut with "..." and the icon stays; point at the name to see all of it. |
 | **Tiles** | An icon with name, type, size and date. |
-| **Thumbnails** | Large cards. Image files show a real thumbnail; other files show an icon. |
+| **Thumbnails** | Large cards. Image files show a real thumbnail, and video files show a picture from the movie (the same one Windows Explorer shows); other files show an icon. A video Windows cannot make a picture of (a damaged file, or a format without a Windows video extension) shows its program's icon. |
 
 ### File icons
 **As in Windows Explorer:** in every view a file shows the icon Windows gives it: the icon of the program that opens that file type on your PC (a `.pdf` you open with Brave shows the Brave icon, `.csv` the Excel icon, `.html` the Chrome icon, and so on). Programs (`.exe`), shortcuts (`.lnk`, `.url`) and icon files (`.ico`) show their own icon, file by file. A file type no program opens shows Windows' plain page. Folders keep boonsh's yellow folder, and baskets their violet basket. The icons are drawn sharp at your display scaling. If you change a default app in Windows while boonsh is open, the icons update when you come back to boonsh. To go back to boonsh's own simple line icons, untick **Show file icons from Windows** in Settings > Files Column.
@@ -325,8 +329,16 @@ Besides Name, Date Modified, Type and Size, the file panel can show: **Date Crea
 - **Double-click a folder** to open it.
 - **Double-click a file** to open it in its default Windows application.
 
-### Dragging into the terminal
-Drag a file or folder onto the terminal to type its quoted path there. Drag one of several selected items and **all selected** paths are typed, separated by spaces.
+### Drag and drop
+Dragging files from boonsh works like dragging them from Windows Explorer: the files are real Windows files, so any program takes them. Drag one of several selected items and **all selected** items go.
+
+- **Onto another program:** drop a movie on **VLC** (or any player) to play it, a document on Word, files on an **Explorer** window to put them there, attachments on a mail. What happens is that program's choice, exactly as with a drag from Explorer (Explorer *moves* files dropped on a folder of the same drive and copies them to another drive; hold **Ctrl** to copy, **Shift** to move).
+- **Onto the other pane** (two panes): copied into its folder; hold **Shift** while dropping to move. Nothing happens when the folder is the same.
+- **Onto a basket** in a list: the files are added to it as links (the basket row gets a dashed outline while the files are over it).
+- **Onto the command line:** their quoted paths are typed at the prompt, separated by spaces.
+- **From Explorer or another program into boonsh:** drop files on the file panel (or a pane) to copy them into its folder (**Shift**: move), on a basket to link them, or on the command line to type their paths. The place you are about to drop on gets a dashed outline.
+
+Gone / new entries inside a basket can't be dragged (there is nothing linked to drag).
 
 ### Two panes
 The **Two file panes** button in the header (two columns, orange) shows a second file list beside the first, as in two-pane file managers. Click it again to go back to one pane. boonsh remembers whether it is on, the other pane's folder and the width of the panes.
@@ -336,7 +348,7 @@ The **Two file panes** button in the header (two columns, orange) shows a second
 - **The terminal stays where it is** when you switch panes (no `cd` is typed). Opening a folder in the active pane still takes the terminal there, and a `cd` typed in the terminal still moves the active pane. Commands with `{SELEC}` / `{DEST}` write paths relative to the terminal's own folder, so they stay right when the two differ.
 - **F5 copies** the selected items to the other pane's folder, **F6 moves** them. boonsh asks first (`Copy "report.pdf" to D:\Backup?`); Enter or OK goes ahead. Then it works like Paste: the clash window for names already there, the copy queue, the progress card with Pause and Cancel. The copies are selected in the other pane. In an open basket, F5 / F6 take only its linked items.
 - **Ctrl+R refreshes** (in two-pane mode F5 copies; Ctrl+R works with one pane too).
-- **Drag** files from one pane onto the other: they are copied; hold **Shift** while dropping to move them. Dropping onto a basket in a list still adds links.
+- **Drag** files from one pane onto the other: they are copied; hold **Shift** while dropping to move them. Dropping onto a basket in a list still adds links. See [Drag and drop](#drag-and-drop).
 - Both panes update by themselves when something changes in their folder.
 - boonsh refuses to copy or move when both panes show the same folder, or a folder into itself.
 
@@ -1315,7 +1327,7 @@ A **basket** sits in a folder like a sub-folder, but it holds **links** to files
 - **Copy, then paste on the basket:** select files or folders (in a folder or in search results), **Copy** (Ctrl+C), right-click the basket, **Paste as links into this basket**. The files stay where they are.
 - **Inside an opened basket**, Paste (Ctrl+V, or right-click, **Paste as links**) does the same.
 - **Cut** and paste into a basket also only adds links: nothing moves, and the cut is cancelled.
-- **Drag and drop** files from the file panel onto a basket (it gets a dashed outline).
+- **Drag and drop** files from the file panel, or from Explorer, onto a basket (it gets a dashed outline).
 - An item that is already in the basket, also as part of a linked folder, is not added twice; a message says how many links were added. A basket cannot be added to a basket.
 
 ### Inside a basket

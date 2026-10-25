@@ -37,7 +37,8 @@ import {
   Unlink,
 } from 'lucide-react';
 import { isBasket, shownName } from '../basket';
-import { useFileIcons } from '../fileIcons';
+import { useFileIcons, useThumbnails } from '../fileIcons';
+import { isVideoExt } from '../video';
 import { fileAge, isToday, startOfToday } from '../fileAge';
 import { FileItem, ViewMode, SortOrder, ItemDetails } from '../types';
 import { BUCKETS, BUCKET_LABEL, BUCKET_EXAMPLE, GroupSpec, Bucket, Row, formatBytes, itemsInGroup, toggleBucket } from '../grouping';
@@ -110,7 +111,6 @@ interface MainFilePanelProps {
   basketMode: { atTop: boolean } | null;
   onCreateBasket: () => void;
   onPasteIntoBasket: (basket: string) => void;
-  onDropOnBasket: (basket: string, paths: string[]) => void;
   onRenamed: (from: string, to: string) => void;
   onOpenLocation: (item: FileItem) => void;
   onBasketDeleteFiles: () => void;
@@ -119,8 +119,6 @@ interface MainFilePanelProps {
   onBasketRelink: (item: FileItem) => void;
 }
 
-// boonsh's own drag data: the dragged paths, so a drop on a basket can link them
-const DRAG_PATHS = 'application/x-boonsh-paths';
 
 const ImageThumbnail: React.FC<{
   path: string;
@@ -223,7 +221,6 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   basketMode,
   onCreateBasket,
   onPasteIntoBasket,
-  onDropOnBasket,
   onRenamed,
   onOpenLocation,
   onBasketDeleteFiles,
@@ -307,6 +304,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
 
   // the icon Windows shows for each file (the program that opens it), at the size this view draws icons
   const windowsIcon = useFileIcons(items, viewMode === 'thumbnails' ? 36 : viewMode === 'tiles' ? 28 : 16, colPrefs.windowsIcons);
+  // a frame of each movie in the Thumbnails view (Explorer's thumbnail), instead of the player's icon
+  const videoThumb = useThumbnails(items, (i) => !i.is_dir && isVideoExt(i.ext), 128, viewMode === 'thumbnails');
 
   // whether this plain file or folder was modified today (not a basket, not a gone/new basket item: those
   // already carry their own colour, which stays untouched)
@@ -374,7 +373,7 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   const cutSet = new Set(cutPaths);
   // extra row classes: grey gone / new basket items, a basket that is a drop target
   const rowExtra = (item: FileItem) =>
-    `${item.state ? `basket-${item.state}` : ''} ${dropTarget === item.path ? 'drop-target' : ''}`;
+    `${item.state ? `basket-${item.state}` : ''}`;
 
   // Shift+Click would otherwise highlight page text between the two clicks
   const preventShiftTextSelect = (e: React.MouseEvent) => {
@@ -386,37 +385,21 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
     if (e.target === e.currentTarget) onClearSelection();
   };
 
-  // Dragging a selected item drags every selected item (paths are space-separated for the terminal)
+  // Dragging a selected item drags every selected item, as real Windows files (file_drag.rs), so other programs
+  // take them too (a movie dropped on VLC plays). The page's HTML drag is cancelled: it carries no files, and
+  // Tauri's window drop handler would swallow it. Drops on boonsh itself arrive through Tauri's drag-drop event
+  // (App's `onDragDropEvent`), like drops from Explorer.
   const handleDragStart = (e: React.DragEvent, item: FileItem) => {
+    e.preventDefault();
+    if (item.state) return; // a gone / new basket entry: nothing (or nothing linked) to drag
     const paths = selectedPaths.has(item.path)
-      ? items.filter((i) => selectedPaths.has(i.path)).map((i) => i.path)
+      ? items.filter((i) => selectedPaths.has(i.path) && !i.state).map((i) => i.path)
       : [item.path];
-    e.dataTransfer.setData('text/plain', paths.map((p) => `"${p}"`).join(' '));
-    e.dataTransfer.setData(DRAG_PATHS, JSON.stringify(paths));
+    invoke('start_file_drag', { paths }).catch(() => {});
   };
 
-  // A basket in the list takes dropped items as links
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const basketDropProps = (item: FileItem) =>
-    isBasket(item)
-      ? {
-          onDragOver: (e: React.DragEvent) => {
-            if (!e.dataTransfer.types.includes(DRAG_PATHS)) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'link';
-            if (dropTarget !== item.path) setDropTarget(item.path);
-          },
-          onDragLeave: () => setDropTarget(null),
-          onDrop: (e: React.DragEvent) => {
-            setDropTarget(null);
-            const raw = e.dataTransfer.getData(DRAG_PATHS);
-            if (!raw) return;
-            e.preventDefault();
-            const paths = (JSON.parse(raw) as string[]).filter((p) => p !== item.path);
-            if (paths.length) onDropOnBasket(item.path, paths);
-          },
-        }
-      : {};
+  // A basket in the list takes dropped items as links: App finds it under the pointer by this attribute
+  const basketDropProps = (item: FileItem) => (isBasket(item) ? { 'data-drop-basket': item.path } : {});
 
   // Double-click / Enter: a gone or new basket item opens nothing; a folder opens (inside a basket: its linked view)
   const openItem = (item: FileItem) => {
@@ -684,7 +667,9 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 title={shownName(item)}
               >
                 <div className="grid-card-thumb">
-                  {isImage ? (
+                  {videoThumb(item) ? (
+                    <img src={videoThumb(item)} alt={item.name} className="grid-thumb-img" draggable={false} />
+                  ) : isImage ? (
                     <ImageThumbnail
                       path={item.path}
                       name={item.name}

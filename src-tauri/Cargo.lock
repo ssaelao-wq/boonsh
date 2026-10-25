@@ -294,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "boonsh"
-version = "0.10.5"
+version = "0.10.6"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
@@ -312,6 +312,7 @@ dependencies = [
  "trash",
  "walkdir",
  "windows 0.61.3",
+ "windows-core 0.61.2",
  "zip",
 ]
 

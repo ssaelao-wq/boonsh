@@ -1,6 +1,7 @@
 //! File icons as Explorer shows them: the icon of the program that opens the file type (a .pdf opened by Brave
 //! shows Brave's icon), or the file's own icon for programs, shortcuts and icon files. Windows draws the icon
-//! (IShellItemImageFactory, icon only, never a thumbnail) and it goes to the page as a PNG data URL.
+//! (IShellItemImageFactory, icon only) and it goes to the page as a PNG data URL. `get_thumbnails` asks the
+//! same factory for Explorer's thumbnail instead (a frame of a video, for the Thumbnails view).
 
 use base64::Engine;
 use serde::Deserialize;
@@ -51,7 +52,8 @@ mod imp {
     };
     use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
     use windows::Win32::UI::Shell::{
-        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
+        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
+        SIIGBF_THUMBNAILONLY,
     };
 
     pub fn init_com() {
@@ -60,13 +62,21 @@ mod imp {
 
     /// The icon of `path` at `size` x `size` pixels as a PNG data URL, or None.
     pub fn icon(path: &str, size: u32) -> Option<String> {
+        image(path, size, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK)
+    }
+
+    /// The picture Explorer shows in its thumbnail views (a frame of a video), fitted in `size` x `size`
+    /// keeping its shape, or None when Windows cannot make one (then the page keeps the icon).
+    pub fn thumbnail(path: &str, size: u32) -> Option<String> {
+        image(path, size, SIIGBF_THUMBNAILONLY)
+    }
+
+    fn image(path: &str, size: u32, flags: SIIGBF) -> Option<String> {
         unsafe {
             let wide = HSTRING::from(path);
             let factory: IShellItemImageFactory = SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None).ok()?;
             let side = size as i32;
-            let hbm = factory
-                .GetImage(SIZE { cx: side, cy: side }, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK)
-                .ok()?;
+            let hbm = factory.GetImage(SIZE { cx: side, cy: side }, flags).ok()?;
             let obj = HGDIOBJ(hbm.0);
             let mut bm = BITMAP::default();
             let ok = GetObjectW(obj, std::mem::size_of::<BITMAP>() as i32, Some(&mut bm as *mut _ as *mut _)) != 0;
@@ -103,6 +113,27 @@ mod imp {
     pub fn icon(_path: &str, _size: u32) -> Option<String> {
         None
     }
+    pub fn thumbnail(_path: &str, _size: u32) -> Option<String> {
+        None
+    }
+}
+
+/// `path -> PNG data URL` of each file's Explorer thumbnail ("" when there is none: the page shows the icon).
+#[tauri::command]
+pub async fn get_thumbnails(paths: Vec<String>, size: u32) -> Result<HashMap<String, String>, String> {
+    let size = size.clamp(16, 512);
+    tauri::async_runtime::spawn_blocking(move || {
+        imp::init_com();
+        paths
+            .into_iter()
+            .map(|p| {
+                let url = imp::thumbnail(&p, size).unwrap_or_default();
+                (p, url)
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// `key -> PNG data URL` ("" when Windows had no icon, so the page keeps its own drawing).
