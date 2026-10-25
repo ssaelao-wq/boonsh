@@ -213,8 +213,10 @@ mod tests {
                 got.push(String::from_utf16_lossy(&buf[..n]));
             }
             ReleaseStgMedium(&mut medium);
-            let lower = |v: &[String]| v.iter().map(|s| s.to_lowercase()).collect::<Vec<_>>();
-            assert_eq!(lower(&got), lower(&paths));
+            // the same files, compared resolved: Windows may hand back the long form of a short (8.3) temp
+            // folder name (CI's TEMP is C:\Users\RUNNER~1\..., the drag says ...\runneradmin\...)
+            let real = |v: &[String]| v.iter().map(|s| std::fs::canonicalize(s).expect("exists")).collect::<Vec<_>>();
+            assert_eq!(real(&got), real(&paths));
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
