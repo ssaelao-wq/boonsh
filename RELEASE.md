@@ -2,7 +2,37 @@
 
 New features and fixes of each boonsh release, newest first. Changes go under **Unreleased** as they are made, and move under a version heading when the version is bumped.
 
-## Unreleased
+## 0.10.8 (2026-10-26)
+
+### Added
+- **Google Drive integration in the 2-panel file manager.** Connect directly to your Google Drive account without third-party sync apps or extra panels. Either pane can browse local disks or Google Drive (`gdrive://root` and subfolders).
+  - **Bidirectional copy and move:** transfer files and folders between PC and Google Drive, or between Google Drive folders, using **F5** (Copy), **F6** (Move), context menu items, **Ctrl+C / Ctrl+V**, or drag-and-drop.
+  - **OAuth 2.0 PKCE authentication:** log in via your web browser with temporary loopback listener on `http://127.0.0.1:<port>/callback` and automatic background token refresh.
+  - **Encrypted credential storage:** tokens and client secrets are protected with Windows DPAPI encryption and stored in Windows Credential Manager (`boonsh:gdrive:*`).
+  - **Cloud card in This PC:** shows your Google account email with a real-time quota usage meter (Used / Free / Total).
+  - **Resumable uploads (> 5 MB):** large files upload in 8 MB chunks with `Content-Range` headers, retry backoff on HTTP 429/5xx, and progress tracking.
+  - **Google Workspace Docs export:** downloading Google Docs, Google Sheets, or Google Slides exports them to standard `.docx`, `.xlsx`, and `.pptx` files.
+  - **Server-side Drive-to-Drive:** copies and moves inside Google Drive execute instantly on Google's servers without downloading to local disk.
+  - **Conflict dialog & queue:** destination clashes show the conflict resolution window (**Replace**, **Keep Both**, **Skip**); transfers run through the unified progress card with pause/resume and cancel support.
+  - **Dynamic breadcrumbs, folder tree & browser link:** the path bar shows the full chain of ancestor folders (`Google Drive > Development > ... > Phase2`), not just the current one; Google Drive also appears as its own entry in the folder tree, alongside your local drives; right-click any Drive item to **Open in Google Drive** in your browser.
+- **Mobile Drop & LAN Wi-Fi sharing (`lan://mobile`).** Transfer files directly between your notebook and mobile phone over local Wi-Fi without cloud round-trips.
+  - **Zero-install Web Portal with QR Code:** scan the QR code displayed in `lan://mobile` using your phone's camera or LINE's QR code scanner to download files or upload photos/documents straight to your PC.
+  - **Virtual File Panel:** open `lan://mobile` in the second panel of the 2-pane file manager; use standard **F5 (Copy)**, **F6 (Move, removes the original once it is safely staged)**, or drag-and-drop.
+  - **Automatic Google Docs to PDF Export:** copying a Google Doc from Google Drive into `lan://mobile` automatically exports it as a PDF ready to send on LINE.
+  - **Persistent Device Pairing:** toggle "Permanent Connection" on your phone to remember the device, with encrypted token storage in Windows Credential Manager (`boonsh/lan-paired-devices`); switching it off on the phone unpairs it on the PC too.
+  - **Upload progress:** a bar on your phone while it uploads, and a matching one in boonsh while the file streams in, for anything larger than an instant transfer.
+
+## 0.10.7 (2026-10-25)
+
+### Added
+- **Command blocks in the command line.** Every command and its output is one section: a thin line above each command, and a mark in a small left margin that is green when the command worked and red when it failed (hover it for the exit code or "PowerShell error", how long it took and when it started). **Ctrl+Up / Ctrl+Down** jump to the previous / next command. Right-click a command or its output for **Copy Command Output** and **Select Command Output**. The `cd` boonsh types when you open a folder gets its own block; `cls` clears them. Nothing extra is printed, so Find Text and Export Screen are unchanged.
+
+### Changed
+- **Manual:** the Drag and drop section explains how to move instead of copy (hold Shift while dropping), what each drop target does with and without Shift, and the keyboard alternatives (F6, Ctrl+X / Ctrl+V).
+
+### Fixed
+- **Shift+drag did nothing** when Shift was already held as the mouse button went down (the usual way to move): the drag never started. Holding Shift from the start now moves the files. Checked with a real mouse on the other pane (moves), a basket (links), the command line (types the path), another program and an Explorer folder (moves there).
+- **Dragging out of an open basket onto a pane** copied a partly linked folder whole, including files that are not linked, and a Shift move left the basket's links pointing at the old place. It now works like F5 / F6 in the basket: only the linked parts go, and the links follow a move.
 
 ## 0.10.6 (2026-10-25)
 

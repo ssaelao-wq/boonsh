@@ -294,15 +294,18 @@ dependencies = [
 
 [[package]]
 name = "boonsh"
-version = "0.10.6"
+version = "0.10.8"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "dirs 5.0.1",
  "png 0.18.1",
  "portable-pty",
  "regex-lite",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
@@ -310,6 +313,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "trash",
+ "url",
  "walkdir",
  "windows 0.61.3",
  "windows-core 0.61.2",

@@ -1,6 +1,6 @@
 [package]
 name = "boonsh"
-version = "0.10.6"
+version = "0.10.8"
 description = "boonsh - Standalone Hybrid PowerShell & File Manager"
 authors = ["Somboon L."]
 license = "MIT"
@@ -36,6 +36,10 @@ regex-lite = "0.1.9"
 png = "0.18"
 tauri-plugin-updater = { version = "2.14", default-features = false, features = ["native-tls"] }
 tauri-plugin-process = "2.4"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "native-tls"] }
+sha2 = "0.10"
+url = "2"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 # File properties (Dimensions, Length, Album ...) from the Windows property system, as in Explorer. The same
 # windows 0.61 is already pulled in by Tauri, so this only switches on a few more of its modules.
@@ -44,6 +48,7 @@ windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_Security",
+  "Win32_Security_Cryptography",
   "Win32_Storage_FileSystem",
   "Win32_System_Com",
   "Win32_System_IO",

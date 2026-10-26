@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { tabColor } from '../tabColors';
 import { SplitCell, SplitDir, canSplitCell, cellRank, closeCell } from '../splitLayout';
 import { TermTab } from '../types';
+import { lineSent } from '../commandBlocks';
 
 // ---- Command line tabs ----
 // Each tab is its own shell. The active tab is the one the file panel follows, the one GUI navigation sends
@@ -43,9 +44,10 @@ export function useTerminalTabs({
     setActiveTabId(id);
   };
 
-  // Type into the active tab's shell
+  // Type into the active tab's shell (a line sent with Enter gets its own command block)
   const ptyWrite = (data: string): Promise<unknown> => {
     const id = activeTabIdRef.current;
+    if (id && data.includes('\r')) lineSent(id);
     return id ? invoke('pty_write', { id, data }) : Promise.resolve();
   };
 

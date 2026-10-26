@@ -97,13 +97,25 @@ pub async fn tree_has_children(paths: Vec<String>) -> Result<Vec<bool>, String> 
 }
 
 #[tauri::command]
-pub fn list_directory(target_path: Option<String>) -> Result<FileListResult, String> {
+pub async fn list_directory(target_path: Option<String>) -> Result<FileListResult, String> {
     let raw_path = match target_path {
         Some(p) if !p.trim().is_empty() => p,
         _ => default_start_dir(),
     };
 
-    let path = PathBuf::from(&raw_path);
+    if raw_path.starts_with("gdrive://") || raw_path == "gdrive:" {
+        return crate::gdrive::list_gdrive_directory(&raw_path).await;
+    }
+
+    if crate::lan_share::is_lan_path(&raw_path) {
+        return crate::lan_share::list_lan_directory(&raw_path).await;
+    }
+
+    read_local_directory(&raw_path)
+}
+
+pub(crate) fn read_local_directory(raw_path: &str) -> Result<FileListResult, String> {
+    let path = PathBuf::from(raw_path);
     if !path.exists() {
         return Err(format!("Directory does not exist: {}", raw_path));
     }
@@ -266,7 +278,13 @@ pub fn create_new_file(parent_dir: String, name: String) -> Result<String, Strin
 }
 
 #[tauri::command]
-pub fn create_new_folder(parent_dir: String, name: String) -> Result<String, String> {
+pub async fn create_new_folder(parent_dir: String, name: String) -> Result<String, String> {
+    if crate::lan_share::is_lan_path(&parent_dir) {
+        return Err("Mobile Drop has no folders: files stay in one flat list for the phone.".to_string());
+    }
+    if parent_dir.starts_with("gdrive://") || parent_dir == "gdrive:" {
+        return crate::gdrive::gdrive_create_folder(parent_dir, name).await;
+    }
     let target = PathBuf::from(&parent_dir).join(&name);
     if target.exists() {
         return Err(format!("Folder already exists: {}", name));
@@ -329,6 +347,40 @@ pub fn open_license_notices(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_in_default_app(path: String) -> Result<(), String> {
+    if path.starts_with("gdrive://") || path.starts_with("gdrive:") {
+        let file_id = crate::gdrive::parse_gdrive_id(&path);
+        let web_url = format!("https://drive.google.com/open?id={}", file_id);
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            let script = format!("Start-Process '{}'", web_url.replace("'", "''"));
+            let _ = Command::new("powershell")
+                .args(["-WindowStyle", "Hidden", "-NoProfile", "-NonInteractive", "-Command", &script])
+                .spawn()
+                .map_err(|e| format!("Failed to open Google Drive item: {}", e))?;
+        }
+        return Ok(());
+    }
+
+    if crate::lan_share::is_lan_path(&path) {
+        if let Some(local_path) = crate::lan_share::resolve_lan_path_to_local(&path) {
+            #[cfg(target_os = "windows")]
+            {
+                use std::process::Command;
+                let script = format!(
+                    "Start-Process '{}'",
+                    local_path.to_string_lossy().replace("'", "''")
+                );
+                let _ = Command::new("powershell")
+                    .args(["-WindowStyle", "Hidden", "-NoProfile", "-NonInteractive", "-Command", &script])
+                    .spawn()
+                    .map_err(|e| format!("Failed to open LAN file: {}", e))?;
+            }
+            return Ok(());
+        }
+        return Err(format!("Could not resolve LAN path: {}", path));
+    }
+
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
@@ -351,12 +403,12 @@ pub fn open_in_default_app(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn rename_item(old_path: String, new_name: String) -> Result<String, String> {
-    let old = PathBuf::from(&old_path);
+pub fn rename_local_item(old_path: &str, new_name: &str) -> Result<String, String> {
+    let old = PathBuf::from(old_path);
     let parent = old
         .parent()
         .ok_or_else(|| "Invalid parent path".to_string())?;
-    let new_path = parent.join(&new_name);
+    let new_path = parent.join(new_name);
 
     // A change of letter case only (photo.JPG -> photo.jpg) "exists" on Windows, but it is the same item
     let is_case_only_change = old.to_string_lossy().to_lowercase() == new_path.to_string_lossy().to_lowercase();
@@ -369,11 +421,51 @@ pub fn rename_item(old_path: String, new_name: String) -> Result<String, String>
 }
 
 #[tauri::command]
-pub fn delete_items(paths: Vec<String>) -> Result<(), String> {
+pub async fn rename_item(old_path: String, new_name: String) -> Result<String, String> {
+    if old_path.starts_with("gdrive://") || old_path.starts_with("gdrive:") {
+        crate::gdrive::gdrive_rename(old_path.clone(), new_name).await?;
+        return Ok(old_path);
+    }
+    if crate::lan_share::is_lan_path(&old_path) {
+        let real = crate::lan_share::resolve_lan_path_to_local(&old_path)
+            .ok_or_else(|| "Could not find the real file behind this Mobile Drop item.".to_string())?;
+        let new_path = rename_local_item(&real.to_string_lossy(), &new_name)?;
+        crate::lan_share::rename_uploaded_record(&real, Path::new(&new_path));
+        return Ok(new_path);
+    }
+    // An incoming Mobile Drop item's own path is already its real local one (only an outgoing item's is the
+    // virtual `lan://...` above), so it lands here; keep its tracked record in sync too (a no-op otherwise).
+    let new_path = rename_local_item(&old_path, &new_name)?;
+    crate::lan_share::rename_uploaded_record(Path::new(&old_path), Path::new(&new_path));
+    Ok(new_path)
+}
+
+#[tauri::command]
+pub async fn delete_items(paths: Vec<String>) -> Result<(), String> {
+    let mut gdrive_paths = Vec::new();
+    let mut local_paths = Vec::new();
     for p in paths {
+        if p.starts_with("gdrive://") {
+            gdrive_paths.push(p);
+        } else if crate::lan_share::is_lan_path(&p) {
+            if let Some(real) = crate::lan_share::resolve_lan_path_to_local(&p) {
+                local_paths.push(real.to_string_lossy().to_string());
+            }
+        } else {
+            local_paths.push(p);
+        }
+    }
+
+    if !gdrive_paths.is_empty() {
+        crate::gdrive::gdrive_delete(gdrive_paths).await?;
+    }
+
+    for p in local_paths {
         let path = PathBuf::from(&p);
         if path.exists() {
             trash::delete(&path).map_err(|e| format!("Failed to move '{}' to trash: {}", p, e))?;
+            // keeps an untouched incoming record from lingering in the Mobile Drop listing; a no-op otherwise
+            crate::lan_share::forget_uploaded_record(&path);
         }
     }
     Ok(())
@@ -822,7 +914,7 @@ pub async fn search_files(
     let notice = input_notice(&missing, places.is_none());
     if !parsed.has_terms() && places.is_none() {
         // e.g. "filesize:" while still typing the value, or input:{VAR} with no value: keep showing the folder
-        return list_directory(Some(dir)).map(|r| SearchResponse { items: r.items, notice });
+        return read_local_directory(&dir).map(|r| SearchResponse { items: r.items, notice });
     }
     // A newer search supersedes this one: the old scan stops instead of running on in the background
     let generation = SEARCH_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
@@ -1612,9 +1704,9 @@ mod tests {
         };
         let p = |n: &str| d.join(n).to_string_lossy().to_string();
 
-        rename_item(p("Photo.JPG"), "photo.jpg".to_string()).unwrap();
+        rename_local_item(&p("Photo.JPG"), "photo.jpg").unwrap();
         assert_eq!(names(), ["other.txt", "photo.jpg"], "case-only change is allowed");
-        let err = rename_item(p("photo.jpg"), "other.txt".to_string()).unwrap_err();
+        let err = rename_local_item(&p("photo.jpg"), "other.txt").unwrap_err();
         assert!(err.contains("already exists"), "{}", err);
         assert_eq!(names(), ["other.txt", "photo.jpg"], "nothing was overwritten");
         fs::remove_dir_all(&d).unwrap();

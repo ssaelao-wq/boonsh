@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Home, HardDrive, Monitor, Download, FileText, Folder, Trash2 } from 'lucide-react';
+import { Home, HardDrive, Monitor, Download, FileText, Folder, Trash2, Cloud, Smartphone } from 'lucide-react';
 import { QuickAccessItem } from '../types';
 import { useMenuPosition } from '../useMenuPosition';
 import { driveColor } from '../driveColors';
@@ -26,6 +26,12 @@ export const QuickAccessBar: React.FC<QuickAccessBarProps> = ({
   const menuPos = useMenuPosition(contextMenu);
 
   const getIcon = (type: string, path: string) => {
+    if (path.startsWith('lan://') || path === 'lan:' || type === 'lan') {
+      return <Smartphone size={13} style={{ color: '#10b981' }} />;
+    }
+    if (path.startsWith('gdrive://') || path === 'gdrive:' || type === 'gdrive') {
+      return <Cloud size={13} style={{ color: '#4285f4' }} />;
+    }
     switch (type) {
       case 'home':
         return <Home size={13} style={{ color: '#f97316' }} />;

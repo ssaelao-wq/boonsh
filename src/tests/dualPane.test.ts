@@ -38,5 +38,12 @@ describe('copy / move between the panes', () => {
   it('asks with the name or the count', () => {
     expect(transferQuestion(['C:\\Work\\a.txt'], 'D:\\Backup', false)).toBe('Copy "a.txt" to\nD:\\Backup?');
     expect(transferQuestion(['C:\\a', 'C:\\b', 'C:\\c'], 'D:\\Backup', true)).toBe('Move 3 items to\nD:\\Backup?');
+    expect(transferQuestion(['C:\\Work\\a.txt'], 'gdrive://root', false)).toBe('Copy "a.txt" to\nGoogle Drive (My Drive)?');
+    expect(transferQuestion(['gdrive://id123'], 'D:\\Backup', false, ['Report.pdf'])).toBe('Copy "Report.pdf" to\nD:\\Backup?');
+  });
+  it('handles Google Drive paths in comparisons', () => {
+    expect(sameFolder('gdrive://root', 'gdrive://root/')).toBe(true);
+    expect(sameFolder('gdrive://root', 'gdrive://folderABC')).toBe(false);
   });
 });
+

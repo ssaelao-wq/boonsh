@@ -51,7 +51,7 @@ mod win {
 pub fn watch_directory(app: AppHandle, path: Option<String>, slot: Option<usize>) {
     let slot = slot.unwrap_or(0).min(GENERATION.len() - 1);
     let gen = GENERATION[slot].fetch_add(1, Ordering::SeqCst) + 1;
-    let Some(path) = path.filter(|p| !p.is_empty()) else { return };
+    let Some(path) = path.filter(|p| !p.is_empty() && !crate::gdrive::is_gdrive_path(p) && !crate::lan_share::is_lan_path(p)) else { return };
     #[cfg(windows)]
     std::thread::spawn(move || watch_loop(app, path, slot, gen));
     #[cfg(not(windows))]

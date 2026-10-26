@@ -153,7 +153,7 @@ fn exists(p: &Path) -> bool {
     fs::symlink_metadata(p).is_ok()
 }
 
-fn unix_secs(m: &fs::Metadata) -> i64 {
+pub(crate) fn unix_secs(m: &fs::Metadata) -> i64 {
     m.modified()
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -162,7 +162,7 @@ fn unix_secs(m: &fs::Metadata) -> i64 {
 }
 
 /// "readme.txt" -> ("readme", ".txt"); a folder or a name without a dot keeps its whole name
-fn split_name(name: &str, is_dir: bool) -> (&str, &str) {
+pub(crate) fn split_name(name: &str, is_dir: bool) -> (&str, &str) {
     match name.rfind('.') {
         Some(i) if i > 0 && !is_dir => (&name[..i], &name[i..]),
         _ => (name, ""),
@@ -338,7 +338,7 @@ fn copy_file(src: &Path, dst: &Path, fail_if_exists: bool, ctx: &mut Ctx) -> Res
 }
 
 /// Rename over an existing file; a read-only file in the way loses that attribute first (it is being replaced)
-fn rename_over(from: &Path, to: &Path) -> Result<(), String> {
+pub(crate) fn rename_over(from: &Path, to: &Path) -> Result<(), String> {
     if fs::rename(from, to).is_ok() {
         return Ok(());
     }
@@ -580,15 +580,25 @@ pub(crate) fn paste_blocking(items: Vec<Item>, dest: &Path, is_move: bool, choic
 
 /// What the frontend can do to a running job
 #[derive(Default)]
-struct Flags {
-    cancel: Arc<AtomicBool>,
-    pause: Arc<AtomicBool>,
-    start_now: AtomicBool,
+pub(crate) struct Flags {
+    pub(crate) cancel: Arc<AtomicBool>,
+    pub(crate) pause: Arc<AtomicBool>,
+    pub(crate) start_now: AtomicBool,
 }
 
-fn jobs() -> &'static Mutex<HashMap<u64, Arc<Flags>>> {
+pub(crate) fn jobs() -> &'static Mutex<HashMap<u64, Arc<Flags>>> {
     static JOBS: OnceLock<Mutex<HashMap<u64, Arc<Flags>>>> = OnceLock::new();
     JOBS.get_or_init(Default::default)
+}
+
+pub(crate) fn register_job(job: u64) -> Arc<Flags> {
+    let flags = Arc::new(Flags::default());
+    jobs().lock().unwrap().insert(job, flags.clone());
+    flags
+}
+
+pub(crate) fn unregister_job(job: u64) {
+    jobs().lock().unwrap().remove(&job);
 }
 
 /// The queued jobs in start order; the first one runs, the others wait (`wait_turn`)
@@ -684,6 +694,23 @@ where
 
 #[tauri::command]
 pub async fn paste_check(paths: Vec<String>, dest_dir: String) -> Result<Vec<Clash>, String> {
+    if crate::lan_share::is_lan_path(&dest_dir) {
+        return Ok(Vec::new());
+    }
+    let paths: Vec<String> = paths
+        .into_iter()
+        .map(|p| {
+            if let Some(resolved) = crate::lan_share::resolve_lan_path_to_local(&p) {
+                resolved.to_string_lossy().to_string()
+            } else {
+                p
+            }
+        })
+        .collect();
+
+    if crate::gdrive::is_gdrive_path(&dest_dir) || paths.iter().any(|p| crate::gdrive::is_gdrive_path(p)) {
+        return crate::gdrive_transfer::gdrive_paste_check(paths, dest_dir).await;
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
         clashes(&paths, Path::new(&dest_dir))
@@ -702,6 +729,29 @@ pub async fn paste_items(
     choices: HashMap<String, Choice>,
     job: u64,
 ) -> Result<PasteResult, String> {
+    if crate::lan_share::is_lan_path(&dest_dir) {
+        let is_move = mode == "cut";
+        let added = crate::lan_share::lan_share_files(app, paths, Some(is_move)).await?;
+        return Ok(PasteResult {
+            pasted: added.iter().map(|(_, to)| to.clone()).collect(),
+            moved: if is_move { added } else { Vec::new() },
+            ..Default::default()
+        });
+    }
+    let paths: Vec<String> = paths
+        .into_iter()
+        .map(|p| {
+            if let Some(resolved) = crate::lan_share::resolve_lan_path_to_local(&p) {
+                resolved.to_string_lossy().to_string()
+            } else {
+                p
+            }
+        })
+        .collect();
+
+    if crate::gdrive::is_gdrive_path(&dest_dir) || paths.iter().any(|p| crate::gdrive::is_gdrive_path(p)) {
+        return crate::gdrive_transfer::gdrive_paste_items(app, paths, dest_dir, mode, choices, job).await;
+    }
     let items: Vec<Item> = paths.into_iter().map(|p| Item { src: PathBuf::from(p), parts: None }).collect();
     let only_renames = mode == "cut" && items.iter().all(|i| same_volume(&i.src, Path::new(&dest_dir)));
     run_job(app, job, !only_renames, move |ctx| paste_blocking(items, Path::new(&dest_dir), mode == "cut", &choices, ctx)).await

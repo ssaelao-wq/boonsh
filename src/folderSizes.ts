@@ -28,6 +28,9 @@ export function percentOf(part: number, whole: number): string | null {
 
 /** The last name of a path, for "12.3% of Users" (a drive shows as "C:"). */
 export function lastName(path: string): string {
-  const parts = path.replace(/\\+$/, '').split('\\');
+  if (path.startsWith('gdrive://') || path === 'gdrive:') {
+    return 'Google Drive';
+  }
+  const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/);
   return parts[parts.length - 1] || path;
 }

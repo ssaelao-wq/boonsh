@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview, type DragDropEvent } from '@tauri-apps/api/webview';
+import { Cloud } from 'lucide-react';
 import { HeaderBar } from './components/HeaderBar';
 import { SearchBar } from './components/SearchBar';
 import { QuickAccessBar } from './components/QuickAccessBar';
@@ -50,6 +51,8 @@ import { lastName } from './folderSizes';
 import { Side, sameFolder, transferProblem, transferQuestion } from './dualPane';
 import { useUpdater } from './hooks/useUpdater';
 import { UpdateNotice } from './components/UpdateNotice';
+import { isGDrivePath, cacheGDriveFolderNames, getCachedGDriveFolderName, gdriveOpenInBrowser } from './gdrive';
+import { isLanPath, resolveLanIncomingDestination, setLanIncomingDir } from './lan';
 
 // The app's state lives here and in the hooks of src/hooks (one per area: command line tabs, commands and
 // variables, view settings, file details, folder sizes, paste, smaller panels). What stays here is the core that
@@ -171,7 +174,7 @@ export function App() {
   // folder (and the terminal) stay where they were; file keys and Paste do nothing there.
   const { drives, loadDrives, thisPC, setThisPC, thisPCRef } = useDrives();
   useWindowSetup(currentPath, selectedItem?.path);
-  const normalizePath = (p: string) => p.toLowerCase().replace(/\\+$/, '');
+  const normalizePath = (p: string) => p.toLowerCase().replace(/[\\/]+$/, '');
 
   const selectSingle = (item: FileItem | null) => {
     setSelectedItem(item);
@@ -187,6 +190,7 @@ export function App() {
     if (targetPath) lastRequestedPathRef.current = targetPath;
     return invoke<FileListResult>('list_directory', { targetPath: targetPath || null })
       .then((res) => {
+        cacheGDriveFolderNames(res.items);
         lastRequestedPathRef.current = res.current_path;
         if (basketViewRef.current) {
           // a folder listing replaces an open basket (navigation, refresh of the folder ...)
@@ -215,8 +219,11 @@ export function App() {
       .catch((err) => {
         console.error('List directory error:', err);
         // a folder that can no longer be opened (deleted, drive gone) should not stay in Frequently Accessed
-        // a folder that can no longer be opened (deleted, drive gone) should not stay in Frequently Accessed
         if (targetPath) forgetFolder(targetPath);
+        // Google Drive failures (network, an expired/revoked token, a missing scope) are common enough, and
+        // otherwise silent enough, that double-clicking it and "nothing happens" is the only sign something
+        // went wrong; a local folder failing to list is usually just "it's gone", which stays silent.
+        if (targetPath && (isGDrivePath(targetPath) || isLanPath(targetPath))) alert(`Could not open folder: ${err}`);
         return false;
       });
   };
@@ -295,7 +302,8 @@ export function App() {
     // The shell follows only once the folder has opened: a folder that was renamed or deleted meanwhile (an old
     // name in the folder tree) would otherwise just give a "path does not exist" error at the prompt.
     return fetchDirectory(path, selectPaths).then((ok) => {
-      if (ok && id && activeTabIdRef.current === id) shellFollow(id, path);
+      // Google Drive and LAN Mobile Drop have no real shell path: a `cd` into "lan://..." or "gdrive://..." would just error at the prompt
+      if (ok && id && activeTabIdRef.current === id && !isGDrivePath(path) && !isLanPath(path)) shellFollow(id, path);
       return ok;
     });
   };
@@ -354,6 +362,12 @@ export function App() {
       return;
     }
     selectSingle(file);
+    if (isGDrivePath(file.path)) {
+      gdriveOpenInBrowser(file.path).catch((err) => {
+        console.error('Failed to open Google Drive item in browser:', err);
+      });
+      return;
+    }
     invoke('open_in_default_app', { path: file.path }).catch((err) => {
       console.error('Failed to open file in default app:', err);
     });
@@ -606,6 +620,7 @@ export function App() {
     }
     invoke<FileListResult>('list_directory', { targetPath: path })
       .then((res) => {
+        cacheGDriveFolderNames(res.items);
         if (normalizePath(res.current_path) !== normalizePath(currentPathRef.current) || searchQueryRef.current.trim()) return;
         const same = (a: FileItem, b: FileItem) =>
           a.name === b.name && a.size === b.size && a.modified_timestamp === b.modified_timestamp && a.is_hidden === b.is_hidden;
@@ -722,6 +737,27 @@ export function App() {
   function reloadOtherPane(dest: string, selectPaths: string[]) {
     if (otherPane && sameFolder(otherPane.path, dest)) reloadOther(selectPaths);
   }
+
+  // Synchronize Mobile Drop destination folder with the second file pane (when dual) or Downloads (default)
+  useEffect(() => {
+    const dest = resolveLanIncomingDestination(dual, currentPath, otherPane?.path);
+    setLanIncomingDir(dest).catch(() => {});
+  }, [dual, currentPath, otherPane?.path]);
+
+  // When a file is uploaded from mobile phone, reload the matching pane and select the newly received file
+  useEffect(() => {
+    const unlisten = listen<{ name: string; path: string; dir: string }>('lan-file-received', (event) => {
+      const { path, dir } = event.payload;
+      if (sameFolder(currentPathRef.current, dir)) {
+        fetchDirectory(dir, [path]);
+      } else if (otherPane && sameFolder(otherPane.path, dir)) {
+        reloadOther([path]);
+      }
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [otherPane]);
   // F5 / F6 (and a drop): copy or move to the other pane. In an open basket only its linked items go.
   const sendToOtherPane = async (move: boolean, paths = selectedItems.filter((i) => !i.state).map((i) => i.path), ask = true) => {
     if (!otherPane || thisPCRef.current) return;
@@ -730,7 +766,11 @@ export function App() {
       alert(problem);
       return;
     }
-    if (ask && !window.confirm(transferQuestion(paths, otherPane.path, move))) return;
+    const names = paths.map((p) => {
+      const found = sortedItems.find((i) => i.path === p);
+      return found ? found.name : p.split(/[\\/]/).pop() || p;
+    });
+    if (ask && !window.confirm(transferQuestion(paths, otherPane.path, move, names))) return;
     const bv = basketViewRef.current;
     try {
       const res = await transfer({ mode: move ? 'cut' : 'copy', paths, basket: bv?.path }, otherPane.path);
@@ -741,14 +781,15 @@ export function App() {
     }
   };
   // A drop of files (dragged from boonsh or from Explorer) on a pane: copy there (Shift: move). Nothing happens
-  // on their own folder. Without two panes the file panel is the active side.
-  const dropOnPane = (side: Side, paths: string[], move: boolean) => {
+  // on their own folder. Without two panes the file panel is the active side. `basket`: they were dragged out of
+  // that open basket, so only their linked parts go and its links follow a move (as F5 / F6 there).
+  const dropOnPane = (side: Side, paths: string[], move: boolean, basket?: string) => {
     const dest = side === activeSide ? currentPathRef.current : otherPane?.path ?? '';
     if (!dest || paths.length === 0 || paths.every((p) => sameFolder(parentDir(p), dest))) return;
     if (side === activeSide) {
       if (basketViewRef.current) addToBasket(basketViewRef.current.path, paths);
       else if (!thisPCRef.current) {
-        transfer({ mode: move ? 'cut' : 'copy', paths }, dest)
+        transfer({ mode: move ? 'cut' : 'copy', paths, basket }, dest)
           .then((res) => {
             const err = res && pasteError(res);
             if (err) alert(err.message);
@@ -762,7 +803,7 @@ export function App() {
       alert(problem);
       return;
     }
-    transfer({ mode: move ? 'cut' : 'copy', paths }, dest)
+    transfer({ mode: move ? 'cut' : 'copy', paths, basket }, dest)
       .then((res) => {
         const err = res && pasteError(res);
         if (err) alert(err.message);
@@ -785,13 +826,38 @@ export function App() {
     const el = document.elementFromPoint(pos.x / dpr, pos.y / dpr);
     return el?.closest('[data-drop-basket], [data-drop-terminal], [data-drop-pane]') ?? null;
   };
+  // A Google Drive row's hand-tracked drag (MainFilePanel's startGDriveDrag, see there for why): the pointer's
+  // own coordinates are already CSS pixels, unlike a native drop's physical ones, so no dpr division here. Only
+  // a file pane is a target: a basket's links and the command line both hold real local paths, not Drive items.
+  const gdrivePaneAt = (clientX: number, clientY: number): Side | null =>
+    (document.elementFromPoint(clientX, clientY)?.closest('[data-drop-pane]')?.getAttribute('data-drop-pane') as Side | null) ?? null;
+  const handleGDriveDragOver = (clientX: number, clientY: number) => {
+    const target = document.elementFromPoint(clientX, clientY)?.closest('[data-drop-pane]') ?? null;
+    setDropHover(target);
+  };
+  const handleGDriveDrop = (paths: string[], clientX: number, clientY: number, shift: boolean) => {
+    setDropHover(null);
+    const side = gdrivePaneAt(clientX, clientY);
+    if (!side || paths.length === 0) return;
+    dropOnPane(side, paths, shift);
+  };
   const nativeDropRef = useRef<(ev: DragDropEvent) => void>(() => {});
+  // What boonsh itself is dragging out of an open basket (set as the drag starts, see MainFilePanel)
+  const fileDragRef = useRef<{ paths: string[]; basket: string } | null>(null);
   nativeDropRef.current = (ev) => {
     if (ev.type === 'leave') return setDropHover(null);
     const target = dropTargetAt(ev.position);
     if (ev.type !== 'drop') return setDropHover(target);
     setDropHover(null);
     const paths = ev.paths;
+    // the same files boonsh started dragging from a basket: this drop is that drag (Explorer's would differ)
+    const drag = fileDragRef.current;
+    fileDragRef.current = null;
+    const same = (a: string[], b: string[]) => {
+      const keys = new Set(a.map((p) => p.toLowerCase()));
+      return a.length === b.length && b.every((p) => keys.has(p.toLowerCase()));
+    };
+    const fromBasket = drag && same(drag.paths, paths) ? drag.basket : undefined;
     if (!target || paths.length === 0) return;
     const basket = target.getAttribute('data-drop-basket');
     if (basket) {
@@ -806,8 +872,8 @@ export function App() {
     const side = target.getAttribute('data-drop-pane') as Side | null;
     if (!side) return;
     invoke<{ shift: boolean }>('drag_keys')
-      .then((k) => dropOnPane(side, paths, k.shift))
-      .catch(() => dropOnPane(side, paths, false));
+      .then((k) => dropOnPane(side, paths, k.shift, fromBasket))
+      .catch(() => dropOnPane(side, paths, false, fromBasket));
   };
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -1513,6 +1579,12 @@ export function App() {
     onOpenDirectory: openDirectory,
     onOpenFile: handleOpenFile,
     basketMode: basketView ? { atTop: basketView.trail.length === 0 } : null,
+    onFileDragStart: (paths, fromBasket) => {
+      const bv = basketViewRef.current;
+      fileDragRef.current = fromBasket && bv ? { paths, basket: bv.path } : null;
+    },
+    onGDriveDragOver: handleGDriveDragOver,
+    onGDriveDrop: handleGDriveDrop,
     onCreateBasket: createBasket,
     onPasteIntoBasket: pasteIntoBasket,
     onRenamed: handleRenamed,
@@ -1551,6 +1623,17 @@ export function App() {
     globalVars,
     pathVars,
     onAssignPathVar: assignPathVar,
+    onCopyToOtherPane: dual ? () => sendToOtherPane(false) : undefined,
+    onMoveToOtherPane: dual ? () => sendToOtherPane(true) : undefined,
+    otherPaneTitle: dual
+      ? otherPane?.path && isGDrivePath(otherPane.path)
+        ? otherPane.path === 'gdrive://root' || otherPane.path === 'gdrive:'
+          ? 'Google Drive'
+          : `Google Drive (${getCachedGDriveFolderName(otherPane.path) || 'Folder'})`
+        : otherPane?.path && isLanPath(otherPane.path)
+          ? 'Mobile Drop'
+          : lastName(otherPane?.path ?? '')
+      : undefined,
   };
   const passivePanelProps = (side: Side): React.ComponentProps<typeof MainFilePanel> => {
     const pick = (item: FileItem) => switchTo(side, { select: [item.path] });
@@ -1785,7 +1868,7 @@ export function App() {
                 <div className="dual-panes" ref={dualBoxRef}>
                   {(['left', 'right'] as Side[]).map((side) => {
                     const isActive = side === activeSide;
-                    const title = isActive
+                    const rawTitle = isActive
                       ? thisPCShown
                         ? 'This PC'
                         : basketView
@@ -1794,6 +1877,15 @@ export function App() {
                         ? `Search in ${currentPath}`
                         : currentPath
                       : otherPane?.path ?? '';
+                    const isGDrive = isGDrivePath(rawTitle);
+                    const isLan = isLanPath(rawTitle);
+                    const displayTitle = isGDrive
+                      ? rawTitle === 'gdrive://root' || rawTitle === 'gdrive:'
+                        ? 'Google Drive (My Drive)'
+                        : `Google Drive (${getCachedGDriveFolderName(rawTitle) || 'Folder'})`
+                      : isLan
+                        ? 'Mobile Drop'
+                        : rawTitle;
                     return (
                       <div key={side} style={{ display: 'contents' }}>
                         {side === 'right' && (
@@ -1813,9 +1905,10 @@ export function App() {
                           data-drop-pane={side}
                           onContextMenuCapture={isActive ? undefined : () => switchTo(side)}
                         >
-                          <div className="file-pane-head" onClick={() => switchTo(side)} title={title}>
-                            <span className="file-pane-path">
-                              <bdi dir="ltr">{title}</bdi>
+                          <div className="file-pane-head" onClick={() => switchTo(side)} title={rawTitle}>
+                            <span className="file-pane-path" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {isGDrive && <Cloud size={13} style={{ color: '#4285f4', flexShrink: 0 }} />}
+                              <bdi dir="ltr">{displayTitle}</bdi>
                             </span>
                           </div>
                           {isActive && thisPCShown && <ThisPCView drives={drives} onOpen={(p) => handleNavigate(p)} />}

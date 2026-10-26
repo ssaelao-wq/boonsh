@@ -57,13 +57,27 @@ export function transferProblem(paths: string[], from: string, dest: string, mov
   if (!dest) return 'The other pane shows no folder.';
   if (sameFolder(from, dest)) return `Both panes show the same folder: open another folder in the other pane to ${verb} there.`;
   const d = norm(dest) + '\\';
-  const inside = paths.find((p) => d.startsWith(norm(p) + '\\'));
-  if (inside) return `Cannot ${verb} the folder "${inside.split('\\').pop()}" into itself.`;
+  const inside = paths.find((p) => d.startsWith(norm(p) + '\\') || norm(dest) === norm(p));
+  if (inside) {
+    const name = inside.startsWith('gdrive://') ? inside.replace(/^gdrive:\/\//, '') : inside.split(/[\\/]/).pop();
+    return `Cannot ${verb} the folder "${name}" into itself.`;
+  }
   return null;
 }
 
 /** The confirmation for F5 / F6: "Copy 3 items to D:\Backup?" */
-export function transferQuestion(paths: string[], dest: string, move: boolean): string {
-  const what = paths.length === 1 ? `"${paths[0].split('\\').pop()}"` : `${paths.length} items`;
-  return `${move ? 'Move' : 'Copy'} ${what} to\n${dest}?`;
+export function transferQuestion(paths: string[], dest: string, move: boolean, names?: string[]): string {
+  let what = `${paths.length} items`;
+  if (paths.length === 1) {
+    const singleName = names?.[0] || (paths[0].startsWith('gdrive://') ? paths[0].replace(/^gdrive:\/\//, '') : paths[0].split(/[\\/]/).pop());
+    what = `"${singleName}"`;
+  }
+  let target = dest;
+  if (dest.startsWith('lan://') || dest === 'lan:') {
+    target = 'Mobile Drop';
+  } else if (dest.startsWith('gdrive://') || dest === 'gdrive:') {
+    const id = dest.replace(/^gdrive:\/\//, '').replace(/^gdrive:/, '');
+    target = id === 'root' || id === '' ? 'Google Drive (My Drive)' : 'Google Drive';
+  }
+  return `${move ? 'Move' : 'Copy'} ${what} to\n${target}?`;
 }

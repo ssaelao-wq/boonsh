@@ -8,6 +8,10 @@ mod file_drag;
 mod file_props;
 mod folder_size;
 mod fs_ops;
+mod gdrive;
+mod gdrive_auth;
+mod gdrive_transfer;
+mod lan_share;
 mod localtime;
 mod paste;
 mod pty;
@@ -23,6 +27,8 @@ use cmdvars::{expand_command, write_vars_file};
 use dir_watch::*;
 use file_props::*;
 use fs_ops::*;
+use gdrive::*;
+use gdrive_auth::*;
 use pty::*;
 use secrets::*;
 
@@ -126,6 +132,25 @@ pub fn run() {
             pick_folder,
             expand_command,
             write_vars_file,
+            gdrive_get_config,
+            gdrive_save_credentials,
+            gdrive_disconnect,
+            gdrive_start_login,
+            gdrive_create_folder,
+            gdrive_rename,
+            gdrive_delete,
+            gdrive_open_in_browser,
+            gdrive_get_folder_name,
+            gdrive_get_breadcrumbs,
+            gdrive_has_children,
+            lan_share::lan_get_status,
+            lan_share::lan_start_server,
+            lan_share::lan_stop_server,
+            lan_share::lan_revoke_device,
+            lan_share::lan_clear_staging,
+            lan_share::lan_share_files,
+            lan_share::lan_open_incoming_folder,
+            lan_share::lan_set_incoming_dir,
         ])
         .build(tauri::generate_context!())
         .expect("error while running boonsh tauri application")

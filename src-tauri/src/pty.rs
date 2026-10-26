@@ -163,9 +163,14 @@ fn open_local(cols: u16, rows: u16, cwd: Option<String>) -> Result<(LocalPty, Bo
 
     // Each prompt emits an invisible OSC 9;9 sequence (ESC ] 9;9;<path> BEL/ST) carrying the
     // shell's current directory; TerminalPanel parses it to sync the file panel after `cd`.
+    // Before it, OSC 133;D says how the command before this prompt ended (command blocks, commandBlocks.ts):
+    // `133;D;<exit code>;<ms>` when a new history entry appeared since the last prompt, else `133;D` (nothing
+    // ran: an empty Enter, or the prompt was re-drawn). `$?` must be read first, before anything else changes it.
+    // The code is `-` for a PowerShell error (a new `$Error[0]` since the last prompt; `$LASTEXITCODE` would be
+    // a stale one from an earlier program), else the program's `$LASTEXITCODE`.
     if shell_cmd.contains("pwsh") || shell_cmd.contains("powershell") {
         let setup = format!(
-            "function prompt {{ $l = $executionContext.SessionState.Path.CurrentLocation; $o = ''; if ($l.Provider.Name -eq 'FileSystem') {{ $o = [char]27 + ']9;9;' + $l.ProviderPath + [char]7 }}; if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {{ $o + 'admin > ' }} else {{ $o + $env:USERNAME + ' > ' }} }}; {}",
+            "$global:__boonsh_hid = 0; $global:__boonsh_e0 = $null; function prompt {{ $ok = $?; $le = $global:LASTEXITCODE; $e0 = if ($Error.Count) {{ $Error[0] }} else {{ $null }}; $h = Get-History -Count 1; $o = [string][char]27 + ']133;D'; if ($h -and $h.Id -ne $global:__boonsh_hid) {{ $global:__boonsh_hid = $h.Id; $c = if ($ok) {{ 0 }} elseif ($null -ne $e0 -and -not [object]::ReferenceEquals($e0, $global:__boonsh_e0) -and $e0.Exception.GetType().Name -ne 'NativeCommandExitException') {{ '-' }} elseif ($le -is [int] -and $le -ne 0) {{ $le }} else {{ '-' }}; $o += ';' + $c + ';' + [long](($h.EndExecutionTime - $h.StartExecutionTime).TotalMilliseconds) }}; $global:__boonsh_e0 = $e0; $o += [char]7; $l = $executionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') {{ $o += [string][char]27 + ']9;9;' + $l.ProviderPath + [char]7 }}; if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {{ $o + 'admin > ' }} else {{ $o + $env:USERNAME + ' > ' }} }}; {}",
             BASKET_FUNCTIONS
         );
         cmd.args(["-NoLogo", "-NoExit", "-Command", &setup]);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal as XTerm, IMarker } from '@xterm/xterm';
+import { Terminal as XTerm, IMarker, IDecoration } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,6 +17,8 @@ import {
   Scissors,
   Copy,
   ClipboardPaste,
+  ClipboardCopy,
+  TextSelect,
   Plus,
   Pencil,
   Palette,
@@ -39,6 +41,7 @@ import { ConstVar } from '../constVars';
 import { hotkeyFromEvent } from '../hotkey';
 import { TermTab } from '../types';
 import { TAB_COLORS } from '../tabColors';
+import { BlockState, blockAt, blockTooltip, isBarePrompt, jumpTarget, onLineSent, parseCommandEnd } from '../commandBlocks';
 import {
   SplitDir,
   SplitRatios,
@@ -100,9 +103,106 @@ interface Session {
   // A command sent with Enter (marker = its line), read once the shell has drawn it and moved past it (readPending)
   pending: { marker: IMarker; timer: number; atEnter: string; settle?: number; seen?: string } | null;
   history: string[]; // History Commands: this screen's last HISTORY_KEEP commands, newest last
+  blocks: Block[]; // command blocks, oldest first (commandBlocks.ts)
+  endSeen: boolean; // the prompt being drawn sent its OSC 133;D (PowerShell does, cmd does not)
+  jump: { line: number; top: number } | null; // the last Ctrl+Up / Down target and the top line it left shown
+}
+
+/** One command and its output: a divider above its command line and a coloured mark in the left margin. */
+interface Block {
+  marker: IMarker; // the command line (the start of its wrapped rows); gone when the line leaves the scrollback
+  state: BlockState;
+  started: Date;
+  code?: number | null;
+  ms?: number | null;
+  deco?: IDecoration;
 }
 
 const HISTORY_KEEP = 20;
+
+/** The buffer line where the command line under the cursor starts (its first wrapped row). */
+const commandLineStart = (term: XTerm): number => {
+  const buf = term.buffer.normal;
+  let start = buf.baseY + buf.cursorY;
+  while (start > 0 && buf.getLine(start)?.isWrapped) start--;
+  return start;
+};
+
+const blockColors = (t: 'dark' | 'light'): Record<BlockState | 'line', string> =>
+  t === 'light'
+    ? { line: '#a1a1aa', running: '#a1a1aa', ok: '#15803d', failed: '#b91c1c', done: '#71717a' }
+    : { line: '#52525b', running: '#71717a', ok: '#22c55e', failed: '#ef4444', done: '#a1a1aa' };
+
+// The decoration xterm places over the command line row: its top border is the divider (it lets the mouse
+// through, so text selection works), its child the mark in the terminal's left padding (hover = tooltip).
+// xterm resets the element's size on every render, so the full width is set again each time.
+const paintBlock = (b: Block, el: HTMLElement, t: 'dark' | 'light') => {
+  const c = blockColors(t);
+  el.style.width = '100%';
+  el.style.pointerEvents = 'none';
+  el.style.boxSizing = 'border-box';
+  el.style.borderTop = `1px solid ${c.line}`;
+  let mark = el.firstElementChild as HTMLElement | null;
+  if (!mark) {
+    mark = document.createElement('div');
+    mark.className = 'command-block-mark';
+    el.appendChild(mark);
+  }
+  mark.style.background = c[b.state];
+  mark.title = blockTooltip(b.state, b.started, b.code, b.ms);
+};
+const repaintBlock = (b: Block, t: 'dark' | 'light') => {
+  if (b.deco?.element) paintBlock(b, b.deco.element, t);
+};
+
+// A new block on the command line under the cursor (Enter at the prompt, or a line boonsh sent)
+const addBlock = (s: Session, theme: () => 'dark' | 'light') => {
+  const term = s.term;
+  const buf = term.buffer.normal;
+  if (term.buffer.active !== buf) return;
+  for (const old of s.blocks) if (old.state === 'running') old.state = 'done'; // its prompt never reported
+  const marker = term.registerMarker(commandLineStart(term) - (buf.baseY + buf.cursorY));
+  if (!marker) return;
+  const b: Block = { marker, state: 'running', started: new Date() };
+  b.deco = term.registerDecoration({ marker, x: 0, width: term.cols, height: 1, layer: 'top' });
+  b.deco?.onRender((el) => paintBlock(b, el, theme()));
+  marker.onDispose(() => {
+    s.blocks = s.blocks.filter((x) => x !== b);
+  });
+  s.blocks.push(b);
+};
+const liveBlocks = (s: Session) => s.blocks.filter((b) => !b.marker.isDisposed && b.marker.line >= 0);
+
+/** The output lines of the block that holds buffer line `row` (blank lines at its end left out), or null when
+ *  there is no block there or it printed nothing. The last block runs to the line above the prompt now shown
+ *  (to the cursor while it still runs). */
+const blockOutput = (s: Session, row: number): { from: number; to: number } | null => {
+  const buf = s.term.buffer.normal;
+  if (s.term.buffer.active !== buf) return null;
+  const live = liveBlocks(s);
+  const lines = live.map((b) => b.marker.line);
+  const i = blockAt(lines, row);
+  if (i < 0) return null;
+  let from = lines[i];
+  while (buf.getLine(from + 1)?.isWrapped) from++;
+  from++;
+  let to = i + 1 < lines.length ? lines[i + 1] - 1 : live[i].state === 'running' ? buf.baseY + buf.cursorY : commandLineStart(s.term) - 1;
+  const filler = (text: string) => !text.trim() || isBarePrompt(text); // blank, or the prompt of an empty Enter
+  while (to >= from && filler(buf.getLine(to)?.translateToString(true) ?? '')) to--;
+  return to >= from ? { from, to } : null;
+};
+const linesText = (term: XTerm, from: number, to: number): string => {
+  const buf = term.buffer.normal;
+  const out: string[] = [];
+  for (let y = from; y <= to; y++) {
+    const line = buf.getLine(y);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if (line.isWrapped && out.length) out[out.length - 1] += text;
+    else out.push(text);
+  }
+  return out.join('\r\n');
+};
 
 // History Commands. Enter is pressed before the shell has echoed everything typed (fast typing, a paste, a busy
 // shell), so the command is read from the screen when the shell has finished with the line: the cursor moved
@@ -258,8 +358,14 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onUserInputRef.current = onUserInput;
   const [username, setUsername] = useState<string>('User');
 
-  // id: the screen that was right-clicked
-  const [termMenu, setTermMenu] = useState<{ x: number; y: number; hasSel: boolean; id: string } | null>(null);
+  // id: the screen that was right-clicked; output: the lines its clicked command printed (null = none)
+  const [termMenu, setTermMenu] = useState<{
+    x: number;
+    y: number;
+    hasSel: boolean;
+    id: string;
+    output: { from: number; to: number } | null;
+  } | null>(null);
   const termMenuPos = useMenuPosition(termMenu);
   const menuTerm = (): XTerm | null =>
     (termMenu && sessionsRef.current.get(termMenu.id)?.term) || xtermRef.current;
@@ -507,10 +613,53 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       if (s) {
         readPending(s); // the command before this prompt is done
         s.atPrompt = true;
+        // no 133;D before this prompt (a cmd tab): the block is done with no exit code; an empty Enter has none
+        const b = s.blocks[s.blocks.length - 1];
+        if (!s.endSeen && b?.state === 'running') {
+          if (b.marker.line >= 0 && !promptLine(term, b.marker.line)) b.marker.dispose();
+          else {
+            b.state = 'done';
+            b.ms = Date.now() - b.started.getTime();
+            repaintBlock(b, themeRef.current);
+          }
+        }
+        s.endSeen = false;
       }
       const path = data.slice(2).replace(/^"|"$/g, '');
       if (path) onShellCwdChangeRef.current(tab.id, path);
       return true;
+    });
+
+    // How the command before this prompt ended (pty.rs, PowerShell only): colours its block, or removes it when
+    // nothing ran (an empty Enter, a line boonsh could not fill in)
+    term.parser.registerOscHandler(133, (data) => {
+      const end = parseCommandEnd(data);
+      if (!end) return false;
+      const s = sessionsRef.current.get(tab.id);
+      if (!s) return true;
+      s.endSeen = true;
+      const b = s.blocks[s.blocks.length - 1];
+      if (b?.state !== 'running') return true;
+      if (!end.ran) b.marker.dispose();
+      else {
+        b.state = end.code === 0 ? 'ok' : 'failed';
+        b.code = end.code;
+        b.ms = end.ms;
+        repaintBlock(b, themeRef.current);
+      }
+      return true;
+    });
+    // Clearing the screen blanks the lines but leaves their markers, so the blocks drawn there must go too.
+    // ConPTY sends cls as blank lines plus ESC[3J (clear the scrollback): every block goes. ESC[2J (a program
+    // clearing the screen): the blocks on the screen go.
+    term.parser.registerCsiHandler({ final: 'J' }, (params) => {
+      const s = sessionsRef.current.get(tab.id);
+      if (s && (params[0] === 2 || params[0] === 3) && term.buffer.active === term.buffer.normal) {
+        const top = params[0] === 3 ? 0 : term.buffer.normal.baseY;
+        for (const b of [...s.blocks]) if (b.marker.line >= top) b.marker.dispose();
+        s.jump = null;
+      }
+      return false; // xterm still clears
     });
 
     // Ctrl+C copies when text is selected (else it stays the shell's interrupt); Ctrl+X does the same
@@ -522,6 +671,23 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       // the app's own Ctrl+Shift keys (command palette, file panel): handled by App's window listener, not
       // sent to the shell (Ctrl+P / Ctrl+F are PSReadLine keys)
       if (e.shiftKey && (key === 'p' || key === 'f')) return false;
+      // Ctrl+Up / Ctrl+Down: scroll to the previous / next command (not in a full-screen program)
+      if (!e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && term.buffer.active === term.buffer.normal) {
+        const s = sessionsRef.current.get(tab.id);
+        if (s) {
+          // from the last command jumped to while the view is still where that left it (near the bottom the
+          // view cannot scroll to every command), else from the top line shown, or the prompt at the bottom
+          const buf = term.buffer.normal;
+          const from =
+            s.jump && s.jump.top === buf.viewportY ? s.jump.line : buf.viewportY >= buf.baseY ? commandLineStart(term) : buf.viewportY;
+          const to = jumpTarget(liveBlocks(s).map((b) => b.marker.line), from, e.key === 'ArrowUp' ? 'up' : 'down');
+          if (to === null) term.scrollToBottom();
+          else term.scrollToLine(to);
+          s.jump = to === null ? null : { line: to, top: buf.viewportY };
+        }
+        e.preventDefault();
+        return false;
+      }
       if ((key === 'c' || key === 'x') && term.hasSelection()) {
         copySelection(term, key === 'x');
         e.preventDefault();
@@ -542,14 +708,13 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
         if (s?.atPrompt) {
           readPending(s, true);
           const buf = term.buffer.normal;
-          const cursor = buf.baseY + buf.cursorY;
-          let start = cursor;
-          while (start > 0 && buf.getLine(start)?.isWrapped) start--;
-          const marker = term.registerMarker(start - cursor); // a marker follows scrollback trimming
+          const start = commandLineStart(term);
+          const marker = term.registerMarker(start - (buf.baseY + buf.cursorY)); // a marker follows scrollback trimming
           if (marker) {
             const timer = window.setTimeout(() => readPending(s, true), 5000);
             s.pending = { marker, timer, atEnter: promptLine(term, start) }; // last resort: what is drawn now
           }
+          addBlock(s, () => themeRef.current);
         }
         if (s) s.atPrompt = false;
         onPromptStateRef.current(tab.id, false); // Enter: a command or program is running until the next prompt
@@ -558,7 +723,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       invoke('pty_write', { id: tab.id, data }).catch((err) => console.error('PTY Write Error:', err));
     });
 
-    sessionsRef.current.set(tab.id, { term, fit, search, el, osc, atPrompt: false, pending: null, history: [] });
+    sessionsRef.current.set(tab.id, { term, fit, search, el, osc, atPrompt: false, pending: null, history: [], blocks: [], endSeen: false, jump: null });
     // Spawn native Windows PTY process (pwsh.exe / powershell.exe)
     invoke<string>('pty_spawn', {
       id: tab.id,
@@ -568,6 +733,17 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
       level: tab.level,
     }).catch((err) => console.error('PTY Spawn Error:', err));
   };
+
+  // A line boonsh sent with Enter (the cd after a folder change) is a command too: it gets its own block
+  useEffect(() => {
+    onLineSent((id) => {
+      const s = sessionsRef.current.get(id);
+      if (!s?.atPrompt) return;
+      addBlock(s, () => themeRef.current);
+      s.atPrompt = false;
+    });
+    return () => onLineSent(null);
+  }, []);
 
   // Output and shell-exit events from the Rust backend (every tab's, told apart by id); resize hooks
   useEffect(() => {
@@ -1326,7 +1502,15 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               if (s.el.contains(e.target as Node)) id = sid;
             });
             const s = id ? sessionsRef.current.get(id) : undefined;
-            setTermMenu({ x: e.clientX, y: e.clientY, hasSel: !!s?.term.hasSelection(), id: id ?? '' });
+            // the buffer line under the pointer: which command block was clicked
+            let output: { from: number; to: number } | null = null;
+            const screen = s?.term.element?.querySelector('.xterm-screen');
+            if (s && screen) {
+              const r = screen.getBoundingClientRect();
+              const y = Math.floor((e.clientY - r.top) / (r.height / s.term.rows));
+              output = blockOutput(s, s.term.buffer.active.viewportY + Math.max(0, Math.min(s.term.rows - 1, y)));
+            }
+            setTermMenu({ x: e.clientX, y: e.clientY, hasSel: !!s?.term.hasSelection(), id: id ?? '', output });
           }}
         />
         {/* Split Screen: a header bar on top of each screen (its name, folder and close button) and the separators */}
@@ -1743,6 +1927,30 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               <ClipboardPaste size={13} style={{ color: '#8b5cf6' }} />
               <span>Paste</span>
             </div>
+            <div className="context-menu-divider" />
+            {([
+              ['Copy Command Output', ClipboardCopy, true],
+              ['Select Command Output', TextSelect, false],
+            ] as const).map(([label, Icon, copy]) => (
+              <div
+                key={label}
+                className="context-menu-item"
+                style={termMenu.output ? undefined : { opacity: 0.4, pointerEvents: 'none' }}
+                title={termMenu.output ? undefined : 'Right-click on a command or its output (this one printed nothing)'}
+                onClick={() => {
+                  const term = menuTerm();
+                  const out = termMenu.output;
+                  setTermMenu(null);
+                  if (!term || !out) return;
+                  if (copy) navigator.clipboard.writeText(linesText(term, out.from, out.to)).catch(() => {});
+                  else term.selectLines(out.from, out.to);
+                  term.focus();
+                }}
+              >
+                <Icon size={13} style={{ color: '#22c55e' }} />
+                <span>{label}</span>
+              </div>
+            ))}
             <div className="context-menu-divider" />
             {([
               ['Explain with AI', Sparkles, true],

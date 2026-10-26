@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark, Info, BookText, Lock, FolderPlus, Download, Upload } from 'lucide-react';
+import { X, Plus, Pencil, Trash2, RotateCcw, Settings, BookOpen, Variable, Columns3, ArrowUp, ArrowDown, History, Bookmark, Info, BookText, Lock, FolderPlus, Download, Upload, Cloud, CheckCircle2, KeyRound, LogOut, ExternalLink, RefreshCw } from 'lucide-react';
 import { CommandGroup, CommandItem, GroupIcon, newCommandId, validateGroupName, MAX_GROUP_NAME } from '../commands';
 import { ConstVar, newConstId } from '../constVars';
 import { validateHotkey, availableKeys, HOTKEY_PREFIX } from '../hotkey';
@@ -16,6 +16,7 @@ import { QA_MAX, isShown, settingsRows } from '../quickAccess';
 import { FrequentSettings, MIN_COUNT, MAX_COUNT, DEFAULT_SETTINGS as DEFAULT_FREQUENT } from '../frequent';
 import { COLUMN_BY_ID, ColumnId, ColumnPrefs, DateColumn, DateMode, isDateColumn } from '../columns';
 import { autoCheckOn, setAutoCheck } from '../updater';
+import { GDriveConfig, getGDriveConfig, saveGDriveCredentials, disconnectGDrive, startGDriveLogin, formatStorageBytes } from '../gdrive';
 
 interface SettingsPanelProps {
   groups: CommandGroup[];
@@ -44,7 +45,7 @@ interface SettingsPanelProps {
   onCheckUpdate: () => Promise<string>;
 }
 
-export type Section = 'commands' | 'vars' | 'consts' | 'columns' | 'frequent' | 'quickaccess' | 'manual' | 'about';
+export type Section = 'commands' | 'vars' | 'consts' | 'columns' | 'frequent' | 'quickaccess' | 'gdrive' | 'manual' | 'about';
 
 interface VarDraft {
   name: string;
@@ -112,6 +113,72 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     invoke(command, args).catch((err) => setAboutMessage(String(err)));
   };
   const [section, setSection] = useState<Section>(initialSection);
+  const [gdriveConfig, setGdriveConfig] = useState<GDriveConfig | null>(null);
+  const [gdriveLoading, setGdriveLoading] = useState(false);
+  const [gdriveError, setGdriveError] = useState<string>('');
+  const [gdriveSuccess, setGdriveSuccess] = useState<string>('');
+  const [clientIdDraft, setClientIdDraft] = useState('');
+  const [clientSecretDraft, setClientSecretDraft] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
+
+  useEffect(() => {
+    getGDriveConfig()
+      .then((cfg) => {
+        setGdriveConfig(cfg);
+        setClientIdDraft(cfg.client_id || '');
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveGDriveCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGdriveError('');
+    setGdriveSuccess('');
+    try {
+      await saveGDriveCredentials(clientIdDraft, clientSecretDraft);
+      const updated = await getGDriveConfig();
+      setGdriveConfig(updated);
+      setGdriveSuccess('Google OAuth credentials saved securely in Windows Credential Manager.');
+      setClientSecretDraft('');
+    } catch (err) {
+      setGdriveError(String(err));
+    }
+  };
+
+  const handleConnectGDrive = async () => {
+    setGdriveError('');
+    setGdriveSuccess('');
+    setGdriveLoading(true);
+    try {
+      // The button is enabled off the typed Client ID, which may not be saved yet (the user just typed it and
+      // clicked Sign in without clicking Save Credentials first): save it now so login uses what is on screen.
+      if (clientIdDraft.trim()) {
+        await saveGDriveCredentials(clientIdDraft, clientSecretDraft);
+        setClientSecretDraft('');
+      }
+      const cfg = await startGDriveLogin();
+      setGdriveConfig(cfg);
+      setClientIdDraft(cfg.client_id || clientIdDraft);
+      setGdriveSuccess(`Successfully connected as ${cfg.account_name || cfg.account_email || 'Google Account'}!`);
+    } catch (err) {
+      setGdriveError(String(err));
+    } finally {
+      setGdriveLoading(false);
+    }
+  };
+
+  const handleDisconnectGDrive = async () => {
+    setGdriveError('');
+    setGdriveSuccess('');
+    try {
+      await disconnectGDrive();
+      const updated = await getGDriveConfig();
+      setGdriveConfig(updated);
+      setGdriveSuccess('Disconnected from Google Drive.');
+    } catch (err) {
+      setGdriveError(String(err));
+    }
+  };
   const [varEditing, setVarEditing] = useState<VarEditState | null>(null);
   const [varError, setVarError] = useState<string>('');
   const [constEditing, setConstEditing] = useState<ConstEditState | null>(null);
@@ -694,7 +761,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Settings size={14} />
             <span>Settings</span>
-            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'consts' ? 'CONST Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : section === 'manual' ? 'Manual' : section === 'about' ? 'About' : 'Commands'}</span>
+            <span className="settings-header-sub">/ {section === 'vars' ? 'Global Var' : section === 'consts' ? 'CONST Global Var' : section === 'columns' ? 'Files Column' : section === 'frequent' ? 'Frequently Accessed' : section === 'quickaccess' ? 'Quick Access' : section === 'gdrive' ? 'Google Drive' : section === 'manual' ? 'Manual' : section === 'about' ? 'About' : 'Commands'}</span>
           </div>
           <button onClick={onClose} title="Close (Esc)" style={{ padding: 2 }}>
             <X size={14} />
@@ -706,6 +773,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <>
               These commands appear in the terminal's <b>Commands 💡</b> menu. Pick a group, then add, edit or delete its
               commands. Use {'{SELEC}'}, {'{DEST}'} or your own variables in a command. Changes are saved automatically.
+            </>
+          ) : section === 'gdrive' ? (
+            <>
+              Connect your Google Drive account to browse, upload, and download files directly in boonsh's file panels.
+              Your tokens are stored encrypted in <b>Windows Credential Manager</b>.
             </>
           ) : section === 'consts' ? (
             <>
@@ -813,6 +885,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <span className="settings-count">{freqSettings.enabled ? 'On' : 'Off'}</span>
             </div>
             <div
+              className={`terminal-cmd-cat-item ${section === 'gdrive' ? 'active' : ''}`}
+              onClick={() => {
+                setGdriveError('');
+                setGdriveSuccess('');
+                selectSection('gdrive');
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Cloud size={13} style={{ color: gdriveConfig?.connected ? '#22c55e' : 'var(--text-muted)' }} />
+                <span>Google Drive</span>
+              </div>
+              <span className="settings-count">{gdriveConfig?.connected ? 'Connected' : 'Off'}</span>
+            </div>
+            <div
               className={`terminal-cmd-cat-item ${section === 'manual' ? 'active' : ''}`}
               onClick={() => selectSection('manual')}
             >
@@ -845,6 +931,197 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <span className="settings-col-note">{version ? `version ${version}` : ''}</span>
               </div>
               <ManualView />
+            </div>
+          ) : section === 'gdrive' ? (
+            <div className="settings-commands">
+              <div className="settings-commands-toolbar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Cloud size={14} style={{ color: gdriveConfig?.connected ? '#22c55e' : '#3b82f6' }} />
+                  <span>Google Drive Cloud Integration</span>
+                </div>
+                {gdriveConfig?.connected && (
+                  <span className="settings-col-note" style={{ color: '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <CheckCircle2 size={13} /> Connected
+                  </span>
+                )}
+              </div>
+
+              <div className="settings-commands-list" style={{ padding: '16px 20px', gap: 16 }}>
+                {gdriveError && <div className="settings-error">{gdriveError}</div>}
+                {gdriveSuccess && <div className="settings-note" style={{ color: '#22c55e', margin: 0 }}>{gdriveSuccess}</div>}
+
+                {/* Account info card if connected */}
+                {gdriveConfig?.connected ? (
+                  <div style={{
+                    background: 'var(--bg-secondary, rgba(255,255,255,0.03))',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 6,
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{gdriveConfig.account_name || 'Google Account'}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{gdriveConfig.account_email || ''}</div>
+                      </div>
+                      <button
+                        onClick={handleDisconnectGDrive}
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          color: '#ef4444',
+                          borderColor: 'rgba(239, 68, 68, 0.2)',
+                          padding: '5px 10px'
+                        }}
+                        title="Disconnect Google Drive"
+                      >
+                        <LogOut size={13} />
+                        <span>Disconnect</span>
+                      </button>
+                    </div>
+
+                    {gdriveConfig.quota_limit ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                          <span>Cloud Storage</span>
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            {formatStorageBytes(gdriveConfig.quota_usage)} of {formatStorageBytes(gdriveConfig.quota_limit)} (
+                            {Math.round(((gdriveConfig.quota_usage || 0) / gdriveConfig.quota_limit) * 100)}%)
+                          </span>
+                        </div>
+                        <div className="this-pc-meter" style={{ height: 6 }}>
+                          <div
+                            className="this-pc-meter-fill"
+                            style={{
+                              width: `${Math.min(100, Math.round(((gdriveConfig.quota_usage || 0) / gdriveConfig.quota_limit) * 100))}%`,
+                              background: '#3b82f6'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  /* Connect Button when not connected */
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '24px 16px',
+                    background: 'var(--bg-secondary, rgba(255,255,255,0.02))',
+                    border: '1px dashed var(--border-color)',
+                    borderRadius: 6,
+                    gap: 12,
+                    textAlign: 'center'
+                  }}>
+                    <Cloud size={32} style={{ color: '#3b82f6', opacity: 0.8 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Connect Google Drive</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: 12, maxWidth: 360, marginTop: 4 }}>
+                        Authorize boonsh to securely browse and transfer files using OAuth 2.0 PKCE.
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleConnectGDrive}
+                      disabled={gdriveLoading || (!gdriveConfig?.client_id && !clientIdDraft)}
+                      className="active"
+                      style={{ padding: '7px 18px', fontSize: 13, gap: 8 }}
+                    >
+                      {gdriveLoading ? (
+                        <>
+                          <RefreshCw size={14} className="spin" />
+                          <span>Waiting for browser approval...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Cloud size={14} />
+                          <span>Sign in with Google</span>
+                        </>
+                      )}
+                    </button>
+                    {(!gdriveConfig?.client_id && !clientIdDraft) && (
+                      <div style={{ color: '#f59e0b', fontSize: 11 }}>
+                        Please enter your Google Cloud OAuth Client ID below before signing in.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* OAuth Client Credentials configuration */}
+                <form onSubmit={handleSaveGDriveCredentials} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <KeyRound size={13} style={{ color: 'var(--text-muted)' }} />
+                    <span>Google Cloud OAuth Credentials</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Your credentials are stored encrypted in Windows Credential Manager:
+                  </div>
+
+                  <div>
+                    <label className="modal-label">OAuth Client ID</label>
+                    <input
+                      className="modal-input settings-mono"
+                      value={clientIdDraft}
+                      onChange={(e) => setClientIdDraft(e.target.value)}
+                      placeholder="e.g. 1234567890-abcdef.apps.googleusercontent.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="modal-label">
+                      OAuth Client Secret {gdriveConfig?.has_client_secret ? '(Saved in Windows Credential Manager)' : '(Optional for Desktop PKCE)'}
+                    </label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input
+                        type={showSecret ? 'text' : 'password'}
+                        className="modal-input settings-mono"
+                        value={clientSecretDraft}
+                        onChange={(e) => setClientSecretDraft(e.target.value)}
+                        placeholder={gdriveConfig?.has_client_secret ? '•••••••••••••••• (Leave blank to keep existing)' : 'Enter Client Secret if configured'}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSecret(!showSecret)}
+                        style={{ fontSize: 11, padding: '0 8px' }}
+                      >
+                        {showSecret ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: 4 }}>
+                    <button type="submit">
+                      Save Credentials
+                    </button>
+                  </div>
+                </form>
+
+                {/* Setup Instructions Box */}
+                <div style={{
+                  marginTop: 8,
+                  padding: '12px 14px',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  borderRadius: 6,
+                  border: '1px solid var(--border-color)',
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  color: 'var(--text-muted)'
+                }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: 4 }}>
+                    How to get your free Google OAuth credentials (3 minutes):
+                  </div>
+                  <ol style={{ margin: 0, paddingLeft: 18 }}>
+                    <li>Open <a href="#" onClick={(e) => { e.preventDefault(); openLink('open_in_default_app', { path: 'https://console.cloud.google.com/apis/credentials' }); }} style={{ color: '#38bdf8' }}>Google Cloud Console Credentials <ExternalLink size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /></a>.</li>
+                    <li>Create a project (or select an existing one) and enable the <b>Google Drive API</b>.</li>
+                    <li>Under <b>OAuth consent screen</b>, set User Type to <i>External</i> and add your Gmail to Test Users.</li>
+                    <li>Click <b>Create Credentials &gt; OAuth client ID</b>, select Application type: <b>Desktop app</b>.</li>
+                    <li>Copy the <b>Client ID</b> and <b>Client Secret</b> into the fields above and click <b>Save Credentials</b>.</li>
+                  </ol>
+                </div>
+              </div>
             </div>
           ) : section === 'about' ? (
             <div className="settings-commands">
@@ -1395,7 +1672,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="settings-footer">
-          {section === 'about' || section === 'manual' || section === 'consts' ? <span /> : <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
+          {section === 'about' || section === 'manual' || section === 'consts' || section === 'gdrive' ? <span /> : <button onClick={handleReset} title={section === 'vars' ? 'Restore {SELEC} and {DEST} only' : section === 'columns' ? 'Restore the default columns' : section === 'frequent' ? 'Back to on, 3 folders' : section === 'quickaccess' ? 'Back to Home, Desktop, Downloads, Documents and C:' : 'Restore the built-in command list'}>
             <RotateCcw size={13} />
             <span>{section === 'vars' ? 'Reset variables' : section === 'columns' ? 'Reset columns' : section === 'frequent' ? 'Reset settings' : section === 'quickaccess' ? 'Reset Quick Access' : 'Reset commands'}</span>
           </button>}

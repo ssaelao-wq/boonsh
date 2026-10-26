@@ -68,7 +68,7 @@ pub fn ai_key_delete() -> Result<(), String> {
     delete_secret(TARGET)
 }
 
-fn read_secret(target_name: &str) -> Result<Option<String>, String> {
+pub(crate) fn read_secret(target_name: &str) -> Result<Option<String>, String> {
     #[cfg(windows)]
     unsafe {
         use win::*;
@@ -87,7 +87,7 @@ fn read_secret(target_name: &str) -> Result<Option<String>, String> {
     Ok(None)
 }
 
-fn write_secret(target_name: &str, key: &str) -> Result<(), String> {
+pub(crate) fn write_secret(target_name: &str, key: &str) -> Result<(), String> {
     let key = key.trim().to_string();
     if key.is_empty() {
         return Err("The key is empty.".into());
@@ -119,7 +119,7 @@ fn write_secret(target_name: &str, key: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn delete_secret(target_name: &str) -> Result<(), String> {
+pub(crate) fn delete_secret(target_name: &str) -> Result<(), String> {
     #[cfg(windows)]
     unsafe {
         use win::*;

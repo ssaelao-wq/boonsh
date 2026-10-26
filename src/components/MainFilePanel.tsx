@@ -35,8 +35,15 @@ import {
   LogIn,
   FolderOpen,
   Unlink,
+  ArrowRightLeft,
+  Globe,
+  Smartphone,
+  QrCode,
 } from 'lucide-react';
 import { isBasket, shownName } from '../basket';
+import { isGDrivePath, gdriveOpenInBrowser, getCachedGDriveFolderName } from '../gdrive';
+import { isLanPath, shareFilesToLan, openLanIncomingFolder, getLanStatus, LanStatus } from '../lan';
+import { LanPanelEmptyView } from './LanPanelEmptyView';
 import { useFileIcons, useThumbnails } from '../fileIcons';
 import { isVideoExt } from '../video';
 import { fileAge, isToday, startOfToday } from '../fileAge';
@@ -109,6 +116,12 @@ interface MainFilePanelProps {
   onAssignPathVar: (name: PathVarName, paths: string[]) => void;
   // Baskets (basket.rs). basketMode: a basket is open (atTop = its top level, where Relink is offered)
   basketMode: { atTop: boolean } | null;
+  // a file drag starts here (fromBasket: out of the open basket, so a drop on a pane copies only its linked parts)
+  onFileDragStart?: (paths: string[], fromBasket: boolean) => void;
+  // A Google Drive row's hand-tracked drag (see startGDriveDrag): the point under the pointer, for the hover
+  // outline, then the point it was released at, for App to find the drop target the same way a real drop does.
+  onGDriveDragOver?: (clientX: number, clientY: number) => void;
+  onGDriveDrop?: (paths: string[], clientX: number, clientY: number, shift: boolean) => void;
   onCreateBasket: () => void;
   onPasteIntoBasket: (basket: string) => void;
   onRenamed: (from: string, to: string) => void;
@@ -117,6 +130,9 @@ interface MainFilePanelProps {
   onBasketLink: (items: FileItem[]) => void;
   onBasketClear: (items: FileItem[]) => void;
   onBasketRelink: (item: FileItem) => void;
+  onCopyToOtherPane?: () => void;
+  onMoveToOtherPane?: () => void;
+  otherPaneTitle?: string;
 }
 
 
@@ -219,6 +235,9 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   pathVars,
   onAssignPathVar,
   basketMode,
+  onFileDragStart,
+  onGDriveDragOver,
+  onGDriveDrop,
   onCreateBasket,
   onPasteIntoBasket,
   onRenamed,
@@ -227,6 +246,9 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   onBasketLink,
   onBasketClear,
   onBasketRelink,
+  onCopyToOtherPane,
+  onMoveToOtherPane,
+  otherPaneTitle,
 }) => {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -256,6 +278,31 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   }, [showVarSubmenu, globalVars.length]);
   const [showRenameModal, setShowRenameModal] = useState<{ item: FileItem; newName: string } | null>(null);
   const [showShortcutModal, setShowShortcutModal] = useState<{ name: string; targetPath: string } | null>(null);
+  const [showLanQr, setShowLanQr] = useState<boolean>(false);
+  const [lanStatus, setLanStatus] = useState<LanStatus | null>(null);
+
+  useEffect(() => {
+    if (isLanPath(currentPath)) {
+      getLanStatus()
+        .then((st) => {
+          setLanStatus(st);
+          const hasPaired =
+            (st.paired_devices && st.paired_devices.length > 0) || st.is_client_connected;
+          // First time connection (no paired device): show QR code
+          // Next time (permanent flag set): auto-display the file list
+          setShowLanQr(!hasPaired);
+        })
+        .catch(() => {});
+    }
+  }, [currentPath]);
+
+  useEffect(() => {
+    if (!isLanPath(currentPath)) return;
+    const interval = setInterval(() => {
+      getLanStatus().then(setLanStatus).catch(() => {});
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [currentPath]);
 
   // Column width state for resizable table columns
   const [colWidths, setColWidths] = useState<Record<ColumnId, number>>(
@@ -358,6 +405,9 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
     // coloured orange too, same as a folder
     const color = today ? 'var(--tree-folder-today-stroke)' : 'var(--text-muted)';
     const ext = item.ext.toLowerCase();
+    if (ext === 'gdoc' || ext === 'gsheet' || ext === 'gslides') {
+      return <FileText {...thin} style={{ color: '#38bdf8' }} />;
+    }
     if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'ico'].includes(ext)) {
       return <FileImage {...thin} style={{ color }} />;
     }
@@ -375,11 +425,6 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   const rowExtra = (item: FileItem) =>
     `${item.state ? `basket-${item.state}` : ''}`;
 
-  // Shift+Click would otherwise highlight page text between the two clicks
-  const preventShiftTextSelect = (e: React.MouseEvent) => {
-    if (e.shiftKey) e.preventDefault();
-  };
-
   // Clicking empty space (not an item) clears the selection, like Explorer
   const handleBackgroundClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClearSelection();
@@ -389,13 +434,89 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   // take them too (a movie dropped on VLC plays). The page's HTML drag is cancelled: it carries no files, and
   // Tauri's window drop handler would swallow it. Drops on boonsh itself arrive through Tauri's drag-drop event
   // (App's `onDragDropEvent`), like drops from Explorer.
-  const handleDragStart = (e: React.DragEvent, item: FileItem) => {
-    e.preventDefault();
+  const startFileDrag = (item: FileItem) => {
     if (item.state) return; // a gone / new basket entry: nothing (or nothing linked) to drag
     const paths = selectedPaths.has(item.path)
       ? items.filter((i) => selectedPaths.has(i.path) && !i.state).map((i) => i.path)
       : [item.path];
+    onFileDragStart?.(paths, !!basketMode);
     invoke('start_file_drag', { paths }).catch(() => {});
+  };
+  const handleDragStart = (e: React.DragEvent, item: FileItem) => {
+    e.preventDefault();
+    // A Google Drive row is dragged by hand below (startGDriveDrag), not through the browser's own drag start
+    if (isGDrivePath(item.path)) return;
+    startFileDrag(item);
+  };
+
+  // A Google Drive item has no local file to hand Explorer (file_drag.rs's OLE drag needs a real path), and the
+  // page's own HTML drag would be swallowed the same way (Tauri's window drop handler takes every OLE drop,
+  // including one the WebView starts on itself), so it is tracked by hand: once the pointer has moved a few
+  // pixels with the button down, the drag "starts" (onFileDragStart) and every further move reports the point
+  // under it for the hover outline; releasing the button reports that point as the drop (onGDriveDrop), where
+  // App finds the target itself, the same way a real drop does.
+  const gdriveDragRef = useRef(false);
+  const startGDriveDrag = (item: FileItem, x0: number, y0: number) => {
+    const paths = selectedPaths.has(item.path)
+      ? items.filter((i) => selectedPaths.has(i.path) && !i.state).map((i) => i.path)
+      : [item.path];
+    gdriveDragRef.current = false;
+    const move = (m: MouseEvent) => {
+      if ((m.buttons & 1) === 0) return stop(m);
+      if (!gdriveDragRef.current) {
+        if (Math.abs(m.clientX - x0) < 4 && Math.abs(m.clientY - y0) < 4) return;
+        gdriveDragRef.current = true;
+        shiftDragRef.current = true; // swallow the click that follows, like the local Shift-drag below
+        onFileDragStart?.(paths, !!basketMode);
+      }
+      onGDriveDragOver?.(m.clientX, m.clientY);
+    };
+    const stop = (m: MouseEvent) => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', stop);
+      if (gdriveDragRef.current) onGDriveDrop?.(paths, m.clientX, m.clientY, m.shiftKey);
+      gdriveDragRef.current = false;
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop);
+  };
+
+  // Chromium never starts an HTML drag when Shift is held as the button goes down (it reads Shift+press as
+  // "extend the text selection"), so a drag begun with Shift (to move) is noticed here: once the pointer has
+  // moved a few pixels with the button still down, the file drag starts. The Shift+Click that may follow the
+  // drag is swallowed, so it does not range-select.
+  const shiftDragRef = useRef(false);
+  const handleRowMouseDown = (e: React.MouseEvent, item: FileItem) => {
+    shiftDragRef.current = false;
+    if (e.button !== 0) return;
+    if (isGDrivePath(item.path)) {
+      if (item.state) return; // a gone / new basket entry: nothing to drag (not that a Drive item is ever one)
+      startGDriveDrag(item, e.clientX, e.clientY);
+      return;
+    }
+    if (!e.shiftKey) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const move = (m: MouseEvent) => {
+      if ((m.buttons & 1) === 0) return stop();
+      if (Math.abs(m.clientX - x0) < 4 && Math.abs(m.clientY - y0) < 4) return;
+      stop();
+      shiftDragRef.current = true;
+      startFileDrag(item);
+    };
+    const stop = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', stop);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop);
+  };
+  const handleRowClick = (e: React.MouseEvent, item: FileItem) => {
+    if (shiftDragRef.current) {
+      shiftDragRef.current = false;
+      return;
+    }
+    onItemClick(item, e);
   };
 
   // A basket in the list takes dropped items as links: App finds it under the pointer by this attribute
@@ -550,15 +671,20 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
         onAddQuickAccess({
           label: contextMenu.item.name,
           path: contextMenu.item.path,
-          icon_type: 'folder',
+          icon_type: isGDrivePath(contextMenu.item.path) ? 'gdrive' : 'folder',
         });
       } else if (currentPath) {
-        const parts = currentPath.split(/[\\/]/).filter(Boolean);
-        const label = parts.length > 0 ? parts[parts.length - 1] : currentPath;
+        let label = 'Folder';
+        if (isGDrivePath(currentPath)) {
+          label = currentPath === 'gdrive://root' || currentPath === 'gdrive:' ? 'Google Drive' : getCachedGDriveFolderName(currentPath) || 'Drive Folder';
+        } else {
+          const parts = currentPath.split(/[\\/]/).filter(Boolean);
+          label = parts.length > 0 ? parts[parts.length - 1] : currentPath;
+        }
         onAddQuickAccess({
           label,
           path: currentPath,
-          icon_type: 'folder',
+          icon_type: isGDrivePath(currentPath) ? 'gdrive' : 'folder',
         });
       }
     }
@@ -568,8 +694,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
   const handleOpenRenameModal = (item: FileItem) => {
     setContextMenu(null);
     // The real file name: in search results `item.name` is a display path like "./sub/file.txt". A basket is
-    // renamed without its .basket, which stays.
-    const real = item.path.split(/[\\/]/).filter(Boolean).pop() ?? item.name;
+    // renamed without its .basket, which stays. In Google Drive, item.name is the actual name.
+    const real = isGDrivePath(item.path) ? item.name : (item.path.split(/[\\/]/).filter(Boolean).pop() ?? item.name);
     setShowRenameModal({ item, newName: isBasket(item) ? real.replace(/\.basket$/i, '') : real });
   };
 
@@ -644,8 +770,100 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
       className="main-file-panel"
       onContextMenu={handleBackgroundContextMenu}
     >
-      {viewMode === 'thumbnails' ? (
+      {isLanPath(currentPath) && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '6px 14px',
+          background: 'rgba(16, 185, 129, 0.08)',
+          borderBottom: '1px solid rgba(16, 185, 129, 0.2)',
+          fontSize: 12,
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Smartphone size={14} style={{ color: '#10b981' }} />
+            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>Mobile Drop</span>
+            {lanStatus?.is_client_connected ? (
+              <span style={{ fontSize: 10, color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 6px', borderRadius: 4 }}>
+                ● Connected ({lanStatus.connected_client_name || 'Phone'})
+              </span>
+            ) : lanStatus?.paired_devices && lanStatus.paired_devices.length > 0 ? (
+              <span style={{ fontSize: 10, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '2px 6px', borderRadius: 4 }}>
+                Permanent Paired ({lanStatus.paired_devices[0].name})
+              </span>
+            ) : (
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', background: 'rgba(255, 255, 255, 0.05)', padding: '2px 6px', borderRadius: 4 }}>
+                Ready to pair
+              </span>
+            )}
+            <span style={{ color: 'var(--text-muted)' }}>— {items.length} file{items.length === 1 ? '' : 's'}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              className="lan-panel-btn"
+              onClick={() => openLanIncomingFolder()}
+              title="Open the folder on your notebook where received files are stored"
+            >
+              <FolderOpen size={12} />
+              <span>Incoming Folder</span>
+            </button>
+            <button
+              className="lan-panel-btn"
+              onClick={() => setShowLanQr((prev) => !prev)}
+              title="Toggle QR Code display"
+            >
+              <QrCode size={12} />
+              <span>{showLanQr ? 'Show File List' : 'Show QR Code'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+      {isLanPath(currentPath) && showLanQr ? (
+        <LanPanelEmptyView onRefresh={onRefresh} onShowFiles={() => setShowLanQr(false)} />
+      ) : viewMode === 'thumbnails' ? (
         <div className="file-grid" onClick={handleBackgroundClick}>
+          {isLanPath(currentPath) && items.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 24px', color: 'var(--text-muted)', width: '100%', gridColumn: '1 / -1' }}>
+              <div style={{ maxWidth: 440, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#10b981',
+                }}>
+                  <Smartphone size={22} />
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)' }}>
+                  Mobile Drop is Ready to Transfer
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5, textAlign: 'center' }}>
+                  <div><b>📤 Send to Mobile:</b> Select files in your other pane and press <b>F5 (Copy)</b> or drag them here.</div>
+                  <div style={{ marginTop: 4 }}><b>📥 Receive on Notebook:</b> On your phone screen, tap <b>"Choose Photo or File"</b>. Received files save to: <b>{lanStatus?.incoming_label || 'Downloads'}</b>.</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button
+                    className="lan-panel-btn"
+                    onClick={() => openLanIncomingFolder()}
+                  >
+                    <FolderOpen size={12} />
+                    <span>Open {lanStatus?.incoming_label || 'Downloads'}</span>
+                  </button>
+                  <button
+                    className="lan-panel-btn"
+                    onClick={() => setShowLanQr(true)}
+                  >
+                    <QrCode size={12} />
+                    <span>Show QR Code</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {items.map((item) => {
             const isSelected = selectedPaths.has(item.path);
             const isImage =
@@ -658,8 +876,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 key={item.path}
                 className={`grid-card ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''} ${rowExtra(item)}`}
                 {...basketDropProps(item)}
-                onClick={(e) => onItemClick(item, e)}
-                onMouseDown={preventShiftTextSelect}
+                onClick={(e) => handleRowClick(e, item)}
+                onMouseDown={(e) => handleRowMouseDown(e, item)}
                 onDoubleClick={() => openItem(item)}
                 onContextMenu={(e) => handleItemContextMenu(e, item)}
                 draggable
@@ -688,6 +906,47 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
         </div>
       ) : viewMode === 'tiles' ? (
         <div className="file-tiles-grid" onClick={handleBackgroundClick}>
+          {isLanPath(currentPath) && items.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 24px', color: 'var(--text-muted)', width: '100%', gridColumn: '1 / -1' }}>
+              <div style={{ maxWidth: 440, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#10b981',
+                }}>
+                  <Smartphone size={22} />
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)' }}>
+                  Mobile Drop is Ready to Transfer
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5, textAlign: 'center' }}>
+                  <div><b>📤 Send to Mobile:</b> Select files in your other pane and press <b>F5 (Copy)</b> or drag them here.</div>
+                  <div style={{ marginTop: 4 }}><b>📥 Receive on Notebook:</b> On your phone screen, tap <b>"Choose Photo or File"</b>. Received files save to: <b>{lanStatus?.incoming_label || 'Downloads'}</b>.</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button
+                    className="lan-panel-btn"
+                    onClick={() => openLanIncomingFolder()}
+                  >
+                    <FolderOpen size={12} />
+                    <span>Open {lanStatus?.incoming_label || 'Downloads'}</span>
+                  </button>
+                  <button
+                    className="lan-panel-btn"
+                    onClick={() => setShowLanQr(true)}
+                  >
+                    <QrCode size={12} />
+                    <span>Show QR Code</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {items.map((item) => {
             const isSelected = selectedPaths.has(item.path);
             const fileTypeStr = item.is_dir
@@ -702,8 +961,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                 key={item.path}
                 className={`tile-card ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''} ${rowExtra(item)}`}
                 {...basketDropProps(item)}
-                onClick={(e) => onItemClick(item, e)}
-                onMouseDown={preventShiftTextSelect}
+                onClick={(e) => handleRowClick(e, item)}
+                onMouseDown={(e) => handleRowMouseDown(e, item)}
                 onDoubleClick={() => openItem(item)}
                 onContextMenu={(e) => handleItemContextMenu(e, item)}
                 draggable
@@ -771,6 +1030,49 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               </tr>
             </thead>
             <tbody>
+              {isLanPath(currentPath) && rows.length === 0 && (
+                <tr>
+                  <td colSpan={columns.length} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                    <div style={{ maxWidth: 460, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: '50%',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#10b981',
+                      }}>
+                        <Smartphone size={22} />
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)' }}>
+                        Mobile Drop is Ready to Transfer
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5, textAlign: 'center' }}>
+                        <div><b>📤 Send to Mobile:</b> Select files in your other pane and press <b>F5 (Copy)</b> or drag them here.</div>
+                        <div style={{ marginTop: 4 }}><b>📥 Receive on Notebook:</b> On your phone screen, tap <b>"Choose Photo or File"</b>. Received files save to: <b>{lanStatus?.incoming_label || 'Downloads'}</b>.</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                        <button
+                          className="lan-panel-btn"
+                          onClick={() => openLanIncomingFolder()}
+                        >
+                          <FolderOpen size={12} />
+                          <span>Open {lanStatus?.incoming_label || 'Downloads'}</span>
+                        </button>
+                        <button
+                          className="lan-panel-btn"
+                          onClick={() => setShowLanQr(true)}
+                        >
+                          <QrCode size={12} />
+                          <span>Show QR Code</span>
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
               {rows.map((row, rowIndex) => {
                 if (row.kind === 'group') {
                   return (
@@ -824,8 +1126,8 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     key={item.path}
                     className={`file-row ${isSelected ? 'selected' : ''} ${cutSet.has(item.path) ? 'cut' : ''} ${rowExtra(item)}`}
                     {...basketDropProps(item)}
-                    onClick={(e) => onItemClick(item, e)}
-                onMouseDown={preventShiftTextSelect}
+                    onClick={(e) => handleRowClick(e, item)}
+                    onMouseDown={(e) => handleRowMouseDown(e, item)}
                     onDoubleClick={() => openItem(item)}
                     onContextMenu={(e) => handleItemContextMenu(e, item)}
                     draggable
@@ -1138,8 +1440,9 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               })()
             ) : (
             <>
-            {/* New Submenu Trigger (a basket holds only links: nothing new is made inside one) */}
-            {!basketMode && (
+            {/* New Submenu Trigger (a basket holds only links, and Mobile Drop has no folders: nothing new is
+                made inside either) */}
+            {!basketMode && !isLanPath(currentPath) && (
             <div
               className="context-menu-item"
               onMouseEnter={() => {
@@ -1168,22 +1471,26 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                     <FolderPlus size={13} style={{ color: 'var(--text-muted)' }} />
                     <span>Folder</span>
                   </div>
-                  <div className="context-menu-item" onClick={handleCreateTextFile}>
-                    <FilePlus size={13} style={{ color: 'var(--text-muted)' }} />
-                    <span>Text Document</span>
-                  </div>
-                  <div className="context-menu-item" onClick={handleOpenShortcutModal}>
-                    <Link size={13} style={{ color: 'var(--text-muted)' }} />
-                    <span>Shortcut</span>
-                  </div>
-                  <div
-                    className="context-menu-item"
-                    onClick={runMenuAction(onCreateBasket)}
-                    title="A basket holds links to files and folders from anywhere"
-                  >
-                    <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
-                    <span>Basket</span>
-                  </div>
+                  {!isGDrivePath(currentPath) && (
+                    <>
+                      <div className="context-menu-item" onClick={handleCreateTextFile}>
+                        <FilePlus size={13} style={{ color: 'var(--text-muted)' }} />
+                        <span>Text Document</span>
+                      </div>
+                      <div className="context-menu-item" onClick={handleOpenShortcutModal}>
+                        <Link size={13} style={{ color: 'var(--text-muted)' }} />
+                        <span>Shortcut</span>
+                      </div>
+                      <div
+                        className="context-menu-item"
+                        onClick={runMenuAction(onCreateBasket)}
+                        title="A basket holds links to files and folders from anywhere"
+                      >
+                        <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
+                        <span>Basket</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1204,7 +1511,49 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
               </div>
             )}
 
+            {contextMenu.item && isGDrivePath(contextMenu.item.path) && (
+              <div
+                className="context-menu-item"
+                onMouseEnter={() => {
+                  setShowNewSubmenu(false);
+                  setShowVarSubmenu(false);
+                  setShowOpenWith(false);
+                }}
+                onClick={runMenuAction(() => gdriveOpenInBrowser(contextMenu.item!.path))}
+                title="Open this file or folder in Google Drive in your web browser"
+              >
+                <Globe size={13} style={{ color: '#38bdf8' }} />
+                <span>Open in Google Drive</span>
+              </div>
+            )}
+
             {contextMenu.item && !contextMenu.item.is_dir && !isBasket(contextMenu.item) && (
+              <div
+                className="context-menu-item"
+                onMouseEnter={() => {
+                  setShowNewSubmenu(false);
+                  setShowVarSubmenu(false);
+                  setShowOpenWith(false);
+                }}
+                onClick={runMenuAction(async () => {
+                  const paths = selectedPaths.has(contextMenu.item!.path)
+                    ? Array.from(selectedPaths)
+                    : [contextMenu.item!.path];
+                  try {
+                    await shareFilesToLan(paths);
+                    onRefresh?.();
+                  } catch (e) {
+                    alert('Failed to share to phone: ' + e);
+                  }
+                })}
+                title="Send file to phone over Wi-Fi (Google Docs are auto-exported to PDF)"
+              >
+                <Smartphone size={13} style={{ color: '#10b981' }} />
+                <span>Share to Phone (LAN)</span>
+              </div>
+            )}
+
+            {contextMenu.item && !contextMenu.item.is_dir && !isBasket(contextMenu.item) && !isGDrivePath(contextMenu.item.path) && (
               <div
                 className="context-menu-item"
                 onMouseEnter={() => {
@@ -1281,6 +1630,22 @@ export const MainFilePanel: React.FC<MainFilePanelProps> = ({
                   <span>Copy{selectionCount > 1 ? ` (${selectionCount} items)` : ''}</span>
                   <span className="context-menu-shortcut">Ctrl+C</span>
                 </div>
+                {onCopyToOtherPane && (
+                  <>
+                    <div className="context-menu-item" onClick={runMenuAction(onCopyToOtherPane)}>
+                      <Copy size={13} style={{ color: '#f59e0b' }} />
+                      <span>{otherPaneTitle ? `Copy to ${otherPaneTitle}` : 'Copy to other pane'}{selectionCount > 1 ? ` (${selectionCount} items)` : ''}</span>
+                      <span className="context-menu-shortcut">F5</span>
+                    </div>
+                    {onMoveToOtherPane && (
+                      <div className="context-menu-item" onClick={runMenuAction(onMoveToOtherPane)}>
+                        <ArrowRightLeft size={13} style={{ color: '#f59e0b' }} />
+                        <span>{otherPaneTitle ? `Move to ${otherPaneTitle}` : 'Move to other pane'}{selectionCount > 1 ? ` (${selectionCount} items)` : ''}</span>
+                        <span className="context-menu-shortcut">F6</span>
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             )}
             <div

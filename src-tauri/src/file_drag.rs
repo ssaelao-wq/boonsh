@@ -160,9 +160,19 @@ pub fn start_file_drag(app: AppHandle, paths: Vec<String>) -> Result<(), String>
     }
     let win = app.get_webview_window("main").ok_or("no main window")?;
     let hwnd = win.hwnd().map_err(|e| e.to_string())?.0 as isize;
+    let resolved_paths: Vec<String> = paths
+        .into_iter()
+        .map(|p| {
+            if let Some(local) = crate::lan_share::resolve_lan_path_to_local(&p) {
+                local.to_string_lossy().to_string()
+            } else {
+                p
+            }
+        })
+        .collect();
     let done = app.clone();
     app.run_on_main_thread(move || {
-        let effect = imp::drag(hwnd, &paths);
+        let effect = imp::drag(hwnd, &resolved_paths);
         let _ = done.emit("file-drag-done", DragDone { effect });
     })
     .map_err(|e| e.to_string())

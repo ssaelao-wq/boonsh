@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { FileItem, FileListResult } from '../types';
 import { DualSettings, Side, clampRatio, loadDual, otherSide, sameFolder, saveDual } from '../dualPane';
+import { cacheGDriveFolderNames } from '../gdrive';
 
 /** The pane that is not active: a folder listing with its own selection */
 export interface OtherPane {
@@ -53,6 +54,7 @@ export function useDualPane({
   const loadOther = async (path: string, select?: string[], fallback?: string) => {
     try {
       const res = await invoke<FileListResult>('list_directory', { targetPath: path });
+      cacheGDriveFolderNames(res.items);
       const byPath = new Set(res.items.map((i) => i.path));
       const keep = (select ?? (otherRef.current && sameFolder(otherRef.current.path, res.current_path) ? otherRef.current.selected : []))
         .filter((p) => byPath.has(p));

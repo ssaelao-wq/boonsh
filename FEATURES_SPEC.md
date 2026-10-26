@@ -1,11 +1,19 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.6**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.8**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
 **License.** boonsh is **free software under the MIT License**: anyone may use, copy, change and share it, for free, as long as the copyright line and the license text stay with it. There is no warranty. The text is in the file `LICENSE` ("Copyright (c) 2026 Somboon L."), it is shown by the Windows installer, and it is in the app under Settings, **About** (section 10). The licenses of the libraries boonsh is built with are in `THIRD_PARTY_LICENSES.txt`, which the installer puts next to the app. Downloads (the installers) are on the project's GitHub **Releases** page: https://github.com/ssaelao-wq/boonsh/releases.
 
+> **New in 0.10.8**
+> - [Google Drive Integration](#18-google-drive-integration): browse and manage Google Drive files directly inside boonsh's 2-panel interface. Copy and move files bidirectionally between your PC and Google Drive with **F5 / F6**, drag-and-drop, or clipboard; resumable uploads, workspace document exports (.docx, .xlsx, .pptx), conflict resolution dialogs, and secure OAuth 2.0 PKCE authentication with Windows Credential Manager.
+> - [Mobile Drop & LAN File Sharing](#19-mobile-drop--lan-file-sharing-lanmobile): instant, peer-to-peer file sharing between your Windows PC and mobile devices (iPhone, iPad, Android) over local Wi-Fi with zero app install. Includes dynamic dual-pane destination routing, automatic Google Docs to PDF exports, persistent pairing with LINE QR code support, and seamless buffering through the PC Intermediate staging architecture.
+>
+> **New in 0.10.7**
+> - [Command blocks](#command-blocks): every command and its output is one section in the command line, with a line above it and a green / red mark (worked / failed). **Ctrl+Up / Ctrl+Down** jump between commands; right-click to copy or select one command's output.
+> - [Drag and drop](#drag-and-drop): holding Shift before you start dragging now moves the files; dragging out of an open basket takes only its linked items, and the links follow a move.
+>
 > **New in 0.10.6**
 > - [Drag and drop](#drag-and-drop): files dragged from boonsh are real Windows files, so other programs take them (drop a movie on VLC to play it); files from Explorer can be dropped into boonsh; dragging between the two panes, onto a basket and onto the command line works again.
 > - [View modes](#view-modes-header-icons-remembered-between-runs): video files show a picture from the movie in the Thumbnails view.
@@ -46,6 +54,8 @@ This document describes everything boonsh can do, how to use it, and where its l
 15. [Keeping this document current](#15-keeping-this-document-current)
 16. [AI Assistant](#16-ai-assistant)
 17. [Baskets](#17-baskets)
+18. [Google Drive Integration](#18-google-drive-integration)
+19. [Mobile Drop & LAN File Sharing (`lan://mobile`)](#19-mobile-drop--lan-file-sharing-lanmobile)
 
 ---
 
@@ -338,7 +348,27 @@ Dragging files from boonsh works like dragging them from Windows Explorer: the f
 - **Onto the command line:** their quoted paths are typed at the prompt, separated by spaces.
 - **From Explorer or another program into boonsh:** drop files on the file panel (or a pane) to copy them into its folder (**Shift**: move), on a basket to link them, or on the command line to type their paths. The place you are about to drop on gets a dashed outline.
 
-Gone / new entries inside a basket can't be dragged (there is nothing linked to drag).
+**Out of an open basket:** dropping its items on a pane works like **F5 / F6** there: only what is **linked** goes. A folder that is only partly linked brings just its linked files and folders, never the ones that appeared in it later or were cleared. With **Shift** the files are moved and the basket's links follow them to the new place. (Dropped on Explorer or another program, a folder goes whole, as Windows hands it over.) Gone / new entries inside a basket can't be dragged (there is nothing linked to drag).
+
+#### Copy or move?
+A drop on boonsh **copies** by default. To **move** instead, hold **Shift** while you drop:
+
+1. Hold **Shift** and start dragging the file(s) (or press Shift once the drag has started).
+2. Keep holding **Shift** while you let go of the mouse button.
+3. Let go of Shift.
+
+boonsh reads Shift at the moment of the drop, so keep holding it until the mouse button is up. Ctrl makes no difference to a drop on boonsh: it copies, as without a key.
+
+| Dropped on | Without a key | With **Shift** |
+|---|---|---|
+| The other pane, or the file panel (from boonsh or from Explorer) | Copy | **Move** |
+| An Explorer folder or the desktop | Explorer decides: **move** on the same drive, copy to another drive | **Move** (**Ctrl**: always copy) |
+| A basket | Adds a link | The same: nothing is moved |
+| The command line | Types the path | The same |
+
+The small label next to the pointer can say "Copy" over boonsh even while you hold Shift; it comes from the window, not from boonsh, and the files are still moved.
+
+**Without dragging:** **F6** moves the selected files to the other pane (**F5** copies), after a question; or cut with **Ctrl+X** and paste with **Ctrl+V** in the folder you want them in.
 
 ### Two panes
 The **Two file panes** button in the header (two columns, orange) shows a second file list beside the first, as in two-pane file managers. Click it again to go back to one pane. boonsh remembers whether it is on, the other pane's folder and the width of the panes.
@@ -973,6 +1003,22 @@ The right side is a real **PowerShell** terminal. boonsh uses PowerShell 7 (`pws
 - Folder sync works both ways (see [section 3](#two-way-sync-with-the-terminal)).
 - Keys like Ctrl+A, Ctrl+C, Ctrl+V and Del go **to the terminal**, not the file panel, while you are typing in it.
 
+### Command blocks
+Every command you run and its output form one section, so you can tell where each starts and ends without pressing Enter a few times first.
+- A thin **line** is drawn above each command line.
+- A small **mark** sits in the narrow margin left of the command:
+  - **green**: the command worked
+  - **red**: it failed (an error, or a program that ended with an exit code other than 0)
+  - **grey**: still running (in a cmd tab, grey also means finished, since cmd does not say whether a command worked)
+- **Hover the mark** to see how it ended, how long it took and when it started, for example *Failed (exit code 3) · took 1.2 s · started 2:32:05 PM*, or *Failed (PowerShell error)* for an error in a PowerShell command.
+- **Ctrl+Up / Ctrl+Down** scroll to the previous / next command (press Ctrl+Up again to go further back; Ctrl+Down past the last one goes back to the bottom).
+- **Right-click** a command or its output:
+  - **Copy Command Output** copies just what that command printed (not the command line, not the next prompt).
+  - **Select Command Output** selects it, so you can see it or copy it with Ctrl+C.
+  - Both are greyed out when the command printed nothing.
+- The `cd` boonsh types when you open a folder in the file panel gets its own block too. Pressing Enter on an empty line makes no block.
+- **cls** clears the blocks along with the text. Full-screen programs (such as `vim` or `less`) are not affected. The blocks are drawn by boonsh, not printed, so **Find Text** and **Export Screen** see only the real text.
+
 ### History Commands (the clock button)
 The clock button in front of **Commands** (icon only; hover for its name) lists the commands you ran in the **active screen**: the selected tab, or on a split tab the screen you last clicked (each screen keeps its own list; the list's top right says which one).
 - The **last 20** commands are kept; about **10** are in view with the **newest at the bottom**, and you scroll up for the older ones. Long commands wrap onto more lines.
@@ -1023,7 +1069,7 @@ How values are written:
 
 ## 10. Settings: customize terminal commands
 
-Click the **gear icon** (next to the Eye icon). The left bar has eight sections, **Commands**, **Global Var**, **CONST Global Var**, **Files Column**, **Quick Access**, **Frequently Accessed**, **Manual** and **About**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
+Click the **gear icon** (next to the Eye icon). The left bar has nine sections: **Commands**, **Global Var**, **CONST Global Var**, **Files Column**, **Quick Access**, **Frequently Accessed**, **Google Drive**, **Manual** and **About**; the details open on the right. Changes are **saved automatically** and show up straight away. **Reset** (bottom left) resets only the section you are in.
 
 ### Global Var
 Manage the variables that commands can use as `{NAME}`.
@@ -1063,6 +1109,14 @@ Choose what the Quick Access row (above the folder tree, section 3) shows. Each 
 - Everything unticked is allowed: the bar is then empty, and stays empty the next time boonsh starts.
 - Right-clicking a folder to add it, and right-clicking a button to remove it, work as before.
 - **Reset Quick Access** (bottom left) brings back Home, Desktop, Downloads, Documents and the C: drive; folders you added are removed.
+
+### Google Drive
+Connect and manage your Google Drive integration.
+- Enter your OAuth **Client ID** (and optional Client Secret).
+- Click **Connect Account** to authorize in your browser.
+- Once connected, displays your account email, live storage quota bar (Used / Free / Total), and connection status.
+- **Disconnect** revokes the session and clears all encrypted local tokens from Windows Credential Manager.
+- See [section 18](#18-google-drive-integration) for the complete guide on setting up free Google Cloud credentials and using Google Drive in boonsh.
 
 ### Manual
 This document, shown inside the app (the dialog grows wider for it). It is the manual of the version you have installed, because the file is built into the app. Click an item in the **Contents** list, or any `#` link, to jump to that section; links to web pages open in your browser. You can select and copy the text. The Reset button is not shown on this page.
@@ -1153,6 +1207,7 @@ Click the **trash icon** on its row and confirm. This works on the built-in comm
 | Ctrl+Shift+F | Show or hide the file panel (leaves the folder tree and terminal) |
 | Home, End, Left, Right, PageUp, PageDown | Move between images (when an image is previewed) |
 | `+`, `-`, `1`, `0` or `F`, `L`, Ctrl+G | Image zoom, 1:1, fit, lock zoom, go to image |
+| Ctrl+Up / Ctrl+Down | In the command line: scroll to the previous / next command (see [Command blocks](#command-blocks)) |
 | Ctrl+Alt+(letter, digit or F1-F12) | A command hot key you set in Settings, Commands: types that command at the prompt, only while the command line has the focus |
 | Esc | Exit full-screen preview; close Settings or its open form; cancel path editing |
 | Enter / Esc in the path bar | Go to the typed path / cancel |
@@ -1397,3 +1452,235 @@ Both work **typed straight into a PowerShell command line** (press Enter: boonsh
 | `basket-new "Tax 2026"` | Creates an empty basket in the current folder |
 
 They have no length limit and work with names in any language. They are not available in a `cmd` tab.
+
+---
+
+## 18. Google Drive Integration
+
+boonsh connects directly to Google Drive while strictly preserving the dual-pane (two panels) paradigm. Either panel can display local folders or Google Drive folders, enabling seamless transfers without external sync utilities or clutter.
+
+### How It Works
+- **Strict 2-Panel Architecture**: No 3rd window or separate panel is needed. You can have `C:\Users\...` on the left pane and `Google Drive` on the right pane (or vice versa). Switching panes with **Tab** or clicking lets you work on either pane.
+- **Unified Transfer Engine**: Transfers between your PC and Google Drive, or between Google Drive folders, use the same transfer engine as local files. That means **F5** copies, **F6** moves, drag-and-drop works between panes, and file clashes open the **Replace / Keep Both / Skip** dialog.
+- **Security & Privacy**: Your data travels directly between your PC and Google's official Drive API over HTTPS. Tokens and secrets are encrypted with the Windows Data Protection API (DPAPI) and stored in Windows Credential Manager under `boonsh:gdrive:*`.
+
+---
+
+### Step-by-Step: Connecting to Google Drive
+
+To connect any desktop application to Google Drive without an unauthorized third-party middleman, Google requires a free OAuth 2.0 Client ID. Creating one takes only 2–3 minutes:
+
+#### Step 1: Create your OAuth credentials in Google Cloud Console
+1. Open the [Google Cloud Console](https://console.cloud.google.com/) in your web browser and sign in with your Google account.
+2. At the top left, click the project dropdown $\rightarrow$ click **New Project**.
+3. Name the project `boonsh` (or any name you like) and click **Create**.
+4. Make sure your new project is selected in the top dropdown.
+5. In the left navigation menu, go to **APIs & Services $\rightarrow$ Library**:
+   - Search for **Google Drive API** and click on it.
+   - Click the blue **Enable** button.
+6. In the left menu, go to **APIs & Services $\rightarrow$ OAuth consent screen**:
+   - Select **External** $\rightarrow$ click **Create**.
+   - Under **App name**, type `boonsh`.
+   - Fill in your email for **User support email** and **Developer contact information**.
+   - Click **Save and Continue** (skip Scopes by clicking **Save and Continue**).
+   - On the **Test users** page, click **+ Add Users**, type your Gmail address, and click **Save and Continue**.
+7. In the left menu, go to **APIs & Services $\rightarrow$ Credentials**:
+   - At the top, click **+ Create Credentials** $\rightarrow$ select **OAuth client ID**.
+   - Under **Application type**, choose **Desktop app**.
+   - Enter a name (e.g. `boonsh desktop`) $\rightarrow$ click **Create**.
+   - A dialog appears showing your **Client ID** (e.g. `123456789-xxxxxx.apps.googleusercontent.com`) and **Client Secret**. Copy them.
+
+#### Step 2: Connect in boonsh
+1. Open boonsh and click the **Settings gear icon** in the top-right header.
+2. In the Settings left sidebar, click **Google Drive** (next to the cloud icon).
+3. Paste your **Client ID** into the *Client ID* box.
+4. If you have a Client Secret, paste it into the *Client Secret* box (optional if your desktop client configuration allows PKCE alone).
+5. Click **Connect Account**:
+   - boonsh starts a secure, temporary local loopback server (`http://127.0.0.1:<port>/callback`) and opens Google's sign-in page in your default browser.
+   - Choose your Google account and click **Continue**.
+6. Switch back to boonsh. The Google Drive settings row will turn green: **Connected**, displaying your Gmail address and a storage quota progress bar (Used / Free / Total)!
+
+---
+
+### How to Use Google Drive in boonsh
+
+#### 1. Browsing and Navigation
+- **This PC**: Click **This PC** in the folder tree or navigate to the root of any drive. When Google Drive is connected, a **Google Drive** card appears with your account email and storage bar. Double-click it to open **My Drive**.
+- **Virtual Path (`gdrive://`)**:
+  - `gdrive://root` represents **My Drive**.
+  - `gdrive://<folderId>` opens any subfolder.
+- **Breadcrumb Trail**: At the top of the file panel, the breadcrumb trail shows `Google Drive > [Folder Name]`. Click **Google Drive** anytime to jump back to My Drive.
+- **Quick Access**: Pin Google Drive or any subfolder to your Quick Access bar. Right-click the folder $\rightarrow$ **Add to Quick Access**. It will appear with a blue cloud icon in the Quick Access row.
+
+#### 2. Copying and Moving Files (Bidirectional Transfers)
+Open **Two file panes** (click the dual pane icon in the header, or press **Ctrl+Shift+P** and type *Two file panes*). Put a local folder on one side and Google Drive on the other side.
+
+| Action | How to do it |
+| --- | --- |
+| **Copy from PC to Drive (Upload)** | Select local files $\rightarrow$ press **F5** (or drag and drop them onto the Google Drive pane). |
+| **Move from PC to Drive** | Select local files $\rightarrow$ press **F6** (or hold **Shift** while dragging them onto the Drive pane). |
+| **Copy from Drive to PC (Download)** | Select Drive files $\rightarrow$ press **F5** (or drag and drop them onto the local pane). |
+| **Move from Drive to PC** | Select Drive files $\rightarrow$ press **F6** (or hold **Shift** while dragging them onto the local pane). |
+| **Clipboard (Cut / Copy / Paste)** | Select items $\rightarrow$ **Ctrl+C** or **Ctrl+X** $\rightarrow$ switch to the other pane $\rightarrow$ **Ctrl+V**. |
+| **Context Menu** | Right-click selected items $\rightarrow$ **Copy to other pane (F5)** or **Move to other pane (F6)**. |
+
+#### 3. Automatic Google Workspace Document Export
+When you download Google Docs, Sheets, or Slides to your PC, boonsh automatically converts and exports them into standard open desktop formats:
+- **Google Docs** $\rightarrow$ `.docx` (Microsoft Word)
+- **Google Sheets** $\rightarrow$ `.xlsx` (Microsoft Excel)
+- **Google Slides** $\rightarrow$ `.pptx` (Microsoft PowerPoint)
+
+#### 4. Resumable Uploads & Large Files
+- Files $\le 5$ MB upload immediately via direct multipart upload.
+- Files $> 5$ MB automatically use chunked resumable upload in 8 MB chunks with `Content-Range` headers.
+- If a network glitch occurs or Google returns a temporary rate-limit (HTTP 429 or 5xx), boonsh automatically retries with exponential backoff.
+- The **Progress Card** at the bottom right shows uploaded bytes, percentage, current speed, and time remaining, with **Pause / Resume** and **Cancel** buttons.
+
+#### 5. Conflict Resolution (Clashes)
+If an uploaded or downloaded file has the same name as an existing file at the destination:
+- A conflict window displays both files (size, modified date, and which is newer).
+- Choose **Replace** (overwrites the destination file), **Keep Both** (automatically renames to `filename-02.ext`), or **Skip**.
+- Check **Do this for the remaining clashes** to apply your decision to all files in the batch.
+
+#### 6. Managing Drive Files
+- **Open in Browser**: Right-click any file or folder $\rightarrow$ **Open in Google Drive** opens the item directly in Google Drive in your web browser. Double-clicking a file also opens it in your default browser.
+- **New Folder**: Right-click empty space $\rightarrow$ **New $\rightarrow$ Folder** creates a folder remotely on Google Drive.
+- **Rename**: Select an item $\rightarrow$ press **F2** (or right-click $\rightarrow$ **Rename**) $\rightarrow$ type the new name $\rightarrow$ Enter.
+- **Delete**: Select items $\rightarrow$ press **Delete** (or right-click $\rightarrow$ **Delete**) to move them to Google Drive's trash.
+
+#### 7. Disconnecting
+To log out of Google Drive or switch accounts:
+1. Open Settings (gear icon) $\rightarrow$ **Google Drive**.
+2. Click **Disconnect**.
+3. All access tokens and credentials are deleted from Windows Credential Manager, and Google Drive paths are unlinked.
+
+---
+
+## 19. Mobile Drop & LAN File Sharing (`lan://mobile`)
+
+**boonsh Drop** provides instant, peer-to-peer file sharing between your Windows PC and mobile devices (iOS / Android) or other machines on the same local Wi-Fi network, completely bypassing cloud round-trips.
+
+---
+
+### 1. Core Architecture: The "PC Intermediate" Bridge
+
+When transferring files between your mobile phone, your PC, and Google Drive, boonsh uses your PC as a **secure intermediate staging and buffering bridge** ("PC Intermediate"):
+
+```
++--------------------+        Local Wi-Fi (LAN)        +--------------------+
+|                    | <-----------------------------> |                    |
+|    Mobile Phone    |                                 |   Windows PC       |
+|   (iOS / Android)  |                                 |  (PC Intermediate) |
+|                    |                                 |                    |
++--------------------+                                 +---------+----------+
+                                                                 |
+                                                                 | Internet / HTTPS
+                                                                 | OAuth 2.0
+                                                                 v
+                                                       +--------------------+
+                                                       |                    |
+                                                       |    Google Drive    |
+                                                       |      (Cloud)       |
+                                                       |                    |
+                                                       +--------------------+
+```
+
+#### Why is the PC Intermediate Bridge Essential?
+1. **Security & Credential Isolation**: Google OAuth 2.0 tokens and sensitive drive permissions reside solely on your PC in Windows Credential Manager. Your mobile phone never needs access to your Google account password or cloud credentials.
+2. **Zero Data Loss Guarantee**: Transfers are never streamed blind. Files are safely validated and buffered on the PC's local storage first before being sent onward to the cloud or mobile device. If your Wi-Fi or Internet disconnects mid-transfer, your files are never lost.
+3. **Mobile OS Sandboxing (Why Phone Downloads Must Be Tapped)**: iOS and Android security models strictly prohibit any local web server or PC from silently writing files directly into a phone's internal storage in the background. The phone browser presents a **`⬇ Save`** button that the user taps to give the operating system permission to save the file.
+
+---
+
+### 2. Uploading from Phone to PC (`Phone ➔ PC`)
+
+When you take a photo or select a file/document on your phone and tap **Upload** in the boonsh web portal, boonsh routes the file dynamically based on your current window layout:
+
+#### Case A: Dual-Pane Mode is Open (2nd File Panel Active)
+* **Destination Folder**: The file is saved directly into the folder currently open in the **2nd file panel** (the folder opposite to `Mobile Drop`).
+* **Real-Time Highlighting**: The instant the upload finishes, boonsh automatically refreshes that folder in the file panel and selects the newly arrived file.
+* **Phone Screen Feedback**: The phone's web portal dynamically displays:
+  > `Saving to: <Folder Name> on your PC` *(e.g. `Saving to: Projects on your PC`)*
+
+#### Case B: Single-Pane Mode (No 2nd File Panel)
+* **Destination Folder**: Uploads automatically default to your PC's official **Downloads** folder (`%USERPROFILE%\Downloads`).
+* **Phone Screen Feedback**: The phone's web portal dynamically displays:
+  > `Saving to: Downloads on your PC`
+
+#### Name Conflict Protection:
+If a file with the same name already exists in the destination folder, boonsh automatically appends an incremented number (e.g. `IMG_1024 (2).jpg`) so existing files are never overwritten.
+
+---
+
+### 3. Sending Files from PC to Phone (`PC ➔ Phone`)
+
+To transfer files, photos, or documents from your computer to your phone:
+
+1. **Stage Files on PC Intermediate**:
+   * Drag files into the **Mobile Drop** panel (`lan://mobile`), or select files in the opposite panel and press **F5** (Copy) or **F6** (Move).
+   * Boonsh stages these items on your PC's local disk (`AppData\Roaming\boonsh\lan_drop\outgoing`).
+2. **View on Mobile Web Screen**:
+   * Open the boonsh portal on your phone. All staged items appear in real time under **"Ready for Mobile"** with file size, name, and badge (`PDF`, `JPG`, etc.).
+3. **Save to Phone Storage**:
+   * Tap **`⬇ Save`** next to the file.
+   * The mobile browser downloads and saves the file directly into your phone's storage (the **Downloads** folder, iOS **Files app**, or photo gallery).
+
+---
+
+### 4. Google Drive and Mobile Phone (`Google Drive ⟷ Phone`)
+
+Because Google Drive requires cloud API authentication and mobile transfer runs over local Wi-Fi, transfers always bridge through the PC Intermediate:
+
+#### A. Google Drive ➔ Phone (`gdrive://... ➔ lan://mobile`)
+1. In boonsh, have Google Drive open in one pane and Mobile Drop in the other.
+2. Select files in Google Drive and press **F5** (or drag into Mobile Drop).
+3. **Automatic Google Docs to PDF Export**: 
+   * If the selected item is a **Google Doc, Google Sheet, or Google Slide**, boonsh automatically exports and converts it into a high-quality single-file **PDF**, ready for instant reading or sharing on LINE, WhatsApp, or email.
+   * Standard files (PDFs, images, ZIPs) download as-is.
+4. The exported PDF or file is buffered in the PC Intermediate staging folder and appears on your phone under **Ready for Mobile**.
+5. Tap **`⬇ Save`** on your phone to store the PDF on your device.
+
+#### B. Phone ➔ Google Drive (`lan://mobile ➔ gdrive://...`)
+* **Process Path**: `Phone ➔ PC Intermediate (Downloads) ➔ Google Drive`.
+* Direct upload from the phone into Google Drive through the web portal is intentionally prohibited to keep your Google credentials secure on the PC.
+* When the phone uploads a file while Google Drive is open in the second pane, the file lands safely in your PC's **`Downloads`** folder.
+* In boonsh, select the file in `Downloads` and press **F5** or **F6** to upload it into your Google Drive folder.
+
+---
+
+### 5. Transfer Matrix Reference
+
+| Transfer Direction | Intermediate PC Staging Area | Destination / Action Required |
+| :--- | :--- | :--- |
+| **Phone ➔ PC (Dual Pane)** | Directly routed | Lands in 2nd file panel folder automatically |
+| **Phone ➔ PC (Single Pane)** | Directly routed | Lands in `%USERPROFILE%\Downloads` automatically |
+| **PC ➔ Phone** | Staged in `lan_drop\outgoing` | Tap **`⬇ Save`** on phone |
+| **Google Drive ➔ Phone** | Staged in `lan_drop\outgoing` (Docs $\rightarrow$ PDF) | Tap **`⬇ Save`** on phone |
+| **Phone ➔ Google Drive** | Lands in `%USERPROFILE%\Downloads` | Press **F5 / F6** in boonsh to upload to Drive |
+
+---
+
+### 6. Pairing, Connecting, and Managing Mobile Drop
+
+#### First-Time Connection & QR Code
+1. Click **Mobile phone** under *This PC* in the folder tree, or open the path `lan://mobile`.
+2. A dynamic QR code is displayed on the file panel.
+3. Scan the QR code using:
+   * Your phone's native **Camera app**, or
+   * The **LINE app's QR scanner** (located at the top search bar in LINE).
+4. Tap the link to open the portal in your mobile browser.
+
+#### Permanent Connection (Persistent Pairing)
+* Toggle the **Permanent Connection** switch on your phone.
+* Boonsh generates a secure cryptographic token and stores it in your phone's browser storage (`localStorage`).
+* Next time you open boonsh, the panel will automatically display your file list without requiring you to re-scan the QR code.
+
+#### Add to Home Screen (Mobile Web App)
+* In iOS Safari: Tap the **Share** button $\rightarrow$ tap **Add to Home Screen**.
+* In Android Chrome: Tap the **Menu (⋮)** $\rightarrow$ tap **Add to Home screen** (or *Install app*).
+* Tapping the boonsh icon on your home screen launches a standalone, full-screen web app that instantly connects to your PC.
+
+#### Panel Toolbar Controls
+* **Show QR Code / Show File List**: Toggle between viewing the QR code (for connecting a new or guest device) and viewing staged files.
+* **Open Incoming Folder**: Opens the current PC destination folder (2nd pane folder or `Downloads`) directly in Windows Explorer.
+* **Clear All**: Clears staged files from the PC outgoing queue once you have finished downloading them to your phone.

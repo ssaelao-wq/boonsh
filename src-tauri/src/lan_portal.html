@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>boonsh Drop</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card-bg: #181b24;
+      --border: #282c39;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --primary: #10b981;
+      --primary-hover: #059669;
+      --primary-light: rgba(16, 185, 129, 0.15);
+      --pdf-color: #ef4444;
+      --pdf-light: rgba(239, 68, 68, 0.15);
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      padding: 16px;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+    }
+    .brand-title {
+      font-weight: 700;
+      font-size: 17px;
+      letter-spacing: -0.3px;
+    }
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .status-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 6px var(--primary);
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      gap: 12px;
+    }
+    .file-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+    .file-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 11px;
+      flex-shrink: 0;
+      text-transform: uppercase;
+    }
+    .file-badge.pdf {
+      background: var(--pdf-light);
+      color: var(--pdf-color);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .file-badge.generic {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .file-meta {
+      min-width: 0;
+      flex: 1;
+    }
+    .file-name {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-size {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .btn-download {
+      background: var(--primary);
+      color: #000;
+      font-weight: 600;
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .btn-download:active {
+      background: var(--primary-hover);
+      transform: scale(0.97);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 24px 12px;
+      color: var(--text-dim);
+      font-size: 13px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.01);
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .upload-zone:active {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+    .upload-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    .upload-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+    #fileInput {
+      display: none;
+    }
+
+    .permanent-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .permanent-text {
+      display: flex;
+      flex-direction: column;
+    }
+    .permanent-title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .permanent-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .toggle {
+      width: 44px;
+      height: 24px;
+      background: #334155;
+      border-radius: 12px;
+      position: relative;
+      transition: background 0.2s;
+    }
+    .toggle.active {
+      background: var(--primary);
+    }
+    .toggle-knob {
+      width: 20px;
+      height: 20px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s;
+    }
+    .toggle.active .toggle-knob {
+      transform: translateX(20px);
+    }
+
+    .pwa-tip {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 4px;
+    }
+    .progress-bar {
+      height: 4px;
+      background: var(--primary);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.2s;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <div class="brand-title">boonsh Drop</div>
+        <div class="brand-subtitle" id="computerName">Connecting to PC...</div>
+      </div>
+    </div>
+    <div class="status-badge" id="statusBadge">
+      <div class="status-dot"></div>
+      <span id="statusText">Connected</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>Ready for Mobile</span>
+      <span id="fileCount" style="color: var(--primary); font-weight: 700;">0 files</span>
+    </div>
+    <div class="file-list" id="outgoingList">
+      <div class="empty-state">
+        Waiting for files from your notebook...<br>
+        <span style="font-size: 11px; opacity: 0.8;">Drag files or Google Docs into the Mobile Drop panel in boonsh.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Send to Notebook</div>
+    <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+      <div style="font-size: 28px;">📤</div>
+      <div class="upload-title">Choose Photo or File</div>
+      <div class="upload-desc" id="uploadDesc">Sends directly into Downloads on your PC</div>
+      <div class="progress-bar" id="uploadProgress"></div>
+    </div>
+    <input type="file" id="fileInput" multiple onchange="handleFileUpload(this.files)">
+    <div class="file-list" id="incomingList" style="display: none;"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Device Pairing</div>
+    <div class="permanent-row" onclick="togglePermanentConnection()">
+      <div class="permanent-text">
+        <span class="permanent-title">Permanent Connection</span>
+        <span class="permanent-desc">Stay paired so you never have to scan again</span>
+      </div>
+      <div class="toggle" id="permanentToggle">
+        <div class="toggle-knob"></div>
+      </div>
+    </div>
+    <div class="pwa-tip">
+      💡 Tip: Tap <b>Share &gt; Add to Home Screen</b> in Safari / Chrome for 1-tap access!
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'boonsh_permanent_token';
+    const DEVICE_ID_KEY = 'boonsh_device_id';
+    let isPermanent = !!localStorage.getItem(STORAGE_KEY);
+    let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+
+    if (!deviceId) {
+      deviceId = 'phone_' + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem(DEVICE_ID_KEY, deviceId);
+    }
+
+    const toggleEl = document.getElementById('permanentToggle');
+    if (isPermanent) toggleEl.classList.add('active');
+
+    // Get session token from URL if present
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('t');
+    if (urlToken && !localStorage.getItem(STORAGE_KEY)) {
+      // Temporarily store in session
+      sessionStorage.setItem('boonsh_session_token', urlToken);
+    }
+
+    function getAuthToken() {
+      return localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem('boonsh_session_token') || urlToken || '';
+    }
+
+    async function togglePermanentConnection() {
+      const nextState = !isPermanent;
+      const token = getAuthToken();
+      try {
+        if (nextState) {
+          const res = await fetch('/api/pair', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({
+              deviceId: deviceId,
+              name: navigator.userAgent.includes('iPhone') ? 'iPhone' : (navigator.userAgent.includes('Android') ? 'Android' : 'Mobile Phone'),
+              permanent: true
+            })
+          });
+          const data = await res.json();
+          if (data.token) {
+            localStorage.setItem(STORAGE_KEY, data.token);
+            isPermanent = true;
+            toggleEl.classList.add('active');
+          }
+        } else {
+          // Tell the PC too, not just this phone: otherwise the token stays paired server-side forever, until
+          // someone finds and revokes it from boonsh's own Settings.
+          await fetch('/api/unpair', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ deviceId: deviceId })
+          });
+          localStorage.removeItem(STORAGE_KEY);
+          isPermanent = false;
+          toggleEl.classList.remove('active');
+        }
+      } catch (err) {
+        console.error('Pairing error', err);
+      }
+    }
+
+    async function fetchStatus() {
+      const token = getAuthToken();
+      try {
+        const res = await fetch('/api/status', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) {
+          document.getElementById('statusText').innerText = 'Unpaired';
+          document.getElementById('statusBadge').style.background = 'rgba(239, 68, 68, 0.15)';
+          document.getElementById('statusBadge').style.color = '#ef4444';
+          return;
+        }
+        const data = await res.json();
+        if (data.computerName) {
+          document.getElementById('computerName').innerText = data.computerName;
+        }
+        if (data.destinationFolder) {
+          document.getElementById('uploadDesc').innerText = `Saving to: ${data.destinationFolder} on your PC`;
+        }
+
+        renderOutgoing(data.outgoingFiles || []);
+        renderIncoming(data.incomingFiles || []);
+      } catch (e) {
+        console.warn('Status poll error', e);
+      }
+    }
+
+    function renderOutgoing(files) {
+      const container = document.getElementById('outgoingList');
+      document.getElementById('fileCount').innerText = files.length + (files.length === 1 ? ' file' : ' files');
+
+      if (!files || files.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            Waiting for files from your notebook...<br>
+            <span style="font-size: 11px; opacity: 0.8;">Drag files or Google Docs into the Mobile Drop panel in boonsh.</span>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = files.map(f => {
+        const isPdf = f.name.toLowerCase().endsWith('.pdf');
+        const badgeClass = isPdf ? 'pdf' : 'generic';
+        const badgeLabel = isPdf ? 'PDF' : (f.name.split('.').pop() || 'FILE');
+        const token = getAuthToken();
+        const downloadUrl = `/api/download/${encodeURIComponent(f.name)}?t=${encodeURIComponent(token)}`;
+
+        return `
+          <div class="file-item">
+            <div class="file-info">
+              <div class="file-badge ${badgeClass}">${badgeLabel}</div>
+              <div class="file-meta">
+                <div class="file-name" title="${f.name}">${f.name}</div>
+                <div class="file-size">${f.sizeFormatted || 'Ready'}</div>
+              </div>
+            </div>
+            <a class="btn-download" href="${downloadUrl}" download="${f.name}">
+              ⬇ Save
+            </a>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderIncoming(files) {
+      const container = document.getElementById('incomingList');
+      if (!files || files.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+      container.style.display = 'flex';
+      container.innerHTML = `
+        <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;">Sent to Notebook:</div>
+        ` + files.map(f => `
+          <div class="file-item" style="padding: 8px 12px;">
+            <div class="file-info">
+              <div class="file-badge generic" style="width: 28px; height: 28px; font-size: 9px;">✓</div>
+              <div class="file-meta">
+                <div class="file-name" style="font-size: 12px;">${f.name}</div>
+              </div>
+            </div>
+            <span style="font-size: 11px; color: var(--primary);">Uploaded</span>
+          </div>
+        `).join('');
+    }
+
+    // `fetch()` has no upload-progress event (only download), so a real byte-level bar needs XHR instead.
+    function uploadWithProgress(file, token, onProgress) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload?name=' + encodeURIComponent(file.name));
+        xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress(e.loaded / e.total);
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error('HTTP ' + xhr.status)));
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.send(file);
+      });
+    }
+
+    async function handleFileUpload(files) {
+      if (!files || files.length === 0) return;
+      const progressEl = document.getElementById('uploadProgress');
+      const token = getAuthToken();
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          await uploadWithProgress(file, token, (fraction) => {
+            progressEl.style.width = Math.round(fraction * 100) + '%';
+          });
+          progressEl.style.width = '100%';
+          setTimeout(() => { progressEl.style.width = '0%'; }, 600);
+        } catch (e) {
+          alert('Upload failed: ' + e.message);
+          progressEl.style.width = '0%';
+        }
+      }
+      fetchStatus();
+    }
+
+    // Initial poll & recurring updates every 2.5 seconds
+    fetchStatus();
+    setInterval(fetchStatus, 2500);
+  </script>
+</body>
+</html>

@@ -23,8 +23,12 @@ import {
   ShoppingBasket,
   Columns2,
   Command,
+  Cloud,
+  Smartphone,
 } from 'lucide-react';
 import { ViewMode } from '../types';
+import { isGDrivePath, getCachedGDriveFolderName, gdriveGetBreadcrumbs, GDriveBreadcrumb } from '../gdrive';
+import { isLanPath } from '../lan';
 
 // Cheat sheet for the search query language (parsed in src-tauri/src/search.rs)
 export const SEARCH_EXAMPLES: [string, string][] = [
@@ -140,6 +144,30 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     setPathInput(currentPath);
   }, [currentPath]);
 
+  // The full chain of ancestor folders down to currentPath, for "Google Drive > Development > ... > Phase2"
+  // (Drive ids are not nested strings like a local path, so the chain has to be asked for, not just split).
+  const [gdriveBreadcrumbs, setGdriveBreadcrumbs] = useState<GDriveBreadcrumb[]>([]);
+
+  useEffect(() => {
+    if (!isGDrivePath(currentPath) || currentPath === 'gdrive://root' || currentPath === 'gdrive:') {
+      setGdriveBreadcrumbs([]);
+      return;
+    }
+    // show something at once (just this folder's own name) while the full chain loads, instead of flashing
+    // empty or a stale chain from the folder navigated away from
+    const cached = getCachedGDriveFolderName(currentPath);
+    setGdriveBreadcrumbs([{ path: currentPath, name: cached || 'Folder' }]);
+    let cancelled = false;
+    gdriveGetBreadcrumbs(currentPath)
+      .then((chain) => {
+        if (!cancelled && chain.length > 0) setGdriveBreadcrumbs(chain);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPath]);
+
   const handleStartEditingPath = () => {
     setPathInput(currentPath);
     setIsEditingPath(true);
@@ -176,16 +204,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       <div className="header-actions">
         {/* Up directory button */}
         <button
-          onClick={() => (onUp ? onUp() : parentPath && onNavigate(parentPath))}
-          disabled={thisPC || (!onUp && !parentPath)}
+          onClick={() => (onUp ? onUp() : parentPath ? onNavigate(parentPath) : currentPath.startsWith('gdrive://') ? onNavigate('') : undefined)}
+          disabled={thisPC || (!onUp && !parentPath && !currentPath.startsWith('gdrive://'))}
           title={
             onUp && basketTrail
               ? 'Up: one level back in the basket, then out of it'
               : onUp
                 ? 'Up: This PC (all drives)'
-                : 'Go Up Directory'
+                : currentPath.startsWith('gdrive://') && !parentPath
+                  ? 'Up: This PC'
+                  : 'Go Up Directory'
           }
-          style={{ opacity: !thisPC && (onUp || parentPath) ? 1 : 0.4 }}
+          style={{ opacity: !thisPC && (onUp || parentPath || currentPath.startsWith('gdrive://')) ? 1 : 0.4 }}
         >
           <FolderUp size={16} style={{ color: '#f59e0b' }} />
         </button>
@@ -257,6 +287,49 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 <Monitor size={13} />
                 This PC
               </span>
+            ) : isLanPath(currentPath) ? (
+              <span
+                className="breadcrumb-segment"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigate('lan://mobile');
+                }}
+                title="Mobile Drop (lan://mobile)"
+              >
+                <Smartphone size={13} style={{ color: '#10b981' }} />
+                Mobile Drop
+              </span>
+            ) : isGDrivePath(currentPath) ? (
+              <>
+                <span
+                  className="breadcrumb-segment"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigate('gdrive://root');
+                  }}
+                  title="Google Drive (My Drive)"
+                >
+                  <Cloud size={13} style={{ color: '#38bdf8' }} />
+                  Google Drive
+                </span>
+                {gdriveBreadcrumbs.map((crumb) => (
+                  <React.Fragment key={crumb.path}>
+                    <ChevronRight size={12} className="breadcrumb-separator" />
+                    <span
+                      className="breadcrumb-segment"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNavigate(crumb.path);
+                      }}
+                      title={crumb.path}
+                    >
+                      {crumb.name}
+                    </span>
+                  </React.Fragment>
+                ))}
+              </>
             ) : segments.length === 0 ? (
               <span className="breadcrumb-segment">C:\</span>
             ) : (
@@ -351,6 +424,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           title={dualPane ? 'Back to one file pane' : 'Two file panes (F5 copies, F6 moves to the other pane, Tab switches)'}
         >
           <Columns2 size={14} style={{ color: '#f59e0b' }} />
+        </button>
+
+        {/* Mobile Drop: quick access to phone transfer & PDF export */}
+        <button
+          className={currentPath === 'lan://mobile' ? 'active' : ''}
+          onClick={() => onNavigate('lan://mobile')}
+          title="Mobile Drop: Transfer files & export Google Docs to PDF (lan://mobile)"
+        >
+          <Smartphone size={14} style={{ color: '#10b981' }} />
         </button>
 
         {/* Toggle Bottom Preview Drawer */}

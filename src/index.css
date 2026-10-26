@@ -1290,6 +1290,20 @@ input.search-bar-input:focus {
   width: 100% !important;
   /* FitAddon subtracts this padding, so one spare row stays empty under the prompt (it was clipped) */
   padding-bottom: 16px;
+  /* the margin where each command block's mark sits (green = worked, red = failed) */
+  padding-left: 10px;
+}
+
+/* A command block's mark, inside the block's divider decoration, moved out into the left padding */
+.command-block-mark {
+  position: absolute;
+  left: -8px;
+  top: 2px;
+  bottom: 2px;
+  width: 4px;
+  border-radius: 2px;
+  pointer-events: auto;
+  cursor: default;
 }
 
 .xterm-viewport {
@@ -3724,6 +3738,12 @@ button.paste-progress-btn {
   from { left: -30%; }
   to { left: 100%; }
 }
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 .paste-progress-text {
   display: flex;
   justify-content: space-between;
@@ -3802,4 +3822,37 @@ button.paste-progress-btn {
   align-items: center;
   gap: 6px;
   cursor: pointer;
+}
+
+/* Mobile Drop LAN action buttons (visible in both dark and light themes) */
+.lan-panel-btn {
+  background: var(--bg-panel-secondary, rgba(255, 255, 255, 0.08)) !important;
+  border: 1px solid var(--border-light, #3f3f46) !important;
+  color: var(--text-main) !important;
+  border-radius: 4px !important;
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-weight: 500 !important;
+  transition: background 0.15s ease, border-color 0.15s ease !important;
+}
+
+.lan-panel-btn:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-light, #71717a) !important;
+}
+
+.app-container.light-theme .lan-panel-btn {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.app-container.light-theme .lan-panel-btn:hover {
+  background: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+  color: #000000 !important;
 }

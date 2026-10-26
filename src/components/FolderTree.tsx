@@ -14,6 +14,8 @@ import {
   ExternalLink,
   RefreshCw,
   ShoppingBasket,
+  Cloud,
+  Smartphone,
 } from 'lucide-react';
 import { FileItem, FileListResult } from '../types';
 import { useMenuPosition } from '../useMenuPosition';
@@ -21,6 +23,7 @@ import { driveColor } from '../driveColors';
 import { DriveInfo, driveName, fullUsage, treeUsage } from '../drives';
 import { basketName, isBasket } from '../basket';
 import { fileAge as folderAge, FileAge as FolderAge, startOfToday } from '../fileAge';
+import { isGDrivePath, getGDriveConfig, GDriveConfig, formatStorageBytes, gdriveHasChildren } from '../gdrive';
 
 type Listing = { path: string; items: FileItem[] } | null;
 
@@ -51,6 +54,7 @@ interface FolderTreeNodeProps {
   tooltip?: string; // replaces the path as the row's tooltip
   depth?: number;
   isDrive?: boolean;
+  icon?: React.ReactNode; // overrides the drive/folder icon (the Google Drive root row)
 }
 
 const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
@@ -72,6 +76,7 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   tooltip,
   depth = 0,
   isDrive = false,
+  icon,
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [children, setChildren] = useState<FileItem[]>([]);
@@ -114,19 +119,36 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
   // Ask which child folders have sub-folders, whenever the list changes or this folder is listed again (F5,
   // a change on disk), so the arrows stay true.
   useEffect(() => {
-    const folders = children.filter((c) => c.is_dir);
-    if (folders.length === 0) return;
+    // `tree_has_children`/`tree_newest` walk the local filesystem, so a gdrive:// "path" just fails to open;
+    // Drive folders go through `gdrive_has_children` instead (one lightweight request per folder, not a
+    // combined query sharing one pageSize: a single busy folder could otherwise fill the page and make the
+    // other, genuinely non-empty ones look empty too). "Newest below" has no Drive equivalent yet, so a Drive
+    // subfolder's own tree colour still only ever comes from its own date, never from something inside it not
+    // yet opened — a smaller, accepted gap than the arrow always showing used to be.
+    const allFolders = children.filter((c) => c.is_dir);
+    if (allFolders.length === 0) return;
+    const localFolders = allFolders.filter((c) => !isGDrivePath(c.path));
+    const driveFolders = allFolders.filter((c) => isGDrivePath(c.path));
     let stale = false;
-    invoke<boolean[]>('tree_has_children', { paths: folders.map((c) => c.path) })
-      .then((res) => {
-        if (!stale) setKidsOf(Object.fromEntries(folders.map((c, i) => [c.path, res[i]])));
-      })
-      .catch(() => {});
-    invoke<number[]>('tree_newest', { paths: folders.map((c) => c.path), since: startOfToday() })
-      .then((res) => {
-        if (!stale) setNewestOf(Object.fromEntries(folders.map((c, i) => [c.path, res[i]])));
-      })
-      .catch(() => {});
+    if (localFolders.length > 0) {
+      invoke<boolean[]>('tree_has_children', { paths: localFolders.map((c) => c.path) })
+        .then((res) => {
+          if (!stale) setKidsOf((prev) => ({ ...prev, ...Object.fromEntries(localFolders.map((c, i) => [c.path, res[i]])) }));
+        })
+        .catch(() => {});
+      invoke<number[]>('tree_newest', { paths: localFolders.map((c) => c.path), since: startOfToday() })
+        .then((res) => {
+          if (!stale) setNewestOf((prev) => ({ ...prev, ...Object.fromEntries(localFolders.map((c, i) => [c.path, res[i]])) }));
+        })
+        .catch(() => {});
+    }
+    if (driveFolders.length > 0) {
+      gdriveHasChildren(driveFolders.map((c) => c.path))
+        .then((res) => {
+          if (!stale) setKidsOf((prev) => ({ ...prev, ...Object.fromEntries(driveFolders.map((c, i) => [c.path, res[i]])) }));
+        })
+        .catch(() => {});
+    }
     return () => {
       stale = true;
     };
@@ -216,7 +238,9 @@ const FolderTreeNode: React.FC<FolderTreeNodeProps> = ({
           <span className="tree-caret tree-caret-none" />
         )}
 
-        {isDrive ? (
+        {icon ? (
+          icon
+        ) : isDrive ? (
           <HardDrive size={13} style={{ color: driveColor(path) }} />
         ) : (
           // the file panel's folder (MainFilePanel getFileIcon): 16 px, a one-screen-pixel line; coloured by when it
@@ -326,6 +350,17 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
     name: string;
   } | null>(null);
   const menuPos = useMenuPosition(contextMenu);
+  // Shown as a drive-like entry below the local drives, same as This PC's own card; re-checked on window focus
+  // since connecting/disconnecting happens in Settings while this tree stays mounted the whole time.
+  const [gdriveConfig, setGdriveConfig] = useState<GDriveConfig | null>(null);
+  useEffect(() => {
+    const load = () => {
+      getGDriveConfig().then(setGdriveConfig).catch(() => {});
+    };
+    load();
+    window.addEventListener('focus', load);
+    return () => window.removeEventListener('focus', load);
+  }, []);
   const [showNewSubmenu, setShowNewSubmenu] = useState<boolean>(false);
   const [showShortcutModal, setShowShortcutModal] = useState<{
     name: string;
@@ -380,7 +415,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
       onAddQuickAccess({
         label: contextMenu.name,
         path: contextMenu.path,
-        icon_type: 'folder',
+        icon_type: isGDrivePath(contextMenu.path) ? 'gdrive' : 'folder',
       });
     }
     setContextMenu(null);
@@ -474,6 +509,45 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             isDrive={true}
           />
         ))}
+
+        {gdriveConfig?.connected && (
+          <FolderTreeNode
+            key="gdrive-root"
+            name="Google Drive"
+            path="gdrive://root"
+            usage={
+              gdriveConfig.quota_limit
+                ? `Used ${formatStorageBytes(gdriveConfig.quota_usage)}/${formatStorageBytes(gdriveConfig.quota_limit)}`
+                : undefined
+            }
+            tooltip={`Google Drive (${gdriveConfig.account_name || gdriveConfig.account_email || 'Connected'})`}
+            currentPath={currentPath}
+            listing={listing}
+            onNavigate={onNavigate}
+            onOpenBasket={onOpenBasket}
+            openBasketPath={openBasketPath}
+            onContextMenu={handleContextMenu}
+            depth={1}
+            isDrive={true}
+            icon={<Cloud size={13} style={{ color: '#38bdf8' }} />}
+          />
+        )}
+
+        <FolderTreeNode
+          key="lan-mobile"
+          name="Mobile Drop"
+          path="lan://mobile"
+          tooltip="Mobile Drop: Transfer files & export Google Docs to PDF over Wi-Fi"
+          currentPath={currentPath}
+          listing={listing}
+          onNavigate={onNavigate}
+          onOpenBasket={onOpenBasket}
+          openBasketPath={openBasketPath}
+          onContextMenu={handleContextMenu}
+          depth={1}
+          isDrive={true}
+          icon={<Smartphone size={13} style={{ color: '#10b981' }} />}
+        />
       </div>
 
       {/* Right Click Context Menu Popup */}
@@ -514,23 +588,29 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
                     <FolderPlus size={13} style={{ color: 'var(--text-muted)' }} />
                     <span>Folder</span>
                   </div>
-                  <div className="context-menu-item" onClick={handleCreateTextFile}>
-                    <FilePlus size={13} style={{ color: 'var(--text-muted)' }} />
-                    <span>Text Document</span>
-                  </div>
-                  <div className="context-menu-item" onClick={handleOpenShortcutModal}>
-                    <Link size={13} style={{ color: 'var(--text-muted)' }} />
-                    <span>Shortcut</span>
-                  </div>
-                  {onCreateBasket && (
-                    <div
-                      className="context-menu-item"
-                      onClick={handleCreateBasket}
-                      title="A basket holds links to files and folders from anywhere"
-                    >
-                      <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
-                      <span>Basket</span>
-                    </div>
+                  {/* A text file, a shortcut and a basket are all local-filesystem things; Google Drive only
+                      gets a remote folder (handleCreateFolder already routes to gdrive_create_folder) */}
+                  {!isGDrivePath(contextMenu.path) && (
+                    <>
+                      <div className="context-menu-item" onClick={handleCreateTextFile}>
+                        <FilePlus size={13} style={{ color: 'var(--text-muted)' }} />
+                        <span>Text Document</span>
+                      </div>
+                      <div className="context-menu-item" onClick={handleOpenShortcutModal}>
+                        <Link size={13} style={{ color: 'var(--text-muted)' }} />
+                        <span>Shortcut</span>
+                      </div>
+                      {onCreateBasket && (
+                        <div
+                          className="context-menu-item"
+                          onClick={handleCreateBasket}
+                          title="A basket holds links to files and folders from anywhere"
+                        >
+                          <ShoppingBasket size={13} style={{ color: 'var(--basket-color)' }} />
+                          <span>Basket</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
