@@ -1,11 +1,14 @@
 # boonsh Features Specification and User Manual
 
-This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.8**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
+This document describes everything boonsh can do, how to use it, and where its limits are. It describes **version 0.10.9**. For what changed in each release see `RELEASE.md`. For how the code is built see `CLAUDE.md`.
 
 **boonsh** is a Windows desktop app that puts a file manager and a PowerShell terminal side by side. Browse folders on the left, type commands on the right, and the two stay in sync.
 
 **License.** boonsh is **free software under the MIT License**: anyone may use, copy, change and share it, for free, as long as the copyright line and the license text stay with it. There is no warranty. The text is in the file `LICENSE` ("Copyright (c) 2026 Somboon L."), it is shown by the Windows installer, and it is in the app under Settings, **About** (section 10). The licenses of the libraries boonsh is built with are in `THIRD_PARTY_LICENSES.txt`, which the installer puts next to the app. Downloads (the installers) are on the project's GitHub **Releases** page: https://github.com/ssaelao-wq/boonsh/releases.
 
+> **New in 0.10.9**
+> - [Mobile Drop & LAN File Sharing](#19-mobile-drop--lan-file-sharing-lanmobile): uploading from your phone now goes straight to Google Drive in one step when a Drive folder is open in the other pane — no more manual move out of Downloads.
+>
 > **New in 0.10.8**
 > - [Google Drive Integration](#18-google-drive-integration): browse and manage Google Drive files directly inside boonsh's 2-panel interface. Copy and move files bidirectionally between your PC and Google Drive with **F5 / F6**, drag-and-drop, or clipboard; resumable uploads, workspace document exports (.docx, .xlsx, .pptx), conflict resolution dialogs, and secure OAuth 2.0 PKCE authentication with Windows Credential Manager.
 > - [Mobile Drop & LAN File Sharing](#19-mobile-drop--lan-file-sharing-lanmobile): instant, peer-to-peer file sharing between your Windows PC and mobile devices (iPhone, iPad, Android) over local Wi-Fi with zero app install. Includes dynamic dual-pane destination routing, automatic Google Docs to PDF exports, persistent pairing with LINE QR code support, and seamless buffering through the PC Intermediate staging architecture.
@@ -1641,10 +1644,11 @@ Because Google Drive requires cloud API authentication and mobile transfer runs 
 5. Tap **`⬇ Save`** on your phone to store the PDF on your device.
 
 #### B. Phone ➔ Google Drive (`lan://mobile ➔ gdrive://...`)
-* **Process Path**: `Phone ➔ PC Intermediate (Downloads) ➔ Google Drive`.
-* Direct upload from the phone into Google Drive through the web portal is intentionally prohibited to keep your Google credentials secure on the PC.
-* When the phone uploads a file while Google Drive is open in the second pane, the file lands safely in your PC's **`Downloads`** folder.
-* In boonsh, select the file in `Downloads` and press **F5** or **F6** to upload it into your Google Drive folder.
+* Direct upload from the phone straight into Google Drive is intentionally prohibited — your Google credentials stay on the PC — so the PC is always the one that actually talks to Drive. What changes is whether *you* have to do that step by hand.
+* **One step (recommended): open Google Drive in the other pane.** When Mobile Drop is in one pane and a Google Drive folder is open in the other, a phone upload is forwarded straight into that Drive folder as soon as it finishes — no manual F5/F6 needed. The phone's web portal shows `Saving to: Google Drive — <Folder Name>`, and boonsh shows a toast once the file is on Drive.
+  * If the forward to Drive fails (offline, token expired, etc.), the file is kept on the PC instead — it shows up in Mobile Drop's incoming list so nothing is lost — and a toast says the forward failed.
+  * Switching the other pane away from a Drive folder (or closing dual-pane) reverts new uploads to the normal PC destination (2nd panel or Downloads) immediately.
+* **Two steps (no Drive pane open): `Phone ➔ Downloads ➔ Google Drive`.** With Mobile Drop open alone (or paired with a plain local folder), an upload lands in `Downloads` as usual; select it there and press **F5** or **F6** to upload it into your Google Drive folder.
 
 ---
 
@@ -1656,7 +1660,8 @@ Because Google Drive requires cloud API authentication and mobile transfer runs 
 | **Phone ➔ PC (Single Pane)** | Directly routed | Lands in `%USERPROFILE%\Downloads` automatically |
 | **PC ➔ Phone** | Staged in `lan_drop\outgoing` | Tap **`⬇ Save`** on phone |
 | **Google Drive ➔ Phone** | Staged in `lan_drop\outgoing` (Docs $\rightarrow$ PDF) | Tap **`⬇ Save`** on phone |
-| **Phone ➔ Google Drive** | Lands in `%USERPROFILE%\Downloads` | Press **F5 / F6** in boonsh to upload to Drive |
+| **Phone ➔ Google Drive (Drive pane open)** | Staged briefly in `lan_drop\gdrive_inbox`, forwarded automatically | None — lands on Drive on its own; a toast confirms it |
+| **Phone ➔ Google Drive (no Drive pane open)** | Lands in `%USERPROFILE%\Downloads` | Press **F5 / F6** in boonsh to upload to Drive |
 
 ---
 

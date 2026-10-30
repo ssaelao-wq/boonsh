@@ -23,6 +23,8 @@ export interface LanStatus {
   incoming_dir: string;
   incoming_label: string;
   is_second_pane: boolean;
+  gdrive_upload_dest?: string | null;
+  gdrive_upload_dest_label?: string | null;
   is_client_connected: boolean;
   connected_client_name?: string;
 }
@@ -65,6 +67,12 @@ export async function setLanIncomingDir(path: string | null): Promise<LanStatus>
   return await invoke<LanStatus>('lan_set_incoming_dir', { path });
 }
 
+/** Sets (or clears) the Google Drive folder phone uploads are forwarded into; always clears any local
+ *  `setLanIncomingDir` destination too, since the two are alternatives, never both at once (lan_share.rs). */
+export async function setLanGDriveUploadDest(dest: string | null): Promise<LanStatus> {
+  return await invoke<LanStatus>('lan_set_gdrive_upload_dest', { dest });
+}
+
 export function resolveLanIncomingDestination(
   dual: boolean,
   currentPath?: string | null,
@@ -80,5 +88,18 @@ export function resolveLanIncomingDestination(
     // If dual panes are both regular folders, the second file panel (other pane) is the destination
     return otherPath;
   }
+  return null;
+}
+
+/** The Google Drive counterpart of `resolveLanIncomingDestination`: when Mobile Drop is paired in dual-pane
+ *  with a Drive folder on the other side, phone uploads forward straight into it instead of landing locally. */
+export function resolveLanGDriveDestination(
+  dual: boolean,
+  currentPath?: string | null,
+  otherPath?: string | null
+): string | null {
+  if (!dual) return null;
+  if (isLanPath(currentPath) && otherPath && isGDrivePath(otherPath)) return otherPath;
+  if (isLanPath(otherPath) && currentPath && isGDrivePath(currentPath)) return currentPath;
   return null;
 }

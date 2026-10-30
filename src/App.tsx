@@ -52,7 +52,7 @@ import { Side, sameFolder, transferProblem, transferQuestion } from './dualPane'
 import { useUpdater } from './hooks/useUpdater';
 import { UpdateNotice } from './components/UpdateNotice';
 import { isGDrivePath, cacheGDriveFolderNames, getCachedGDriveFolderName, gdriveOpenInBrowser } from './gdrive';
-import { isLanPath, resolveLanIncomingDestination, setLanIncomingDir } from './lan';
+import { isLanPath, resolveLanIncomingDestination, resolveLanGDriveDestination, setLanIncomingDir, setLanGDriveUploadDest } from './lan';
 
 // The app's state lives here and in the hooks of src/hooks (one per area: command line tabs, commands and
 // variables, view settings, file details, folder sizes, paste, smaller panels). What stays here is the core that
@@ -738,10 +738,16 @@ export function App() {
     if (otherPane && sameFolder(otherPane.path, dest)) reloadOther(selectPaths);
   }
 
-  // Synchronize Mobile Drop destination folder with the second file pane (when dual) or Downloads (default)
+  // Synchronize Mobile Drop's upload destination with the other pane: a Drive folder there forwards phone
+  // uploads straight into Drive; a plain folder (or none) falls back to the second-pane/Downloads behavior.
   useEffect(() => {
-    const dest = resolveLanIncomingDestination(dual, currentPath, otherPane?.path);
-    setLanIncomingDir(dest).catch(() => {});
+    const gdriveDest = resolveLanGDriveDestination(dual, currentPath, otherPane?.path);
+    if (gdriveDest) {
+      setLanGDriveUploadDest(gdriveDest).catch(() => {});
+    } else {
+      const dest = resolveLanIncomingDestination(dual, currentPath, otherPane?.path);
+      setLanIncomingDir(dest).catch(() => {});
+    }
   }, [dual, currentPath, otherPane?.path]);
 
   // When a file is uploaded from mobile phone, reload the matching pane and select the newly received file
@@ -756,6 +762,30 @@ export function App() {
     });
     return () => {
       unlisten.then((f) => f());
+    };
+  }, [otherPane]);
+
+  // A phone upload forwarded straight to Google Drive (or failed to, and was kept locally instead)
+  useEffect(() => {
+    const unlistenOk = listen<{ name: string; gdrivePath: string; label: string }>('lan-file-forwarded', (event) => {
+      toast(`Received ${event.payload.name} — sent to Google Drive (${event.payload.label})`);
+      if (isGDrivePath(currentPathRef.current)) {
+        fetchDirectory(currentPathRef.current, [event.payload.gdrivePath]);
+      } else if (otherPane && isGDrivePath(otherPane.path)) {
+        reloadOther([event.payload.gdrivePath]);
+      }
+    });
+    const unlistenFail = listen<{ name: string; path: string; label: string; error: string }>('lan-file-forward-failed', (event) => {
+      toast(`Couldn't send ${event.payload.name} to Google Drive — kept on this PC instead`);
+      if (sameFolder(currentPathRef.current, 'lan://mobile')) {
+        fetchDirectory('lan://mobile', [event.payload.path]);
+      } else if (otherPane && sameFolder(otherPane.path, 'lan://mobile')) {
+        reloadOther([event.payload.path]);
+      }
+    });
+    return () => {
+      unlistenOk.then((f) => f());
+      unlistenFail.then((f) => f());
     };
   }, [otherPane]);
   // F5 / F6 (and a drop): copy or move to the other pane. In an open basket only its linked items go.

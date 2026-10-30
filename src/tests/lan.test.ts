@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLanPath, resolveLanIncomingDestination } from '../lan';
+import { isLanPath, resolveLanIncomingDestination, resolveLanGDriveDestination } from '../lan';
 import { sameFolder, transferQuestion } from '../dualPane';
 
 describe('LAN file sharing helpers', () => {
@@ -47,5 +47,22 @@ describe('LAN file sharing helpers', () => {
     // Dual pane: other pane is GDrive or invalid -> returns null (defaults to Downloads)
     expect(resolveLanIncomingDestination(true, 'lan://mobile', 'gdrive://root')).toBeNull();
     expect(resolveLanIncomingDestination(true, 'lan://mobile', null)).toBeNull();
+  });
+
+  it('resolves a Google Drive upload destination only when paired with Mobile Drop in dual-pane', () => {
+    // Single pane: never a Drive destination
+    expect(resolveLanGDriveDestination(false, 'lan://mobile', 'gdrive://root')).toBeNull();
+
+    // Dual pane: Mobile Drop in active pane, other pane is a Drive folder
+    expect(resolveLanGDriveDestination(true, 'lan://mobile', 'gdrive://folderABC')).toBe('gdrive://folderABC');
+
+    // Dual pane: Mobile Drop in second pane, active pane is a Drive folder
+    expect(resolveLanGDriveDestination(true, 'gdrive://folderABC', 'lan://mobile')).toBe('gdrive://folderABC');
+
+    // Dual pane: other pane is a plain local folder, not Drive -> null (falls back to resolveLanIncomingDestination)
+    expect(resolveLanGDriveDestination(true, 'lan://mobile', 'D:\\Projects')).toBeNull();
+
+    // Dual pane: neither side is Mobile Drop -> null
+    expect(resolveLanGDriveDestination(true, 'C:\\PaneA', 'gdrive://folderABC')).toBeNull();
   });
 });

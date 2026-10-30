@@ -368,7 +368,12 @@ export const LanPanelEmptyView: React.FC<LanPanelEmptyViewProps> = ({ onRefresh,
         </div>
         <div>• <b>Why is this panel empty?</b> Mobile browsers cannot browse your phone's internal storage directly for privacy/security. This panel acts as your <b>Transfer Bridge</b>.</div>
         <div>• Google Docs in Google Drive are <b>automatically converted to PDF</b> when transferred.</div>
-        {status?.incoming_dir && (
+        {status?.gdrive_upload_dest && (
+          <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
+            • Phone uploads are forwarded straight to Drive — nothing is kept on this PC unless a forward fails.
+          </div>
+        )}
+        {status?.incoming_dir && !status?.gdrive_upload_dest && (
           <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(255, 255, 255, 0.05)', wordBreak: 'break-all' }}>
             • Incoming folder: <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{status.incoming_dir}</span>
           </div>

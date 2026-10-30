@@ -151,6 +151,7 @@ pub fn run() {
             lan_share::lan_share_files,
             lan_share::lan_open_incoming_folder,
             lan_share::lan_set_incoming_dir,
+            lan_share::lan_set_gdrive_upload_dest,
         ])
         .build(tauri::generate_context!())
         .expect("error while running boonsh tauri application")

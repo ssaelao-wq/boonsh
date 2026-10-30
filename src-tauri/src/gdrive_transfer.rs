@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
-use crate::gdrive::{cache_folder_name, is_gdrive_path, parse_gdrive_id};
+use crate::gdrive::{cache_folder_name, get_cached_folder_name, is_gdrive_path, parse_gdrive_id};
 use crate::gdrive_auth::get_valid_access_token;
 use crate::paste::{keep_both_name, rename_over, split_name, unix_secs, unregister_job, Choice, Clash, PasteResult, Progress};
 
@@ -1277,6 +1277,64 @@ pub async fn download_gdrive_to_lan_as_pdf(gdrive_uri: &str, dest_local_dir: &Pa
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
     fs::write(&target_path, &bytes).map_err(|e| e.to_string())?;
     Ok(Some(target_path.to_string_lossy().to_string()))
+}
+
+/// The display name of a Drive folder, for showing where Mobile Drop uploads are being forwarded to. The
+/// folder cache is warm whenever the user picked it by opening it in a pane (`list_gdrive_directory` caches
+/// a folder's own name), so this is normally free; a cache miss (picked some other way) costs one lookup.
+pub async fn gdrive_folder_label(uri: &str) -> Result<String, String> {
+    let id = parse_gdrive_id(uri);
+    if id == "root" {
+        return Ok("My Drive".to_string());
+    }
+    if let Some(name) = get_cached_folder_name(id) {
+        return Ok(name);
+    }
+    let token = get_valid_access_token().await?;
+    let client = reqwest::Client::new();
+    let meta = fetch_item_meta(&client, &token, id).await?;
+    cache_folder_name(id, &meta.name);
+    Ok(meta.name)
+}
+
+/// Uploads a file already sitting on local disk into a Google Drive folder, for Mobile Drop's
+/// "forward phone uploads straight to Drive" destination: the phone's bytes still have to land on local
+/// disk first (the LAN server only speaks plain HTTP), but the local copy is meant to be invisible scratch
+/// space, not a file the user has to notice and move themselves.
+///
+/// `is_move: true` reuses `upload_item`'s own move semantics, so the local copy is only ever removed once
+/// the Drive upload has actually succeeded — a failed forward leaves the file in place, nothing is lost.
+pub async fn upload_local_file_to_gdrive_folder(
+    app: AppHandle,
+    local_path: PathBuf,
+    dest_folder_uri: String,
+) -> Result<String, String> {
+    let token = get_valid_access_token().await?;
+    let client = reqwest::Client::new();
+    let dest_folder_id = parse_gdrive_id(&dest_folder_uri);
+    let children = fetch_folder_children(&client, &token, dest_folder_id).await.unwrap_or_default();
+    let mut dest_items_map: HashMap<String, GDriveItemMeta> =
+        children.into_iter().map(|c| (c.name.to_lowercase(), c)).collect();
+
+    let mut ctx = AsyncCtx {
+        job: 0,
+        cancel: Arc::new(AtomicBool::new(false)),
+        pause: Arc::new(AtomicBool::new(false)),
+        app,
+        interval: Duration::from_millis(100),
+        last: Instant::now(),
+        phase: "copy",
+        total_bytes: 0,
+        done_bytes: 0,
+        file_bytes: 0,
+        done_items: 0,
+        total_items: 1,
+        current: String::new(),
+    };
+
+    upload_item(&client, &token, &local_path, dest_folder_id, true, Choice::Keep, &mut dest_items_map, &mut ctx)
+        .await?
+        .ok_or_else(|| "Upload was skipped".to_string())
 }
 
 #[cfg(test)]

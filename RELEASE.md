@@ -2,6 +2,11 @@
 
 New features and fixes of each boonsh release, newest first. Changes go under **Unreleased** as they are made, and move under a version heading when the version is bumped.
 
+## 0.10.9 (2026-10-27)
+
+### Added
+- **Mobile → Google Drive in one step.** Open Mobile Drop in one pane and a Google Drive folder in the other (dual-pane); phone uploads now forward straight into that Drive folder instead of landing on the PC first and waiting to be moved by hand. A toast confirms where each file went; if the forward fails, the file is kept on the PC (visible in Mobile Drop's incoming list, not lost) and a toast says so.
+
 ## 0.10.8 (2026-10-26)
 
 ### Added

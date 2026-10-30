@@ -53,6 +53,8 @@ pub struct LanStatus {
     pub incoming_dir: String,
     pub incoming_label: String,
     pub is_second_pane: bool,
+    pub gdrive_upload_dest: Option<String>,
+    pub gdrive_upload_dest_label: Option<String>,
     pub is_client_connected: bool,
     pub connected_client_name: Option<String>,
 }
@@ -65,6 +67,10 @@ struct LanState {
     active_token: String,
     paired_devices: Vec<PairedDevice>,
     custom_incoming_dir: Option<PathBuf>,
+    // When set, a phone upload is forwarded straight into this Drive folder instead of staying in
+    // `incoming_dir()`; mutually exclusive with `custom_incoming_dir` (setting either clears the other).
+    gdrive_upload_dest: Option<String>,
+    gdrive_upload_dest_label: Option<String>,
     uploaded_files: Vec<UploadedFileRecord>,
     last_client_seen: Option<Instant>,
     last_client_name: Option<String>,
@@ -90,6 +96,8 @@ fn get_state() -> &'static Arc<Mutex<LanState>> {
             active_token: token,
             paired_devices: paired,
             custom_incoming_dir: None,
+            gdrive_upload_dest: None,
+            gdrive_upload_dest_label: None,
             uploaded_files: load_uploaded_files(),
             last_client_seen: None,
             last_client_name: None,
@@ -169,6 +177,16 @@ pub fn lan_drop_dir() -> PathBuf {
 
 pub fn outgoing_dir() -> PathBuf {
     let p = lan_drop_dir().join("outgoing");
+    let _ = fs::create_dir_all(&p);
+    p
+}
+
+/// Scratch landing spot for a phone upload that is about to be forwarded to Google Drive: kept separate from
+/// `incoming_dir()` (Downloads / the second pane) so a forwarded file never appears there, even briefly — it
+/// is implementation detail, not a place the user is meant to notice or manage. A file only stays here when
+/// its forward to Drive failed, so the user can still find and retry it.
+pub fn gdrive_inbox_dir() -> PathBuf {
+    let p = lan_drop_dir().join("gdrive_inbox");
     let _ = fs::create_dir_all(&p);
     p
 }
@@ -274,7 +292,10 @@ pub fn lan_get_status() -> LanStatus {
     let qr_url = format!("http://{}:{}/?t={}", state.lan_ip, state.port, state.active_token);
     let mdns_url = format!("http://{}.local:{}/?t={}", state.hostname.to_lowercase(), state.port, state.active_token);
 
-    let (incoming_dir, incoming_label, is_second_pane) = if let Some(ref d) = state.custom_incoming_dir {
+    let (incoming_dir, incoming_label, is_second_pane) = if state.gdrive_upload_dest.is_some() {
+        let label = state.gdrive_upload_dest_label.clone().unwrap_or_else(|| "Google Drive".to_string());
+        (format!("Google Drive — {}", label), format!("Google Drive — {}", label), false)
+    } else if let Some(ref d) = state.custom_incoming_dir {
         if d.exists() && d.is_dir() {
             let label = d.file_name().and_then(|s| s.to_str()).unwrap_or("Second Pane").to_string();
             (d.to_string_lossy().to_string(), label, true)
@@ -312,6 +333,8 @@ pub fn lan_get_status() -> LanStatus {
         incoming_dir,
         incoming_label,
         is_second_pane,
+        gdrive_upload_dest: state.gdrive_upload_dest.clone(),
+        gdrive_upload_dest_label: state.gdrive_upload_dest_label.clone(),
         is_client_connected,
         connected_client_name,
     }
@@ -325,6 +348,30 @@ pub fn lan_set_incoming_dir(path: Option<String>) -> Result<LanStatus, String> {
         state.custom_incoming_dir = path
             .filter(|p| !p.trim().is_empty() && !is_lan_path(p) && !crate::gdrive::is_gdrive_path(p))
             .map(PathBuf::from);
+        // A local destination and a Drive destination are alternatives, never both at once.
+        state.gdrive_upload_dest = None;
+        state.gdrive_upload_dest_label = None;
+    }
+    Ok(lan_get_status())
+}
+
+/// Sets (or clears) the Google Drive folder that phone uploads are forwarded into. Always clears the local
+/// `custom_incoming_dir` too (see `lan_set_incoming_dir`) — the two are alternatives, not layered.
+#[tauri::command]
+pub async fn lan_set_gdrive_upload_dest(dest: Option<String>) -> Result<LanStatus, String> {
+    let resolved = match dest {
+        Some(ref d) if crate::gdrive::is_gdrive_path(d) => {
+            let label = crate::gdrive_transfer::gdrive_folder_label(d).await.unwrap_or_else(|_| "Google Drive".to_string());
+            Some((d.clone(), label))
+        }
+        _ => None,
+    };
+    let state_arc = get_state();
+    {
+        let mut state = state_arc.lock().unwrap();
+        state.custom_incoming_dir = None;
+        state.gdrive_upload_dest = resolved.as_ref().map(|(d, _)| d.clone());
+        state.gdrive_upload_dest_label = resolved.map(|(_, l)| l);
     }
     Ok(lan_get_status())
 }
@@ -426,7 +473,10 @@ pub fn lan_clear_staging() -> Result<(), String> {
 
 #[tauri::command]
 pub fn lan_open_incoming_folder() -> Result<(), String> {
-    let p = incoming_dir();
+    // When forwarding to Drive, `incoming_dir()` (Downloads / second pane) isn't where anything actually
+    // lands — open the scratch folder instead, so a file stuck there after a failed forward can be found.
+    let is_gdrive = get_state().lock().unwrap().gdrive_upload_dest.is_some();
+    let p = if is_gdrive { gdrive_inbox_dir() } else { incoming_dir() };
     fs_ops::open_in_default_app(p.to_string_lossy().to_string())
 }
 
@@ -604,7 +654,9 @@ async fn handle_connection(
     if path == "/api/status" {
         let (hostname, uploaded, dest_label) = {
             let state = state_arc.lock().unwrap();
-            let label = if let Some(ref d) = state.custom_incoming_dir {
+            let label = if let Some(ref gdrive_label) = state.gdrive_upload_dest_label {
+                format!("Google Drive — {}", gdrive_label)
+            } else if let Some(ref d) = state.custom_incoming_dir {
                 if d.exists() && d.is_dir() {
                     d.file_name().and_then(|s| s.to_str()).unwrap_or("Second Pane").to_string()
                 } else {
@@ -804,7 +856,14 @@ async fn handle_connection(
             )
         });
 
-        let dest_dir = incoming_dir();
+        let gdrive_forward = {
+            let state = state_arc.lock().unwrap();
+            state
+                .gdrive_upload_dest
+                .clone()
+                .map(|dest| (dest, state.gdrive_upload_dest_label.clone().unwrap_or_else(|| "Google Drive".to_string())))
+        };
+        let dest_dir = if gdrive_forward.is_some() { gdrive_inbox_dir() } else { incoming_dir() };
         let _ = fs::create_dir_all(&dest_dir);
         let target_path = crate::fs_ops::unique_target(&dest_dir, &upload_name, false);
         let saved_name = target_path.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -844,29 +903,75 @@ async fn handle_connection(
         file.flush().await?;
         emit_progress(&app, &saved_name, written, content_len as u64, true);
 
-        let now_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-        let record = UploadedFileRecord {
-            name: saved_name.clone(),
-            path: target_path.to_string_lossy().to_string(),
-            size: written,
-            size_formatted: fs_ops::format_size(written, false),
-            received_timestamp: now_ts,
-        };
+        if let Some((dest_uri, label)) = gdrive_forward {
+            // The phone's job (get the bytes to this PC) is already done; forwarding on to Drive can take a
+            // while longer, so it runs detached rather than making the phone's request wait for it.
+            let app_bg = app.clone();
+            let target_path_bg = target_path.clone();
+            let saved_name_bg = saved_name.clone();
+            tokio::spawn(async move {
+                match crate::gdrive_transfer::upload_local_file_to_gdrive_folder(app_bg.clone(), target_path_bg.clone(), dest_uri.clone()).await {
+                    Ok(gdrive_path) => {
+                        let _ = app_bg.emit("lan-file-forwarded", serde_json::json!({
+                            "name": saved_name_bg,
+                            "gdrivePath": gdrive_path,
+                            "label": label,
+                        }));
+                    }
+                    Err(error) => {
+                        // Upload didn't move (only on_move deletes the source on success), so it's still
+                        // sitting in `gdrive_inbox_dir()` — tracked below so it's not silently lost from view.
+                        let now_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                        let size = fs::metadata(&target_path_bg).map(|m| m.len()).unwrap_or(0);
+                        let record = UploadedFileRecord {
+                            name: saved_name_bg.clone(),
+                            path: target_path_bg.to_string_lossy().to_string(),
+                            size,
+                            size_formatted: fs_ops::format_size(size, false),
+                            received_timestamp: now_ts,
+                        };
+                        {
+                            let global_state = get_state();
+                            let mut state = global_state.lock().unwrap();
+                            state.uploaded_files.retain(|f| f.name != saved_name_bg);
+                            state.uploaded_files.insert(0, record);
+                            save_uploaded_files(&state.uploaded_files);
+                        }
+                        let _ = app_bg.emit("fs-change", "lan://mobile");
+                        let _ = app_bg.emit("lan-file-forward-failed", serde_json::json!({
+                            "name": saved_name_bg,
+                            "path": target_path_bg.to_string_lossy().to_string(),
+                            "label": label,
+                            "error": error,
+                        }));
+                    }
+                }
+            });
+        } else {
+            let now_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+            let record = UploadedFileRecord {
+                name: saved_name.clone(),
+                path: target_path.to_string_lossy().to_string(),
+                size: written,
+                size_formatted: fs_ops::format_size(written, false),
+                received_timestamp: now_ts,
+            };
 
-        {
-            let mut state = state_arc.lock().unwrap();
-            state.uploaded_files.retain(|f| f.name != saved_name);
-            state.uploaded_files.insert(0, record);
-            save_uploaded_files(&state.uploaded_files);
+            {
+                let mut state = state_arc.lock().unwrap();
+                state.uploaded_files.retain(|f| f.name != saved_name);
+                state.uploaded_files.insert(0, record);
+                save_uploaded_files(&state.uploaded_files);
+            }
+
+            // Emit events to notify boonsh desktop
+            let _ = app.emit("dir-changed", serde_json::json!({ "path": dest_dir.to_string_lossy().to_string() }));
+            let _ = app.emit("lan-file-received", serde_json::json!({
+                "name": saved_name,
+                "path": target_path.to_string_lossy().to_string(),
+                "dir": dest_dir.to_string_lossy().to_string(),
+            }));
         }
-
-        // Emit events to notify boonsh desktop
-        let _ = app.emit("dir-changed", serde_json::json!({ "path": dest_dir.to_string_lossy().to_string() }));
-        let _ = app.emit("lan-file-received", serde_json::json!({
-            "name": saved_name,
-            "path": target_path.to_string_lossy().to_string(),
-            "dir": dest_dir.to_string_lossy().to_string(),
-        }));
 
         let resp_json = serde_json::json!({ "success": true, "name": saved_name }).to_string();
         let response = format!(
@@ -1090,6 +1195,8 @@ mod tests {
             active_token: "tok".to_string(),
             paired_devices: Vec::new(),
             custom_incoming_dir: None,
+            gdrive_upload_dest: None,
+            gdrive_upload_dest_label: None,
             uploaded_files: Vec::new(),
             last_client_seen: None,
             last_client_name: None,
